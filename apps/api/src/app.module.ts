@@ -14,7 +14,7 @@ import { DriversModule } from './modules/drivers/drivers.module';
 import { FilesModule } from './modules/files/files.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { TelematicsModule } from './modules/telematics/telematics.module';
+import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 import { IngestRunner } from './worker/ingest.runner';
@@ -39,6 +39,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     VehiclesModule,
     DriversModule,
     TelematicsModule,
+    TelematicsLiveModule,
   ],
   controllers: [HealthController],
   providers: [

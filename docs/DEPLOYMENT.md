@@ -128,7 +128,7 @@ What happens:
 
 1. A **pre-install / pre-upgrade hook Job** runs `scripts/migrate.js` (`prisma migrate deploy`) with `DATABASE_MIGRATION_URL`. If it fails, the release stops and the running version stays untouched.
 2. The `api` (HPA 3–10), `worker`, `ingest` (2 replicas, one active via a Redis lock) and `web` Deployments roll out with `maxUnavailable: 0`.
-3. Ingress routes `/api` to the api and `/` to the web.
+3. Ingress routes `/api` (including the `/api/socket.io` WebSocket) to the api and `/` to the web. The chart sets 1-hour proxy timeouts for WebSockets. Clients use the WebSocket transport only, so no sticky sessions are needed with several API replicas.
 
 `values-prod.yaml` also configures:
 

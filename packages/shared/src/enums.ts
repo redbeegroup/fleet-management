@@ -65,3 +65,15 @@ export const ALLOWED_UPLOAD_TYPES = [
   'image/webp',
   'image/heic',
 ] as const;
+
+export const TelemetryEventType = {
+  GEOFENCE_ENTER: 'GEOFENCE_ENTER',
+  GEOFENCE_EXIT: 'GEOFENCE_EXIT',
+  OVERSPEED: 'OVERSPEED',
+  IDLE: 'IDLE',
+  IGNITION_ON: 'IGNITION_ON',
+  IGNITION_OFF: 'IGNITION_OFF',
+  GPS_OFFLINE: 'GPS_OFFLINE',
+  GPS_RESTORED: 'GPS_RESTORED',
+} as const;
+export type TelemetryEventType = (typeof TelemetryEventType)[keyof typeof TelemetryEventType];

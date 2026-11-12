@@ -55,6 +55,8 @@ model Company {
   name      String
   timezone  String   @default("Asia/Yangon")
   currency  String   @default("MMK")
+  /// Company-level settings (telematics thresholds…), validated by the API with defaults.
+  settings  Json     @default("{}")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -158,29 +160,31 @@ model AuditLog {
 }
 
 model Vehicle {
-  id           String        @id @default(uuid()) @db.Uuid
-  companyId    String        @map("company_id") @db.Uuid
-  branchId     String?       @map("branch_id") @db.Uuid
-  departmentId String?       @map("department_id") @db.Uuid
-  plateNumber  String        @map("plate_number")
-  vin          String?
-  make         String
-  model        String
-  year         Int?
-  vehicleClass VehicleClass  @map("vehicle_class")
-  ownership    OwnershipType @default(OWNED)
-  fuelType     String?       @map("fuel_type")
-  capacityKg   Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
-  capacityM3   Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
-  odometerKm   Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
-  status       VehicleStatus @default(AVAILABLE)
-  gpsDeviceId  String?       @map("gps_device_id")
-  acquiredAt   DateTime?     @map("acquired_at") @db.Date
-  disposedAt   DateTime?     @map("disposed_at") @db.Date
-  notes        String?
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  deletedAt    DateTime?     @map("deleted_at")
+  id            String        @id @default(uuid()) @db.Uuid
+  companyId     String        @map("company_id") @db.Uuid
+  branchId      String?       @map("branch_id") @db.Uuid
+  departmentId  String?       @map("department_id") @db.Uuid
+  plateNumber   String        @map("plate_number")
+  vin           String?
+  make          String
+  model         String
+  year          Int?
+  vehicleClass  VehicleClass  @map("vehicle_class")
+  ownership     OwnershipType @default(OWNED)
+  fuelType      String?       @map("fuel_type")
+  capacityKg    Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
+  capacityM3    Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
+  odometerKm    Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
+  status        VehicleStatus @default(AVAILABLE)
+  gpsDeviceId   String?       @map("gps_device_id")
+  /// Overrides the company speed limit for overspeed alerts.
+  speedLimitKmh Int?          @map("speed_limit_kmh")
+  acquiredAt    DateTime?     @map("acquired_at") @db.Date
+  disposedAt    DateTime?     @map("disposed_at") @db.Date
+  notes         String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
 
   company       Company              @relation(fields: [companyId], references: [id])
   branch        Branch?              @relation(fields: [branchId], references: [id])
@@ -349,4 +353,81 @@ model Notification {
   @@unique([userId, dedupeKey])
   @@index([userId, readAt, createdAt])
   @@map("notifications")
+}
+
+enum GeofenceShape {
+  CIRCLE
+  POLYGON
+}
+
+enum TelemetryEventType {
+  GEOFENCE_ENTER
+  GEOFENCE_EXIT
+  OVERSPEED
+  IDLE
+  IGNITION_ON
+  IGNITION_OFF
+  GPS_OFFLINE
+  GPS_RESTORED
+}
+
+/// Virtual boundary: branch, warehouse, customer site, restricted area…
+model Geofence {
+  id           String        @id @default(uuid()) @db.Uuid
+  companyId    String        @map("company_id") @db.Uuid
+  name         String
+  category     String        @default("SITE")
+  shape        GeofenceShape
+  /// CIRCLE: centre + radius
+  centerLat    Float?        @map("center_lat")
+  centerLng    Float?        @map("center_lng")
+  radiusM      Float?        @map("radius_m")
+  /// POLYGON: [[lng, lat], ...] (GeoJSON order, not closed)
+  polygon      Json?
+  alertOnEnter Boolean       @default(false) @map("alert_on_enter")
+  alertOnExit  Boolean       @default(false) @map("alert_on_exit")
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@index([companyId, active])
+  @@map("geofences")
+}
+
+/// Detected telematics events (append-only; durations filled when an episode ends).
+model TelemetryEvent {
+  id         String             @id @default(uuid()) @db.Uuid
+  companyId  String             @map("company_id") @db.Uuid
+  vehicleId  String             @map("vehicle_id") @db.Uuid
+  type       TelemetryEventType
+  occurredAt DateTime           @map("occurred_at")
+  endedAt    DateTime?          @map("ended_at")
+  latitude   Float?
+  longitude  Float?
+  speedKmh   Float?             @map("speed_kmh")
+  geofenceId String?            @map("geofence_id") @db.Uuid
+  data       Json?
+  createdAt  DateTime           @default(now()) @map("created_at")
+
+  @@index([companyId, occurredAt])
+  @@index([vehicleId, occurredAt])
+  @@map("telemetry_events")
+}
+
+/// Per-vehicle rules-engine state carried between ingest batches.
+model VehicleTelemetryState {
+  vehicleId         String    @id @map("vehicle_id") @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  lastFixAt         DateTime? @map("last_fix_at")
+  ignition          Boolean?
+  insideGeofenceIds String[]  @map("inside_geofence_ids")
+  overspeedEventId  String?   @map("overspeed_event_id") @db.Uuid
+  overspeedMaxKmh   Float?    @map("overspeed_max_kmh")
+  idleSince         DateTime? @map("idle_since")
+  idleEventId       String?   @map("idle_event_id") @db.Uuid
+  offlineEventId    String?   @map("offline_event_id") @db.Uuid
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@map("vehicle_telemetry_state")
 }

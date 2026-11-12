@@ -99,6 +99,9 @@ export function VehicleDetailPage() {
         </div>
         {canWrite && (
           <div className="actions">
+            <Link className="btn" to={`/vehicles/${v.id}/track`}>
+              Trip history
+            </Link>
             <Link className="btn" to={`/vehicles/${v.id}/edit`}>
               Edit
             </Link>
@@ -130,6 +133,8 @@ export function VehicleDetailPage() {
             <dd>{Number(v.odometerKm).toLocaleString()} km</dd>
             <dt>GPS device</dt>
             <dd>{v.gpsDeviceId ?? '—'}</dd>
+            <dt>Speed limit</dt>
+            <dd>{v.speedLimitKmh ? `${v.speedLimitKmh} km/h` : 'company default'}</dd>
             <dt>Acquired</dt>
             <dd>{formatDate(v.acquiredAt ?? null)}</dd>
           </dl>

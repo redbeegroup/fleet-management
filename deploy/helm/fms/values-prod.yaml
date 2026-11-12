@@ -36,6 +36,9 @@ ingress:
   host: fms.example.com
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    # Live map WebSockets (/api/socket.io) are long-lived connections.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 networkPolicy:
   enabled: true

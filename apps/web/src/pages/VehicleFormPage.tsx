@@ -60,6 +60,7 @@ export function VehicleFormPage() {
       odometerKm: num('odometerKm') ?? 0,
       branchId: str('branchId'),
       gpsDeviceId: str('gpsDeviceId'),
+      speedLimitKmh: num('speedLimitKmh'),
       acquiredAt: str('acquiredAt'),
       notes: str('notes'),
     });
@@ -145,6 +146,10 @@ export function VehicleFormPage() {
         <label>
           GPS device ID (Watch Tower)
           <input name="gpsDeviceId" defaultValue={v?.gpsDeviceId ?? ''} />
+        </label>
+        <label>
+          Speed limit override (km/h)
+          <input name="speedLimitKmh" type="number" min={10} max={200} placeholder="Company default" defaultValue={v?.speedLimitKmh ?? ''} />
         </label>
         <label className="span-2">
           Notes

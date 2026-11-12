@@ -161,3 +161,30 @@ textarea { font: inherit; color: var(--text); background: var(--surface); border
   .bell { margin-top: 0; }
 }
 .notice .badge { min-width: 64px; text-align: center; }
+
+/* Sprint 3 */
+.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+.map-short { height: calc(100vh - 260px); min-height: 420px; }
+.feed { max-height: calc(100vh - 140px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.feed ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.feed li { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; }
+.feed li time { display: block; font-size: 12px; }
+.feed .badge { min-width: 80px; text-align: center; }
+.tile-value.small { font-size: 22px; }
+.playback { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); }
+.playback input[type=range] { flex: 1; }
+.playback-info { min-width: 260px; font-variant-numeric: tabular-nums; }
+.vehicle-marker.playhead { width: 18px; height: 18px; background: #d92d20; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.actions.start { justify-content: flex-start; }
+.fence-list { gap: 12px !important; }
+.fence-list li { display: flex !important; flex-direction: column; gap: 2px; }
+.fence-list li.inactive { opacity: .55; }
+.success { color: var(--ok); margin: 0; }
+small.muted { font-weight: 400; }
+@media (max-width: 1000px) {
+  .map-layout { grid-template-columns: 1fr; }
+  .feed { max-height: none; }
+  .playback { flex-wrap: wrap; }
+  .playback-info { min-width: 0; }
+}

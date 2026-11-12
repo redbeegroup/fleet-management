@@ -25,6 +25,7 @@ export interface Vehicle {
   odometerKm: string;
   status: VehicleStatus;
   gpsDeviceId: string | null;
+  speedLimitKmh?: number | null;
   branch: Branch | null;
 }
 
@@ -97,4 +98,64 @@ export interface LivePosition {
   recordedAt: string;
   offline: boolean;
   vehicle: { id: string; plateNumber: string; status: VehicleStatus; vehicleClass: VehicleClass };
+}
+
+export interface Geofence {
+  id: string;
+  name: string;
+  category: string;
+  shape: 'CIRCLE' | 'POLYGON';
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusM: number | null;
+  polygon: [number, number][] | null;
+  alertOnEnter: boolean;
+  alertOnExit: boolean;
+  active: boolean;
+}
+
+export interface TelemetryEvent {
+  id: string;
+  vehicleId: string;
+  plateNumber?: string | null;
+  type: string;
+  occurredAt: string;
+  endedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  speedKmh: number | null;
+  geofenceId: string | null;
+  data: Record<string, unknown> | null;
+}
+
+export interface TrackPoint {
+  recordedAt: string;
+  latitude: number;
+  longitude: number;
+  speedKmh: number | null;
+  ignition: boolean | null;
+}
+
+export interface TrackResponse {
+  vehicle: { id: string; plateNumber: string };
+  points: TrackPoint[];
+  events: TelemetryEvent[];
+  summary: {
+    distanceKm: number;
+    maxSpeedKmh: number;
+    avgMovingSpeedKmh: number;
+    movingMinutes: number;
+    stops: number;
+    from: string | null;
+    to: string | null;
+  };
+}
+
+export interface CompanySettings {
+  telematics: {
+    speedLimitKmh: number;
+    overspeedHysteresisKmh: number;
+    idleMinutes: number;
+    offlineMinutes: number;
+  };
 }

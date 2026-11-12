@@ -6,7 +6,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DriverDetailPage } from './pages/DriverDetailPage';
 import { DriverFormPage } from './pages/DriverFormPage';
 import { DriversPage } from './pages/DriversPage';
+import { EventsPage } from './pages/EventsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { VehicleFormPage } from './pages/VehicleFormPage';
@@ -14,6 +16,10 @@ import { VehiclesPage } from './pages/VehiclesPage';
 
 // MapLibre is large; load it only when the map is opened.
 const LiveMapPage = lazy(() => import('./pages/LiveMapPage').then((m) => ({ default: m.LiveMapPage })));
+const TrackPage = lazy(() => import('./pages/TrackPage').then((m) => ({ default: m.TrackPage })));
+const GeofencesPage = lazy(() => import('./pages/GeofencesPage').then((m) => ({ default: m.GeofencesPage })));
+
+const withMap = (el: JSX.Element) => <Suspense fallback={<p className="muted">Loading map…</p>}>{el}</Suspense>;
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   return session.user() ? children : <Navigate to="/login" replace />;
@@ -31,18 +37,15 @@ export function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route
-          path="map"
-          element={
-            <Suspense fallback={<p className="muted">Loading map…</p>}>
-              <LiveMapPage />
-            </Suspense>
-          }
-        />
+        <Route path="map" element={withMap(<LiveMapPage />)} />
+        <Route path="geofences" element={withMap(<GeofencesPage />)} />
+        <Route path="events" element={<EventsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />
         <Route path="vehicles/:id/edit" element={<VehicleFormPage />} />
+        <Route path="vehicles/:id/track" element={withMap(<TrackPage />)} />
         <Route path="drivers" element={<DriversPage />} />
         <Route path="drivers/new" element={<DriverFormPage />} />
         <Route path="drivers/:id" element={<DriverDetailPage />} />

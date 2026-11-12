@@ -94,12 +94,14 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 ```
 
 - `vehicle_positions` has a primary key of `(vehicle_id, recorded_at)`, so duplicates are ignored. The worker creates the current and next month's partitions every day. A DEFAULT partition catches out-of-range rows.
-- Sprint 3 adds a geofence / speed / idle / offline rules engine over each ingest batch, which emits domain events to notifications. It also adds a WebSocket gateway so the live map stops polling.
+- **Rules engine** (`rules/rules-engine.ts`): a pure function `evaluate(state, fix, context) → { state, opened, closed }` applied to each fix in time order. State per vehicle lives in `vehicle_telemetry_state`; events in `telemetry_events` (episodes such as overspeed/idle get `ended_at` when they end). Thresholds come from `companies.settings.telematics` and `vehicles.speed_limit_kmh`. Geometry is in-app (haversine, ray casting), so PostGIS is optional.
+- **Live push:** after the ingest transaction commits, positions and events are published to Redis channels `fms:live:<companyId>` / `fms:events:<companyId>`. The `LiveGateway` (socket.io, path `/api/socket.io`) in every API pod pattern-subscribes and emits to the `company:<id>` room. Clients authenticate with the access token in the handshake and are disconnected when it expires (the web client refreshes and reconnects).
+- **GPS offline:** the worker runs `gps-offline` every 5 minutes.
 - To use another GPS platform or a raw device gateway, implement `TelematicsProvider` and select it with `TELEMATICS_PROVIDER`.
 
 ## Data model (current)
 
-`companies`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -117,6 +119,7 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 |---|---|---|
 | `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS` |
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
+| `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).
 

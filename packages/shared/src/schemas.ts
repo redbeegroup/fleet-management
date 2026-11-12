@@ -24,6 +24,7 @@ export const createVehicleSchema = z.object({
   branchId: z.string().uuid().optional().nullable(),
   departmentId: z.string().uuid().optional().nullable(),
   gpsDeviceId: z.string().max(64).optional().nullable(),
+  speedLimitKmh: z.number().int().min(10).max(200).optional().nullable(),
   acquiredAt: optionalDate,
   notes: z.string().max(2000).optional().nullable(),
 });
@@ -115,3 +116,55 @@ export interface Paginated<T> {
   page: number;
   pageSize: number;
 }
+
+// ---------------------------------------------------------------------------
+// Telematics (Sprint 3)
+// ---------------------------------------------------------------------------
+
+const lngLat = z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]);
+
+export const geofenceSchema = z
+  .object({
+    name: z.string().trim().min(1).max(128),
+    category: z.enum(['BRANCH', 'WAREHOUSE', 'CUSTOMER', 'SITE', 'RESTRICTED']).default('SITE'),
+    shape: z.enum(['CIRCLE', 'POLYGON']),
+    centerLat: z.number().min(-90).max(90).optional().nullable(),
+    centerLng: z.number().min(-180).max(180).optional().nullable(),
+    radiusM: z.number().min(10).max(100_000).optional().nullable(),
+    /** [[lng, lat], ...] — at least 3 distinct vertices, not closed */
+    polygon: z.array(lngLat).min(3).max(500).optional().nullable(),
+    alertOnEnter: z.boolean().default(false),
+    alertOnExit: z.boolean().default(false),
+    active: z.boolean().default(true),
+  })
+  .superRefine((g, ctx) => {
+    if (g.shape === 'CIRCLE' && (g.centerLat == null || g.centerLng == null || g.radiusM == null)) {
+      ctx.addIssue({ code: 'custom', path: ['radiusM'], message: 'CIRCLE requires centerLat, centerLng and radiusM' });
+    }
+    if (g.shape === 'POLYGON' && !g.polygon) {
+      ctx.addIssue({ code: 'custom', path: ['polygon'], message: 'POLYGON requires polygon vertices' });
+    }
+  });
+export type GeofenceInput = z.infer<typeof geofenceSchema>;
+
+export const telematicsSettingsSchema = z.object({
+  /** Default overspeed limit; vehicles may override with speedLimitKmh. */
+  speedLimitKmh: z.number().int().min(10).max(200).default(80),
+  /** Speed must drop this far below the limit to end an overspeed episode. */
+  overspeedHysteresisKmh: z.number().int().min(0).max(30).default(5),
+  /** Engine on and (almost) stationary for this long = idling. */
+  idleMinutes: z.number().int().min(1).max(240).default(10),
+  /** No position for this long = GPS offline. */
+  offlineMinutes: z.number().int().min(5).max(1440).default(30),
+});
+export type TelematicsSettings = z.infer<typeof telematicsSettingsSchema>;
+
+export const companySettingsSchema = z.object({
+  telematics: telematicsSettingsSchema.default({}),
+});
+export type CompanySettings = z.infer<typeof companySettingsSchema>;
+
+export const updateCompanySettingsSchema = z.object({
+  telematics: telematicsSettingsSchema.partial().optional(),
+});
+export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;

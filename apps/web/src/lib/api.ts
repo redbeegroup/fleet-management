@@ -44,6 +44,10 @@ const storage = {
   },
 };
 
+export function accessToken(): string | null {
+  return storage.get(ACCESS);
+}
+
 export const session = {
   user(): SessionUser | null {
     const raw = storage.get(USER);
@@ -64,7 +68,7 @@ export const session = {
 
 let refreshing: Promise<boolean> | null = null;
 
-async function refresh(): Promise<boolean> {
+export async function refresh(): Promise<boolean> {
   const token = storage.get(REFRESH);
   if (!token) return false;
   refreshing ??= fetch('/api/auth/refresh', {

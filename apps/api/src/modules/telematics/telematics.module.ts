@@ -4,13 +4,18 @@ import { PrismaService } from '../../common/db/prisma.service';
 import { MockTelematicsProvider } from './providers/mock.provider';
 import { TELEMATICS_PROVIDER } from './providers/telematics-provider';
 import { WatchTowerProvider } from './providers/watchtower.provider';
+import { GeofencesController } from './geofences.controller';
+import { LiveGateway } from './live.gateway';
+import { TelemetryRulesService } from './telemetry-rules.service';
 import { TelematicsController } from './telematics.controller';
 import { TelematicsService } from './telematics.service';
 
+/** Telematics core (ingest, rules, queries). Shared by api, worker, ingest and job processes. */
 @Module({
-  controllers: [TelematicsController],
+  controllers: [TelematicsController, GeofencesController],
   providers: [
     TelematicsService,
+    TelemetryRulesService,
     {
       provide: TELEMATICS_PROVIDER,
       inject: [PrismaService],
@@ -34,3 +39,7 @@ import { TelematicsService } from './telematics.service';
   exports: [TelematicsService, TELEMATICS_PROVIDER],
 })
 export class TelematicsModule {}
+
+/** HTTP-only additions: the WebSocket gateway lives in the API process only. */
+@Module({ imports: [TelematicsModule], providers: [LiveGateway] })
+export class TelematicsLiveModule {}

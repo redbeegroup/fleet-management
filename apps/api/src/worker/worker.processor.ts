@@ -27,6 +27,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('position-partitions', { pattern: '0 0 2 * * *' }, {
       name: 'position-partitions',
     });
+    await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
     this.logger.log('Job schedulers registered');
   }
 
@@ -36,6 +37,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
         return this.compliance.run();
       case 'position-partitions':
         return this.telematics.maintainPartitions();
+      case 'gps-offline':
+        return this.telematics.checkOffline();
       default:
         this.logger.warn(`Unknown job ${job.name}`);
         return undefined;

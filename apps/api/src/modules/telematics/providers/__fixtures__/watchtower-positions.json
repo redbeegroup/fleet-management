@@ -1,0 +1,9 @@
+{
+  "_comment": "Representative Watch Tower /positions/latest payload. Replace with a real recorded response once the API contract is confirmed (Sprint 3 exit criterion).",
+  "data": [
+    { "deviceId": "WT-0001", "fixTime": "2026-11-12T03:15:04Z", "latitude": 16.8409, "longitude": 96.1735, "speed": 42.5, "course": 187, "altitude": 12, "ignition": true, "odometer": 25412.3 },
+    { "imei": "861234567890123", "timestamp": "2026-11-12T03:15:09Z", "lat": 21.9588, "lng": 96.0891, "speed": 0, "heading": 0, "ignition": false },
+    { "deviceId": "WT-0003", "timestamp": "not-a-date", "lat": 16.8, "lng": 96.1 },
+    { "deviceId": "WT-0004", "fixTime": "2026-11-12T03:15:11Z", "latitude": 91, "longitude": 96.1 }
+  ]
+}

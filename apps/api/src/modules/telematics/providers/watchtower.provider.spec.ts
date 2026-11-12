@@ -42,3 +42,16 @@ describe('WatchTowerProvider', () => {
     await expect(provider.fetchPositions()).rejects.toThrow('503');
   });
 });
+
+describe('WatchTowerProvider contract (recorded payload)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const payload = require('./__fixtures__/watchtower-positions.json');
+
+  it('maps every valid row and skips malformed ones', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    const fixes = await new WatchTowerProvider('https://wt', 'k', fetchImpl as unknown as typeof fetch).fetchPositions();
+    expect(fixes.map((f) => f.deviceId)).toEqual(['WT-0001', '861234567890123']);
+    expect(fixes[0]).toMatchObject({ speedKmh: 42.5, heading: 187, altitudeM: 12, ignition: true, odometerKm: 25412.3 });
+    expect(fixes[1]).toMatchObject({ latitude: 21.9588, longitude: 96.0891, ignition: false });
+  });
+});

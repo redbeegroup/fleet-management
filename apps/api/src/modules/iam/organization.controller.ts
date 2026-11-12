@@ -1,6 +1,14 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { CreateBranchInput, createBranchSchema, Permission, Role } from '@fms/shared';
+import {
+  CreateBranchInput,
+  createBranchSchema,
+  Permission,
+  Role,
+  UpdateCompanySettingsInput,
+  updateCompanySettingsSchema,
+} from '@fms/shared';
+import { parseCompanySettings } from '../../common/settings';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -39,6 +47,28 @@ export class OrganizationController {
     const company = await this.db.tenant(user.companyId, (tx) => tx.company.findFirst());
     if (!company) throw new NotFoundException();
     return company;
+  }
+
+  /** Effective settings (stored values merged with defaults). */
+  @Get('company/settings')
+  async settings(@CurrentUser() user: AuthUser) {
+    const company = await this.db.tenant(user.companyId, (tx) => tx.company.findFirst({ select: { settings: true } }));
+    return parseCompanySettings(company?.settings);
+  }
+
+  @Patch('company/settings')
+  @RequirePermissions(Permission.SETTINGS_WRITE)
+  async updateSettings(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodPipe(updateCompanySettingsSchema)) body: UpdateCompanySettingsInput,
+  ) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const company = await tx.company.findFirst({ select: { settings: true } });
+      const current = parseCompanySettings(company?.settings);
+      const next = parseCompanySettings({ ...current, telematics: { ...current.telematics, ...body.telematics } });
+      await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
+      return next;
+    });
   }
 
   @Get('branches')

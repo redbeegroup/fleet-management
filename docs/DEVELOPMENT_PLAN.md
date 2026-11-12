@@ -85,14 +85,14 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Real-time GPS tracking | P1 | 1 / S3 | 🟡 Watch Tower adapter + mock, ingest, live map (polling) |
-| Trip history | P1 | 1 / S3 | 🟡 position history endpoint; playback UI in S3 |
-| Geofencing | P1 | 1 / S3 | ⏳ |
-| Entry/exit alerts | P1 | 1 / S3 | ⏳ |
-| Speed monitoring & overspeed alerts | P1 | 1 / S3 | ⏳ (speed stored) |
-| Ignition monitoring | P1 | 1 / S3 | 🟡 ignition stored |
-| Idling monitoring | P1 | 1 / S3 | ⏳ |
-| GPS offline alerts | P1 | 1 / S3 | 🟡 offline flag on live map |
+| Real-time GPS tracking | P1 | 1 / S3 | ✅ Watch Tower adapter + mock, ingest, live map pushed over WebSocket |
+| Trip history | P1 | 1 / S3 | ✅ playback with distance, driving time, max/avg speed, stops and events |
+| Geofencing | P1 | 1 / S3 | ✅ circle + polygon, map editor, no PostGIS dependency |
+| Entry/exit alerts | P1 | 1 / S3 | ✅ per-fence alert flags |
+| Speed monitoring & overspeed alerts | P1 | 1 / S3 | ✅ episodes with hysteresis, company limit + per-vehicle override |
+| Ignition monitoring | P1 | 1 / S3 | ✅ ignition on/off events |
+| Idling monitoring | P1 | 1 / S3 | ✅ engine on + stationary ≥ threshold, with duration |
+| GPS offline alerts | P1 | 1 / S3 | ✅ worker check every 5 min, restored event |
 | Route deviation | P2 | 2 | ⏳ |
 | Unauthorized vehicle usage | P2 | 2 | ⏳ |
 | Engine diagnostics (OBD/CAN) | P2 | 2 | ⏳ via Watch Tower where devices support it |
@@ -337,5 +337,14 @@ Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
 - **Drivers:** edit, activate/deactivate (releases vehicle), licences with scans, link to an app login.
 - **Vehicles:** edit page, assign/reassign/release driver, documents with scans, consolidated history timeline.
 - **Ops:** `MODE=job JOB=<name>` one-shot runner (`compliance-alerts`, `position-partitions`).
+
+### Sprint 3 (delivered)
+
+- **Rules engine** (`modules/telematics/rules`): a pure, unit-tested function run on every ingest batch with per-vehicle state carried in `vehicle_telemetry_state`. Detects geofence entry/exit, overspeed episodes (hysteresis), idling, ignition changes, GPS offline/restored. Out-of-order and re-delivered fixes are ignored by the rules.
+- **Events & alerts:** `telemetry_events` with durations; notifications for overspeed, idling, GPS offline and alerting geofences (to admins, fleet managers and dispatchers).
+- **Company settings:** default speed limit, hysteresis, idle and offline thresholds (`/api/company/settings`); per-vehicle speed limit override.
+- **Live map over WebSocket:** ingest publishes to Redis; every API pod forwards to its company room (socket.io at `/api/socket.io`, WebSocket transport only so no sticky sessions are needed).
+- **Web:** live map with fences and live event feed, trip playback, events list, geofence editor (circle/polygon), settings page.
+- **Watch Tower contract test** against a recorded sample payload (`providers/__fixtures__`) — replace with a real recording once the API contract is confirmed.
 
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

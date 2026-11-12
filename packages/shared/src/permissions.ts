@@ -14,6 +14,8 @@ export const Permission = {
   TRIP_READ: 'trip:read',
   TRIP_WRITE: 'trip:write',
   FILE_UPLOAD: 'file:upload',
+  GEOFENCE_WRITE: 'geofence:write',
+  SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -41,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.DRIVER_WRITE,
     Permission.TRIP_WRITE,
     Permission.FILE_UPLOAD,
+    Permission.GEOFENCE_WRITE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,

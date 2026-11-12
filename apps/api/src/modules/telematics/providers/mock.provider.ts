@@ -16,15 +16,20 @@ export class MockTelematicsProvider implements TelematicsProvider {
     const now = new Date();
     return ids.map((deviceId, i) => {
       const angle = (this.tick / 20 + i) % (2 * Math.PI);
-      const moving = (this.tick + i) % 5 !== 0;
+      const phase = (this.tick + i * 7) % 60;
+      // Mostly driving; a parked stop (engine off), an idling stop (engine on) and a speeding burst each cycle.
+      const parked = phase >= 40 && phase < 46;
+      const idling = phase >= 50 && phase < 56;
+      const speeding = phase >= 20 && phase < 23;
+      const moving = !parked && !idling;
       return {
         deviceId,
         recordedAt: now,
         latitude: 16.8409 + 0.03 * Math.sin(angle) + i * 0.005,
         longitude: 96.1735 + 0.03 * Math.cos(angle) + i * 0.005,
-        speedKmh: moving ? 25 + ((this.tick * 7 + i * 13) % 50) : 0,
+        speedKmh: speeding ? 95 : moving ? 25 + ((this.tick * 7 + i * 13) % 45) : 0,
         heading: ((angle * 180) / Math.PI + 90) % 360,
-        ignition: moving,
+        ignition: !parked,
       };
     });
   }

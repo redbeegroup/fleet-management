@@ -41,6 +41,7 @@ async function runJob(name: string | undefined) {
   const jobs: Record<string, () => Promise<unknown>> = {
     'compliance-alerts': () => app.get(ComplianceAlertsJob).run(),
     'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
+    'gps-offline': () => app.get(TelematicsService).checkOffline(),
   };
   const job = name ? jobs[name] : undefined;
   if (!job) throw new Error(`Unknown JOB "${name}". Available: ${Object.keys(jobs).join(', ')}`);

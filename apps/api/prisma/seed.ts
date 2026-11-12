@@ -116,6 +116,37 @@ async function main() {
       }
     }
 
+    if (!(await tx.geofence.count({ where: { companyId: company.id } }))) {
+      await tx.geofence.createMany({
+        data: [
+          {
+            companyId: company.id,
+            name: 'Yangon HQ yard',
+            category: 'BRANCH',
+            shape: 'CIRCLE',
+            centerLat: 16.8409,
+            centerLng: 96.1735,
+            radiusM: 1500,
+            alertOnEnter: true,
+            alertOnExit: true,
+          },
+          {
+            companyId: company.id,
+            name: 'North warehouse',
+            category: 'WAREHOUSE',
+            shape: 'POLYGON',
+            polygon: [
+              [96.16, 16.865],
+              [96.19, 16.865],
+              [96.19, 16.885],
+              [96.16, 16.885],
+            ],
+            alertOnEnter: true,
+          },
+        ],
+      });
+    }
+
     // Driver login for the mobile app, linked to the first driver below.
     const driverUser = await tx.user.upsert({
       where: { email: 'driver@fms.local' },
