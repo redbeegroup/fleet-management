@@ -18,6 +18,10 @@ spec:
         {{- include "fms.selectorLabels" (dict "root" . "component" "redis") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 999

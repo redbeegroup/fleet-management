@@ -36,3 +36,13 @@ networkPolicy:
   ingressFrom:
     - namespaceSelector:
         matchLabels: { kubernetes.io/metadata.name: traefik }
+
+# wo4's pod network is broken (flannel: "cni0 already has an IP address different
+# from 10.244.6.1/24"). Keep FMS off that node until it is repaired.
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - { key: kubernetes.io/hostname, operator: NotIn, values: [wo4] }
+            - { key: node-role.kubernetes.io/control-plane, operator: DoesNotExist }
