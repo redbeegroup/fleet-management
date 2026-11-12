@@ -1,0 +1,153 @@
+# Deployment
+
+| Environment | Runtime | Database |
+|---|---|---|
+| Local development | Node 22 + pnpm (or Compose) | local PostgreSQL / Compose |
+| **Test** | **Docker Compose** (whole stack) | **PostgreSQL container in the Compose project** |
+| Staging | Kubernetes (Helm, `values-staging.yaml`) | staging database on the PostgreSQL cluster |
+| **Production** | **Kubernetes (Helm, `values-prod.yaml`)** | **pre-installed PostgreSQL cluster (external)** |
+
+There is one API image (`fms/api`) for the `api`, `worker`, `ingest` and migration processes, and one web image (`fms/web`, nginx serving the SPA and proxying `/api`).
+
+---
+
+## 1. Test environment: Docker Compose
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env    # then edit passwords and secrets
+```
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d --build
+```
+
+| Service | Purpose |
+|---|---|
+| `postgres` | `postgis/postgis:16-3.4`. The init script creates the non-superuser `fms_app` role and extensions |
+| `redis` | queues, locks |
+| `mailpit` | catches outgoing email (UI on `127.0.0.1:8025`) |
+| `migrate` | one-shot: `prisma migrate deploy` as the owner, then the demo seed if `SEED=true` |
+| `api`, `worker`, `ingest` | the API image with `MODE=api / worker / ingest` |
+| `web` | console on `http://localhost:${WEB_PORT}` (default 8080), API docs at `/api/docs` |
+
+Default login (seed): `admin@fms.local` / `ChangeMe123!` (change via `SEED_ADMIN_*`).
+With `TELEMATICS_PROVIDER=mock`, every vehicle that has a GPS device ID moves around Yangon, so the live map works without Watch Tower access.
+
+Useful commands:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env ps
+```
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env logs -f api worker ingest
+```
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env down -v
+```
+
+`down -v` deletes the test database volume.
+
+**Behind a TLS-intercepting corporate proxy:** builds can receive the proxy CA as a BuildKit secret without baking it into images:
+
+```bash
+docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.Dockerfile -t fms/api:local .
+```
+
+> Object storage (documents and photos) arrives with file uploads in Sprint 2. MinIO no longer publishes free community images, so pick an S3-compatible store then (for example SeaweedFS, Garage, Ceph RGW, or an existing company S3 service).
+
+---
+
+## 2. Production: Kubernetes + external PostgreSQL cluster
+
+### 2.1 DBA prerequisites (once per environment)
+
+Run on the PostgreSQL cluster as a DBA. Adjust names, passwords and the network rules in `pg_hba.conf`.
+
+```sql
+-- Owner / migrator: owns the schema, runs DDL (used only by the migration Job)
+CREATE ROLE fms_migrator LOGIN PASSWORD '***';
+-- Application: DML only, NOT superuser, NO BYPASSRLS (RLS must apply)
+CREATE ROLE fms_app LOGIN PASSWORD '***' CONNECTION LIMIT 200;
+
+CREATE DATABASE fms OWNER fms_migrator;
+\c fms
+GRANT CONNECT ON DATABASE fms TO fms_app;
+-- Extensions need superuser on most installations:
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS postgis;   -- optional; geofencing falls back without it
+```
+
+The first migration grants `fms_app` DML rights on all tables and sets default privileges, provided the role exists when migrations run.
+
+Checklist:
+
+- [ ] `fms_app` is **not** a superuser and does **not** have `BYPASSRLS`. Otherwise tenant isolation at the database level is off.
+- [ ] TLS enabled (`sslmode=require` in the URLs).
+- [ ] Connection budget: pods × `connection_limit` (set in `DATABASE_URL`; Prisma's default is CPU count × 2 + 1). With **pgbouncer in transaction mode**, add `?pgbouncer=true` to `DATABASE_URL`, and point `DATABASE_MIGRATION_URL` **directly** at the primary (migrations need session features).
+- [ ] Backups and PITR are owned by the DBA team. Telemetry partitions (`vehicle_positions_YYYYMM`) can follow a shorter retention.
+- [ ] Monitoring: replication lag, connections, bloat on `vehicle_positions*`.
+
+### 2.2 Secrets
+
+Create the Secret with your secret tooling (External Secrets, Vault, sealed-secrets). Keys:
+
+| Key | Example |
+|---|---|
+| `DATABASE_URL` | `postgresql://fms_app:***@fms-fms-db:5432/fms?sslmode=require&connection_limit=10` |
+| `DATABASE_MIGRATION_URL` | `postgresql://fms_migrator:***@pg-primary.db.internal:5432/fms?sslmode=require` |
+| `REDIS_URL` | `rediss://:***@redis.internal:6380/0` |
+| `JWT_ACCESS_SECRET` | 64+ random characters |
+| `WATCHTOWER_API_KEY` | issued by Watch Tower |
+
+Manual example (for a first test only):
+
+```bash
+kubectl -n fms create secret generic fms-prod-secrets --from-literal=DATABASE_URL='...' --from-literal=DATABASE_MIGRATION_URL='...' --from-literal=REDIS_URL='...' --from-literal=JWT_ACCESS_SECRET='...' --from-literal=WATCHTOWER_API_KEY='...'
+```
+
+### 2.3 Install / upgrade
+
+```bash
+helm upgrade --install fms deploy/helm/fms -n fms --create-namespace -f deploy/helm/fms/values-prod.yaml --set image.api.tag=$GIT_SHA --set image.web.tag=$GIT_SHA --wait --timeout 10m
+```
+
+What happens:
+
+1. A **pre-install / pre-upgrade hook Job** runs `scripts/migrate.js` (`prisma migrate deploy`) with `DATABASE_MIGRATION_URL`. If it fails, the release stops and the running version stays untouched.
+2. The `api` (HPA 3–10), `worker`, `ingest` (2 replicas, one active via a Redis lock) and `web` Deployments roll out with `maxUnavailable: 0`.
+3. Ingress routes `/api` to the api and `/` to the web.
+
+`values-prod.yaml` also configures:
+
+- `database.externalService`: an in-cluster name (`<release>-fms-db`) for the external cluster, either as an `ExternalName` or as a selector-less Service with an EndpointSlice when only IPs are available.
+- `networkPolicy`: default deny, then egress allowed to DNS, the DB CIDRs, intra-release traffic and HTTPS.
+- Pod security: non-root, read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp. The API image is distroless.
+
+### 2.4 Rollback
+
+```bash
+helm rollback fms <REVISION> -n fms
+```
+
+Migrations are forward-only. Ship schema changes as expand → migrate → contract across releases so the previous image still works with the newer schema.
+
+### 2.5 Observability
+
+- Probes: `/api/health/live` (liveness/startup) and `/api/health/ready` (checks DB and Redis).
+- Logs: Nest logs to stdout, collected by the cluster log stack (Loki or ELK). Structured JSON logging (pino) is planned for Sprint 6.
+- Planned: `/metrics` (Prometheus) and OpenTelemetry tracing in Sprint 6.
+
+---
+
+## 3. CI/CD
+
+`.github/workflows/ci.yml`:
+
+1. **test**: install, build, lint, typecheck, unit tests, then migrations, seed and e2e tests against PostgreSQL and Redis service containers (the app connects as `fms_app`, so RLS is exercised).
+2. **helm**: `helm lint` for the staging and prod values, plus `helm template` and `kubeconform`.
+3. **images**: builds both images. To publish, add a registry login and set `push: true` on `main`.
+
+Suggested CD: tag images with the git SHA, then `helm upgrade` to staging automatically and to production with a manual approval (GitHub Environments or Argo CD).

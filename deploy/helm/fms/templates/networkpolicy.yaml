@@ -1,0 +1,69 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $sel := dict "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/name" (include "fms.name" .) }}
+# Default deny for the release's pods, then explicit allows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fms.fullname" . }}-default-deny
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $sel | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  egress:
+    # DNS
+    - ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Intra-release traffic (web → api, apps → redis)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $sel | nindent 14 }}
+    # External PostgreSQL cluster
+    - ports:
+        - { protocol: TCP, port: {{ .Values.database.externalService.port }} }
+      {{- with .Values.networkPolicy.databaseCidrs }}
+      to:
+        {{- range . }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      {{- end }}
+    # Outbound HTTPS (Watch Tower API, notification providers…), Redis/SMTP if external
+    - ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 587 }
+      {{- with .Values.networkPolicy.extraEgressCidrs }}
+      to:
+        {{- range . }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fms.fullname" . }}-ingress
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $sel | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # From the ingress controller namespace (to web and api)
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+    # Within the release
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $sel | nindent 14 }}
+{{- end }}

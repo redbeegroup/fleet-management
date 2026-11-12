@@ -1,0 +1,304 @@
+// Fleet Management System — core schema (Phase 1 / Sprint 1-2)
+// Every tenant-owned table carries company_id and is protected by PostgreSQL RLS
+// (see migrations/*_rls_and_telemetry/migration.sql).
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_MIGRATION_URL")
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ASSIGNED
+  OPERATING
+  UNDER_REPAIR
+  INACTIVE
+  DISPOSED
+}
+
+enum VehicleClass {
+  TRUCK
+  VAN
+  CAR
+  PICKUP
+  BUS
+  MOTORCYCLE
+  TRAILER
+  OTHER
+}
+
+enum OwnershipType {
+  OWNED
+  LEASED
+  RENTED
+  CONTRACTOR
+}
+
+enum DocumentType {
+  REGISTRATION
+  INSURANCE
+  ROAD_TAX
+  PERMIT
+  INSPECTION
+  OTHER
+}
+
+model Company {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  timezone  String   @default("Asia/Yangon")
+  currency  String   @default("MMK")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branches    Branch[]
+  departments Department[]
+  users       User[]
+  vehicles    Vehicle[]
+  drivers     Driver[]
+
+  @@map("companies")
+}
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  code      String
+  name      String
+  address   String?
+  latitude  Float?
+  longitude Float?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  vehicles Vehicle[]
+  drivers  Driver[]
+  users    User[]
+
+  @@unique([companyId, code])
+  @@map("branches")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  code      String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  vehicles Vehicle[]
+
+  @@unique([companyId, code])
+  @@map("departments")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  branchId     String?   @map("branch_id") @db.Uuid
+  email        String    @unique
+  fullName     String    @map("full_name")
+  passwordHash String    @map("password_hash")
+  roles        String[]
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  branch        Branch?        @relation(fields: [branchId], references: [id])
+  refreshTokens RefreshToken[]
+  driver        Driver?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  companyId  String?  @map("company_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String
+  entity     String
+  entityId   String?  @map("entity_id")
+  method     String?
+  path       String?
+  statusCode Int?     @map("status_code")
+  ip         String?
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model Vehicle {
+  id           String        @id @default(uuid()) @db.Uuid
+  companyId    String        @map("company_id") @db.Uuid
+  branchId     String?       @map("branch_id") @db.Uuid
+  departmentId String?       @map("department_id") @db.Uuid
+  plateNumber  String        @map("plate_number")
+  vin          String?
+  make         String
+  model        String
+  year         Int?
+  vehicleClass VehicleClass  @map("vehicle_class")
+  ownership    OwnershipType @default(OWNED)
+  fuelType     String?       @map("fuel_type")
+  capacityKg   Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
+  capacityM3   Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
+  odometerKm   Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
+  status       VehicleStatus @default(AVAILABLE)
+  gpsDeviceId  String?       @map("gps_device_id")
+  acquiredAt   DateTime?     @map("acquired_at") @db.Date
+  disposedAt   DateTime?     @map("disposed_at") @db.Date
+  notes        String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  deletedAt    DateTime?     @map("deleted_at")
+
+  company       Company              @relation(fields: [companyId], references: [id])
+  branch        Branch?              @relation(fields: [branchId], references: [id])
+  department    Department?          @relation(fields: [departmentId], references: [id])
+  documents     VehicleDocument[]
+  assignments   VehicleAssignment[]
+  statusHistory VehicleStatusEvent[]
+
+  @@unique([companyId, plateNumber])
+  @@unique([companyId, gpsDeviceId])
+  @@index([companyId, status])
+  @@map("vehicles")
+}
+
+model VehicleStatusEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  companyId  String         @map("company_id") @db.Uuid
+  vehicleId  String         @map("vehicle_id") @db.Uuid
+  fromStatus VehicleStatus? @map("from_status")
+  toStatus   VehicleStatus  @map("to_status")
+  reason     String?
+  userId     String?        @map("user_id") @db.Uuid
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt])
+  @@map("vehicle_status_events")
+}
+
+model VehicleDocument {
+  id        String       @id @default(uuid()) @db.Uuid
+  companyId String       @map("company_id") @db.Uuid
+  vehicleId String       @map("vehicle_id") @db.Uuid
+  type      DocumentType
+  number    String?
+  issuer    String?
+  issuedAt  DateTime?    @map("issued_at") @db.Date
+  expiresAt DateTime?    @map("expires_at") @db.Date
+  amount    Decimal?     @db.Decimal(14, 2)
+  fileKey   String?      @map("file_key")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, expiresAt])
+  @@map("vehicle_documents")
+}
+
+model VehicleAssignment {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  vehicleId    String    @map("vehicle_id") @db.Uuid
+  driverId     String?   @map("driver_id") @db.Uuid
+  branchId     String?   @map("branch_id") @db.Uuid
+  departmentId String?   @map("department_id") @db.Uuid
+  note         String?
+  startAt      DateTime  @default(now()) @map("start_at")
+  endAt        DateTime? @map("end_at")
+  createdBy    String?   @map("created_by") @db.Uuid
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([vehicleId, endAt])
+  @@index([driverId, endAt])
+  @@map("vehicle_assignments")
+}
+
+model Driver {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  branchId   String?  @map("branch_id") @db.Uuid
+  userId     String?  @unique @map("user_id") @db.Uuid
+  employeeNo String   @map("employee_no")
+  fullName   String   @map("full_name")
+  phone      String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company     Company             @relation(fields: [companyId], references: [id])
+  branch      Branch?             @relation(fields: [branchId], references: [id])
+  user        User?               @relation(fields: [userId], references: [id])
+  licenses    DriverLicense[]
+  assignments VehicleAssignment[]
+
+  @@unique([companyId, employeeNo])
+  @@map("drivers")
+}
+
+model DriverLicense {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  driverId     String    @map("driver_id") @db.Uuid
+  number       String
+  licenseClass String    @map("license_class")
+  issuedAt     DateTime? @map("issued_at") @db.Date
+  expiresAt    DateTime? @map("expires_at") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, expiresAt])
+  @@map("driver_licenses")
+}
+
+model VehicleLastPosition {
+  vehicleId  String   @id @map("vehicle_id") @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  recordedAt DateTime @map("recorded_at")
+  latitude   Float
+  longitude  Float
+  speedKmh   Float?   @map("speed_kmh")
+  heading    Float?
+  ignition   Boolean?
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@map("vehicle_last_positions")
+}

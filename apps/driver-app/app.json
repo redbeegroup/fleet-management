@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "FMS Driver",
+    "slug": "fms-driver",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": { "package": "com.fms.driver", "permissions": ["ACCESS_FINE_LOCATION", "CAMERA"] },
+    "ios": { "bundleIdentifier": "com.fms.driver" },
+    "extra": { "apiUrl": "http://10.0.2.2:8080/api" }
+  }
+}

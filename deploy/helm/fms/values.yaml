@@ -1,0 +1,151 @@
+# Default values for the FMS chart.
+# PostgreSQL is NOT deployed by this chart: production uses the pre-installed
+# PostgreSQL cluster, configured through `database.*` and the Secret below.
+
+global:
+  imageRegistry: ""          # e.g. registry.example.com/fms
+  imagePullSecrets: []
+
+image:
+  api:
+    repository: fms/api
+    tag: ""                  # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  web:
+    repository: fms/web
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# External PostgreSQL cluster
+# ---------------------------------------------------------------------------
+database:
+  # Optional in-cluster DNS alias for the external cluster (VIP / pgbouncer / HAProxy).
+  # When enabled, apps can use host "<release>-fms-db" in their connection URLs.
+  externalService:
+    enabled: false
+    externalName: ""          # e.g. pg-vip.db.example.internal
+    # If the cluster is reachable only by IP, set ips instead of externalName.
+    ips: []                   # e.g. [10.10.20.11]
+    port: 5432
+  # Pool size per pod is set in DATABASE_URL (e.g. "&connection_limit=10").
+  # pgbouncer in transaction mode additionally requires "&pgbouncer=true".
+
+# Secrets: either reference an existing Secret (recommended: created by
+# External Secrets / Vault / sealed-secrets), or let the chart create one.
+secrets:
+  existingSecret: ""          # name of a Secret with the keys below
+  create: false
+  # Only used when create=true. NEVER commit real values.
+  values:
+    DATABASE_URL: ""                 # app role (fms_app), DML only
+    DATABASE_MIGRATION_URL: ""       # migrator role (fms_migrator), DDL
+    REDIS_URL: ""
+    JWT_ACCESS_SECRET: ""
+    WATCHTOWER_API_KEY: ""
+
+config:
+  NODE_ENV: production
+  JWT_ACCESS_TTL: 15m
+  JWT_REFRESH_TTL_DAYS: "14"
+  SWAGGER_ENABLED: "false"
+  CORS_ORIGINS: https://fms.example.com
+  DOC_EXPIRY_ALERT_DAYS: "30"
+  TELEMATICS_PROVIDER: watchtower
+  WATCHTOWER_BASE_URL: ""
+  WATCHTOWER_POLL_SECONDS: "30"
+
+# ---------------------------------------------------------------------------
+# Workloads
+# ---------------------------------------------------------------------------
+api:
+  replicas: 2
+  port: 3000
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    minAvailable: 1
+
+worker:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+ingest:
+  # Several replicas are safe: a Redis lock elects a single active poller.
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+web:
+  replicas: 2
+  port: 8080
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    minAvailable: 1
+
+migrations:
+  enabled: true               # pre-install/pre-upgrade hook Job
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  seed: false                 # demo data — never enable in production
+
+# Minimal in-cluster Redis for staging/dev. Use a managed/HA Redis in production
+# (set secrets REDIS_URL and keep this disabled).
+redis:
+  internal:
+    enabled: false
+    image: redis:7-alpine
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  host: fms.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    # cert-manager.io/cluster-issuer: letsencrypt
+  tls:
+    enabled: true
+    secretName: fms-tls
+
+networkPolicy:
+  enabled: true
+  # CIDRs of the external PostgreSQL cluster (egress on 5432).
+  databaseCidrs: []           # e.g. [10.10.20.0/24]
+  # Additional egress, e.g. Watch Tower API, SMTP. Empty list = allow all HTTPS egress.
+  extraEgressCidrs: []
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: { type: RuntimeDefault }
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,133 @@
+# FMS test environment: the whole stack, including PostgreSQL, on Docker.
+#   cp deploy/docker/.env.example deploy/docker/.env
+#   docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d --build
+# Web console: http://localhost:8080   API docs: http://localhost:8080/api/docs
+
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://fms_app:${FMS_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  DATABASE_MIGRATION_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+  JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+  JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-14}
+  CORS_ORIGINS: http://localhost:${WEB_PORT:-8080}
+  SWAGGER_ENABLED: "true"
+  TELEMATICS_PROVIDER: ${TELEMATICS_PROVIDER:-mock}
+  WATCHTOWER_BASE_URL: ${WATCHTOWER_BASE_URL:-}
+  WATCHTOWER_API_KEY: ${WATCHTOWER_API_KEY:-}
+  WATCHTOWER_POLL_SECONDS: ${WATCHTOWER_POLL_SECONDS:-30}
+  SMTP_URL: smtp://mailpit:1025
+
+x-api-image: &api-image
+  image: fms/api:${IMAGE_TAG:-local}
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      FMS_APP_PASSWORD: ${FMS_APP_PASSWORD}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  # One-shot: apply migrations (as DB owner) and optionally seed demo data.
+  migrate:
+    <<: *api-image
+    build:
+      context: ../..
+      dockerfile: deploy/docker/api.Dockerfile
+    environment:
+      <<: *api-env
+      # Seeding runs as the owner role.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      NODE_ENV: development
+      SEED: ${SEED:-true}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@fms.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-ChangeMe123!}
+    command: ["scripts/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *api-image
+    environment:
+      <<: *api-env
+      MODE: api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *api-image
+    environment:
+      <<: *api-env
+      MODE: worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  ingest:
+    <<: *api-image
+    environment:
+      <<: *api-env
+      MODE: ingest
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    image: fms/web:${IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/web.Dockerfile
+    environment:
+      API_UPSTREAM: http://api:3000
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

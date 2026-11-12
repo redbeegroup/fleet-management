@@ -1,0 +1,64 @@
+{{- /* api, worker and ingest share one image; MODE selects the process. */}}
+{{- range $component := list "api" "worker" "ingest" }}
+{{- $cfg := index $.Values $component }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fms.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "fms.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  {{- if not (and (eq $component "api") $.Values.api.autoscaling.enabled) }}
+  replicas: {{ $cfg.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "fms.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels:
+        {{- include "fms.selectorLabels" (dict "root" $ "component" $component) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+    spec:
+      {{- include "fms.podSecurity" $ | nindent 6 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ $component }}
+          image: {{ include "fms.image" (dict "root" $ "which" "api") }}
+          imagePullPolicy: {{ $.Values.image.api.pullPolicy }}
+          args: ["dist/main.js"]
+          {{- include "fms.apiEnv" $ | nindent 10 }}
+            - name: MODE
+              value: {{ $component }}
+          {{- if eq $component "api" }}
+          ports:
+            - name: http
+              containerPort: {{ $.Values.api.port }}
+          startupProbe:
+            httpGet: { path: /api/health/live, port: http }
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet: { path: /api/health/live, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /api/health/ready, port: http }
+            periodSeconds: 10
+          {{- end }}
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

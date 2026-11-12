@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, typecheck, unit + e2e tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: fms
+          POSTGRES_USER: fms_owner
+          POSTGRES_PASSWORD: owner
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fms_owner -d fms" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      # App connects as a non-superuser so Row-Level Security is enforced in tests.
+      DATABASE_URL: postgresql://fms_app:app@localhost:5432/fms
+      DATABASE_MIGRATION_URL: postgresql://fms_owner:owner@localhost:5432/fms
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-secret-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create application role
+        run: PGPASSWORD=owner psql -h localhost -U fms_owner -d fms -c "CREATE ROLE fms_app LOGIN PASSWORD 'app'"
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Migrate and seed
+        working-directory: apps/api
+        run: |
+          npx prisma migrate deploy
+          DATABASE_URL=$DATABASE_MIGRATION_URL node dist-seed/seed.js
+      - name: E2E tests
+        run: pnpm --filter @fms/api test:e2e
+
+  helm:
+    name: Helm lint + render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - run: helm lint deploy/helm/fms -f deploy/helm/fms/values-prod.yaml
+      - run: helm lint deploy/helm/fms -f deploy/helm/fms/values-staging.yaml
+      - name: Render and validate manifests
+        run: |
+          helm template fms deploy/helm/fms -f deploy/helm/fms/values-prod.yaml --set image.api.tag=ci --set image.web.tag=ci > prod.yaml
+          docker run --rm -v "$PWD:/m" ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary /m/prod.yaml
+
+  images:
+    name: Build container images
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        component: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.component }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/${{ matrix.component }}.Dockerfile
+          tags: fms/${{ matrix.component }}:${{ github.sha }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      # To publish: add a registry login step and set push: ${{ github.ref == 'refs/heads/main' }}

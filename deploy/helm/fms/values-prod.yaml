@@ -1,0 +1,47 @@
+# Production: application on Kubernetes, database on the pre-installed PostgreSQL cluster.
+global:
+  imageRegistry: registry.example.com/fms
+image:
+  api: { tag: "" }   # set by CI: --set image.api.tag=$GIT_SHA
+  web: { tag: "" }
+database:
+  externalService:
+    enabled: true
+    externalName: pg-vip.db.example.internal   # VIP / pgbouncer of the PostgreSQL cluster
+    port: 5432
+secrets:
+  # Keys: DATABASE_URL, DATABASE_MIGRATION_URL, REDIS_URL, JWT_ACCESS_SECRET, WATCHTOWER_API_KEY
+  # e.g. DATABASE_URL=postgresql://fms_app:***@fms-fms-db:5432/fms?sslmode=require
+  existingSecret: fms-prod-secrets
+config:
+  SWAGGER_ENABLED: "false"
+  CORS_ORIGINS: https://fms.example.com
+  TELEMATICS_PROVIDER: watchtower
+  WATCHTOWER_BASE_URL: https://watchtower.example.com
+api:
+  autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 10 }
+  pdb: { minAvailable: 2 }
+web:
+  replicas: 2
+ingest:
+  replicas: 2
+migrations:
+  enabled: true
+  seed: false
+ingress:
+  host: fms.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+networkPolicy:
+  enabled: true
+  databaseCidrs: [10.10.20.0/24]
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: fms

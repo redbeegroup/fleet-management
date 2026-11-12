@@ -1,0 +1,22 @@
+# Staging: same topology as production, smaller, Swagger on, in-cluster Redis.
+image:
+  api: { tag: "" }
+  web: { tag: "" }
+config:
+  SWAGGER_ENABLED: "true"
+  CORS_ORIGINS: https://fms-staging.example.com
+api:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { minAvailable: 0 }
+ingest: { replicas: 1 }
+web:
+  replicas: 1
+  pdb: { minAvailable: 0 }
+redis:
+  internal: { enabled: true }
+ingress:
+  host: fms-staging.example.com
+  tls: { secretName: fms-staging-tls }
+secrets:
+  existingSecret: fms-staging-secrets

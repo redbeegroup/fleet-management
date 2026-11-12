@@ -1,0 +1,45 @@
+{{- /*
+  Stable in-cluster name for the pre-installed (external) PostgreSQL cluster.
+  Either a DNS alias (externalName) or a selector-less Service + EndpointSlice (ips).
+*/}}
+{{- $db := .Values.database.externalService }}
+{{- if $db.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fms.fullname" . }}-db
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  {{- if $db.externalName }}
+  type: ExternalName
+  externalName: {{ $db.externalName }}
+  {{- else }}
+  ports:
+    - name: postgres
+      port: {{ $db.port }}
+      targetPort: {{ $db.port }}
+  {{- end }}
+{{- if and (not $db.externalName) $db.ips }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ include "fms.fullname" . }}-db
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+    kubernetes.io/service-name: {{ include "fms.fullname" . }}-db
+addressType: IPv4
+ports:
+  - name: postgres
+    port: {{ $db.port }}
+endpoints:
+  {{- range $db.ips }}
+  - addresses: [{{ . | quote }}]
+  {{- end }}
+{{- end }}
+{{- if and (not $db.externalName) (not $db.ips) }}
+{{- fail "database.externalService.enabled requires externalName or ips" }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,10 @@
+FMS {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}".
+
+URL: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+
+Database: external PostgreSQL cluster (credentials from Secret "{{ include "fms.secretName" . }}").
+Migrations ran as a pre-install/pre-upgrade hook Job{{ if not .Values.migrations.enabled }} (DISABLED){{ end }}.
+
+Check status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl logs deploy/{{ include "fms.fullname" . }}-api

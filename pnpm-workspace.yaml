@@ -1,0 +1,14 @@
+# driver-app (Expo / React Native) is intentionally NOT part of the workspace:
+# it is built with Expo/EAS tooling and uses its own npm lockfile.
+packages:
+  - "apps/api"
+  - "apps/web"
+  - "packages/*"
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - "@nestjs/core"
+  - argon2
+  - msgpackr-extract
