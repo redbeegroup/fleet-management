@@ -1,10 +1,7 @@
 # Test deployment on the CorexLab Talos cluster (Portainer environment talos-corexlab-portainer).
 # Database: fms-test-postgres release "fms-db" in the same namespace (values-corexlab.yaml of that chart). Files: CorexLab SeaweedFS.
 # Ingress is configured manually by the cluster admin (Traefik) → service <release>-fms-web:80.
-global:
-  # Created by Portainer when registry "github-wpl" (id 3) is granted to the fms namespace.
-  imagePullSecrets:
-    - name: registry-3
+# Images are public on GHCR, so no pull secret is needed.
 image:
   # Deploy an immutable commit tag: --set image.api.tag=<sha> --set image.web.tag=<sha>
   api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "8f161a3bc9d9e974800a5c5a4488a120e60ca928", pullPolicy: IfNotPresent }
