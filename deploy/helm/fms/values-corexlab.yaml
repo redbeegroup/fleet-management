@@ -4,8 +4,8 @@
 # Images are public on GHCR, so no pull secret is needed.
 image:
   # Deploy an immutable commit tag: --set image.api.tag=<sha> --set image.web.tag=<sha>
-  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "8f161a3bc9d9e974800a5c5a4488a120e60ca928", pullPolicy: IfNotPresent }
-  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "8f161a3bc9d9e974800a5c5a4488a120e60ca928", pullPolicy: IfNotPresent }
+  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "3f6a3e5657ac412425b392512ab3dd7a9b3e712e", pullPolicy: IfNotPresent }
+  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "3f6a3e5657ac412425b392512ab3dd7a9b3e712e", pullPolicy: IfNotPresent }
 database:
   externalService: { enabled: false }
 secrets:
@@ -31,6 +31,7 @@ redis:
 migrations:
   enabled: true
   seed: true                         # demo data for testing
+  activeDeadlineSeconds: 1800        # image pulls from GHCR can take >10 min on this cluster
 ingress: { enabled: false }
 networkPolicy:
   enabled: true
