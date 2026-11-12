@@ -22,6 +22,9 @@ export const Permission = {
   REPAIR_REQUEST: 'repair-request:create',
   COST_READ: 'cost:read',
   COST_WRITE: 'cost:write',
+  SAFETY_READ: 'safety:read',
+  SAFETY_WRITE: 'safety:write',
+  INCIDENT_REPORT: 'incident:report',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -55,6 +58,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.MAINTENANCE_WRITE,
     Permission.REPAIR_REQUEST,
     Permission.COST_WRITE,
+    Permission.SAFETY_WRITE,
+    Permission.INCIDENT_REPORT,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -66,8 +71,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.FUEL_READ,
     Permission.MAINTENANCE_READ,
     Permission.REPAIR_REQUEST,
+    Permission.SAFETY_READ,
+    Permission.INCIDENT_REPORT,
   ],
-  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST],
+  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST, Permission.INCIDENT_REPORT],
   EXECUTIVE: READ_ONLY,
   VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ],
 };

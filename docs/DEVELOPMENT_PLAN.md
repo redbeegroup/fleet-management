@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). Next: Phase 2. Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety) delivered**; next S8 (inspections, training, incentives). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -155,9 +155,9 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Driving licence management + expiry | P1 | 1 / S2 | ✅ licences with scans, expiry alerts to managers and the driver |
 | Driver attendance | P1 | 1 / S4 | ✅ duty sessions (app or supervisor), daily attendance report |
 | Driver assignment history | P1 | 1 / S2 | ✅ |
-| Driver behaviour monitoring | P2 | 2 | ⏳ harsh accel/brake/corner from telematics |
-| Driver performance score | P2 | 2 | ⏳ |
-| Accident & incident reporting | P2 | 2 | ⏳ |
+| Driver behaviour monitoring | P2 | 2 / S7 | ✅ harsh accel/brake/corner computed from GPS (dense fixes) or taken from device events; attributed to the trip/assigned driver |
+| Driver performance score | P2 | 2 / S7 | ✅ safety score per 100 km with configurable weights, ranking, scorecard, weekly low-score alerts |
+| Accident & incident reporting | P2 | 2 / S7 | ✅ web + driver app (photos), REPORTED → INVESTIGATING → CLOSED with findings/corrective actions, manager alerts for high severity or injuries |
 | Driver training & certification | P2 | 2 | ⏳ |
 | Incentives & penalties (rules) | P2 | 2 | ⏳ |
 | Fatigue monitoring | P3 | 4 | ⏳ hardware-dependent |
@@ -207,7 +207,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Distance & trip analysis | P1 | 1 / S6 | ✅ daily distance series, trips per vehicle-day |
 | Vehicle downtime | P1 | 1 / S6 | ✅ downtime and availability % |
 | Fuel efficiency dashboard | P1 | 1 / S6 | ✅ fleet and per-vehicle km/L |
-| Driver performance dashboard | P2 | 2 | ⏳ |
+| Driver performance dashboard | P2 | 2 / S7 | ✅ safety dashboard (fleet score, event mix, ranking) |
 | Delivery efficiency | P2 | 2 | ⏳ |
 | Branch fleet comparison | P2 | 3 | 🟡 branch table in reports (Phase 1); benchmarking views in Phase 3 |
 | Vehicle productivity ranking | P2 | 3 | ⏳ |
@@ -224,7 +224,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Driving licence compliance | P1 | 1 / S2–S4 | ✅ expiry alerts; licence class vs vehicle class enforced at dispatch (configurable) |
 | Vehicle inspection checklist | P2 | 2 | ⏳ |
 | Accident management | P2 | 2 | ⏳ |
-| Insurance claims | P2 | 2 | ⏳ |
+| Insurance claims | P2 | 2 / S7 | ✅ per incident; insurer/policy from the vehicle's insurance document; SUBMITTED → APPROVED/REJECTED → SETTLED |
 | Regulatory compliance (country config) | P2 | 3 | ⏳ |
 | Safety audit | P2 | 3 | ⏳ |
 
@@ -385,3 +385,12 @@ Delivered in Sprint 1:
 - **Watch Tower API**: pending from the customer.
 
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.
+
+### Phase 2 — Sprint 7 (driver safety) delivered
+
+- **Harsh events** (`telematics/rules/harsh.ts`, pure): longitudinal Δv/Δt and lateral v·ω between consecutive fixes, only when fixes are ≤ `harshMaxGapSeconds` (15 s) apart; thresholds in company settings (`telematics.harsh*`). Tracker events in `attributes.event|alarm` (`harsh_braking`, `harsh_acceleration`, `harsh_cornering`, `hard_*`) take precedence — this is where Watch Tower accelerometer events plug in. With today's 30 s polling, most harsh events will come from the device once the real API is connected.
+- **Driver attribution:** every telemetry event stores `driver_id` (driver of the ONGOING trip, otherwise the standing assignment).
+- **Safety score** (`safety/score.ts`, pure): `100 − Σ(weight × events) per 100 km` (idling per 10 min), bands GOOD ≥ 85 / FAIR ≥ `alertBelow` / POOR; drivers under `minDistanceKm` are not scored. Distance per driver comes from `vehicle_daily_stats`, split by trip GPS distance or given to the driver assigned at local noon. Computed on request (no extra rollup table — the inputs are already daily aggregates).
+- **Incidents & claims** (`/api/incidents`, `/api/claims`, driver `/api/me/incidents`), safety API (`/api/safety/scores`, `/api/safety/drivers/:id`, driver `/api/me/safety`), `safety-alerts` daily job (07:30 Asia/Yangon).
+- Web: Driver safety, Incidents & claims, scorecard on the driver page. Driver app: Safety tab (own score, incident report with photos).
+

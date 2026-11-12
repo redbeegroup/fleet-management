@@ -26,6 +26,8 @@ const sections: { title: string; items: { to: string; label: string; perm: strin
     items: [
       { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
       { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
+      { to: '/safety', label: 'Driver safety', perm: Permission.SAFETY_READ },
+      { to: '/incidents', label: 'Incidents & claims', perm: Permission.SAFETY_READ },
       { to: '/fuel', label: 'Fuel', perm: Permission.FUEL_READ },
       { to: '/maintenance', label: 'Maintenance', perm: Permission.MAINTENANCE_READ },
       { to: '/geofences', label: 'Geofences', perm: Permission.TRACKING_READ },

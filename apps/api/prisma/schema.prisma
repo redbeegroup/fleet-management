@@ -204,6 +204,7 @@ model Vehicle {
   RepairRequest   RepairRequest[]
   WorkOrder       WorkOrder[]
   expenses        VehicleExpense[]
+  incidents       Incident[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -288,6 +289,7 @@ model Driver {
   trips       Trip[]
   duty        DutySession[]
   fuelRecords FuelRecord[]
+  incidents   Incident[]
 
   @@unique([companyId, employeeNo])
   @@map("drivers")
@@ -384,6 +386,9 @@ enum TelemetryEventType {
   IGNITION_OFF
   GPS_OFFLINE
   GPS_RESTORED
+  HARSH_ACCEL
+  HARSH_BRAKE
+  HARSH_CORNER
 }
 
 /// Virtual boundary: branch, warehouse, customer site, restricted area…
@@ -414,6 +419,8 @@ model TelemetryEvent {
   id         String             @id @default(uuid()) @db.Uuid
   companyId  String             @map("company_id") @db.Uuid
   vehicleId  String             @map("vehicle_id") @db.Uuid
+  /// Driver at the time (ongoing trip driver, else standing assignment).
+  driverId   String?            @map("driver_id") @db.Uuid
   type       TelemetryEventType
   occurredAt DateTime           @map("occurred_at")
   endedAt    DateTime?          @map("ended_at")
@@ -426,6 +433,7 @@ model TelemetryEvent {
 
   @@index([companyId, occurredAt])
   @@index([vehicleId, occurredAt])
+  @@index([driverId, occurredAt])
   @@map("telemetry_events")
 }
 
@@ -435,6 +443,8 @@ model VehicleTelemetryState {
   companyId         String    @map("company_id") @db.Uuid
   lastFixAt         DateTime? @map("last_fix_at")
   ignition          Boolean?
+  lastSpeedKmh      Float?    @map("last_speed_kmh")
+  lastHeading       Float?    @map("last_heading")
   insideGeofenceIds String[]  @map("inside_geofence_ids")
   overspeedEventId  String?   @map("overspeed_event_id") @db.Uuid
   overspeedMaxKmh   Float?    @map("overspeed_max_kmh")
@@ -757,4 +767,95 @@ model UserDevice {
 
   @@index([userId])
   @@map("user_devices")
+}
+
+// ---------------------------------------------------------------------------
+// Safety: incidents & insurance claims (Phase 2 / S7)
+// ---------------------------------------------------------------------------
+
+enum IncidentType {
+  COLLISION
+  DAMAGE
+  THEFT
+  INJURY
+  NEAR_MISS
+  BREAKDOWN
+  OTHER
+}
+
+enum IncidentStatus {
+  REPORTED
+  INVESTIGATING
+  CLOSED
+}
+
+enum ClaimStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  SETTLED
+}
+
+model Incident {
+  id                String         @id @default(uuid()) @db.Uuid
+  companyId         String         @map("company_id") @db.Uuid
+  incidentNo        String         @map("incident_no")
+  vehicleId         String?        @map("vehicle_id") @db.Uuid
+  driverId          String?        @map("driver_id") @db.Uuid
+  tripId            String?        @map("trip_id") @db.Uuid
+  type              IncidentType
+  severity          String         @default("MEDIUM")
+  status            IncidentStatus @default(REPORTED)
+  occurredAt        DateTime       @map("occurred_at")
+  latitude          Float?
+  longitude         Float?
+  location          String?
+  description       String
+  injuries          Boolean        @default(false)
+  thirdParty        String?        @map("third_party")
+  policeReportNo    String?        @map("police_report_no")
+  estimatedCost     Decimal?       @map("estimated_cost") @db.Decimal(14, 2)
+  photoFileIds      String[]       @default([]) @map("photo_file_ids")
+  findings          String?
+  correctiveActions String?        @map("corrective_actions")
+  workOrderId       String?        @map("work_order_id") @db.Uuid
+  reportedBy        String?        @map("reported_by") @db.Uuid
+  closedAt          DateTime?      @map("closed_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  vehicle Vehicle?         @relation(fields: [vehicleId], references: [id])
+  driver  Driver?          @relation(fields: [driverId], references: [id])
+  claims  InsuranceClaim[]
+
+  @@unique([companyId, incidentNo])
+  @@index([companyId, occurredAt])
+  @@index([driverId, occurredAt])
+  @@map("incidents")
+}
+
+model InsuranceClaim {
+  id             String      @id @default(uuid()) @db.Uuid
+  companyId      String      @map("company_id") @db.Uuid
+  claimNo        String      @map("claim_no")
+  incidentId     String      @map("incident_id") @db.Uuid
+  insurer        String?
+  policyNo       String?     @map("policy_no")
+  externalRef    String?     @map("external_ref")
+  status         ClaimStatus @default(SUBMITTED)
+  submittedAt    DateTime    @default(now()) @map("submitted_at")
+  amountClaimed  Decimal     @map("amount_claimed") @db.Decimal(14, 2)
+  amountApproved Decimal?    @map("amount_approved") @db.Decimal(14, 2)
+  amountPaid     Decimal?    @map("amount_paid") @db.Decimal(14, 2)
+  decidedAt      DateTime?   @map("decided_at")
+  settledAt      DateTime?   @map("settled_at")
+  notes          String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, claimNo])
+  @@index([companyId, status])
+  @@map("insurance_claims")
 }

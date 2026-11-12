@@ -86,5 +86,8 @@ export const TelemetryEventType = {
   IGNITION_OFF: 'IGNITION_OFF',
   GPS_OFFLINE: 'GPS_OFFLINE',
   GPS_RESTORED: 'GPS_RESTORED',
+  HARSH_ACCEL: 'HARSH_ACCEL',
+  HARSH_BRAKE: 'HARSH_BRAKE',
+  HARSH_CORNER: 'HARSH_CORNER',
 } as const;
 export type TelemetryEventType = (typeof TelemetryEventType)[keyof typeof TelemetryEventType];

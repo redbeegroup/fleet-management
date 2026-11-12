@@ -369,3 +369,79 @@ export interface Expense {
   description: string | null;
   vehicle: { id: string; plateNumber: string };
 }
+
+export interface SafetyRow {
+  id: string;
+  fullName: string;
+  employeeNo: string;
+  distanceKm: number;
+  overspeed: number;
+  harshBrake: number;
+  harshAccel: number;
+  harshCorner: number;
+  idleMinutes: number;
+  score: number | null;
+  pointsPer100Km: number | null;
+  band: 'GOOD' | 'FAIR' | 'POOR' | 'INSUFFICIENT_DATA';
+}
+
+export interface SafetyScores {
+  range: { from: string; to: string; timezone: string };
+  settings: { minDistanceKm: number; alertBelow: number; weights: Record<string, number> };
+  fleet: {
+    drivers: number;
+    scoredDrivers: number;
+    averageScore: number | null;
+    belowThreshold: number;
+    distanceKm: number;
+    events: { overspeed: number; harshBrake: number; harshAccel: number; harshCorner: number };
+  };
+  drivers: SafetyRow[];
+}
+
+export interface DriverScorecard extends SafetyRow {
+  recentEvents: { id: string; type: string; occurredAt: string; speedKmh: number | null; data: Record<string, unknown> | null; vehicleId: string; plateNumber: string | null }[];
+}
+
+export interface InsuranceClaim {
+  id: string;
+  claimNo: string;
+  incidentId: string;
+  insurer: string | null;
+  policyNo: string | null;
+  externalRef: string | null;
+  status: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SETTLED';
+  submittedAt: string;
+  amountClaimed: string;
+  amountApproved: string | null;
+  amountPaid: string | null;
+  decidedAt: string | null;
+  settledAt: string | null;
+  notes: string | null;
+  incident?: { id: string; incidentNo: string; type: string; vehicle: { plateNumber: string } | null };
+}
+
+export interface Incident {
+  id: string;
+  incidentNo: string;
+  type: string;
+  severity: string;
+  status: 'REPORTED' | 'INVESTIGATING' | 'CLOSED';
+  occurredAt: string;
+  latitude: number | null;
+  longitude: number | null;
+  location: string | null;
+  description: string;
+  injuries: boolean;
+  thirdParty: string | null;
+  policeReportNo: string | null;
+  estimatedCost: string | null;
+  photoFileIds: string[];
+  findings: string | null;
+  correctiveActions: string | null;
+  workOrderId: string | null;
+  closedAt: string | null;
+  vehicle: { id: string; plateNumber: string } | null;
+  driver: { id: string; fullName: string; employeeNo: string } | null;
+  claims: InsuranceClaim[];
+}

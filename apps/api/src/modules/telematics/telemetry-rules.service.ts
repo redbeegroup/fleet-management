@@ -18,6 +18,7 @@ export interface PersistedEvent extends EventDraft {
   companyId: string;
   vehicleId: string;
   plateNumber: string;
+  driverId?: string | null;
 }
 
 const ALERT_ROLES = [Role.SUPER_ADMIN, Role.COMPANY_ADMIN, Role.FLEET_MANAGER, Role.DISPATCHER];
@@ -27,6 +28,8 @@ function toState(row: Prisma.VehicleTelemetryStateGetPayload<object> | undefined
   return {
     lastFixAt: row.lastFixAt,
     ignition: row.ignition,
+    lastSpeedKmh: row.lastSpeedKmh,
+    lastHeading: row.lastHeading,
     insideGeofenceIds: row.insideGeofenceIds,
     overspeedEventId: row.overspeedEventId,
     overspeedMaxKmh: row.overspeedMaxKmh,
@@ -60,6 +63,7 @@ export class TelemetryRulesService {
       fencesBy.set(f.companyId, list);
     }
     const stateBy = new Map(states.map((s) => [s.vehicleId, s]));
+    const driverBy = await this.currentDrivers(tx, batches.map((b) => b.vehicle.id));
 
     const events: PersistedEvent[] = [];
     const closes: EventClose[] = [];
@@ -74,13 +78,37 @@ export class TelemetryRulesService {
       for (const fix of [...fixes].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
         const r = evaluate(state, fix, ctx);
         state = r.state;
-        events.push(...r.opened.map((e) => ({ ...e, companyId: vehicle.companyId, vehicleId: vehicle.id, plateNumber: vehicle.plateNumber })));
+        events.push(
+          ...r.opened.map((e) => ({
+            ...e,
+            companyId: vehicle.companyId,
+            vehicleId: vehicle.id,
+            plateNumber: vehicle.plateNumber,
+            driverId: driverBy.get(vehicle.id) ?? null,
+          })),
+        );
         closes.push(...r.closed);
       }
       await this.saveState(tx, vehicle, state);
     }
     await this.persist(tx, events, closes);
     return events;
+  }
+
+  /**
+   * Who is driving each vehicle now: the driver of its ONGOING trip, otherwise
+   * the driver of its open standing assignment.
+   */
+  async currentDrivers(tx: Tx, vehicleIds: string[]): Promise<Map<string, string>> {
+    if (!vehicleIds.length) return new Map();
+    const [trips, assignments] = await Promise.all([
+      tx.trip.findMany({ where: { vehicleId: { in: vehicleIds }, status: 'ONGOING', driverId: { not: null } }, select: { vehicleId: true, driverId: true } }),
+      tx.vehicleAssignment.findMany({ where: { vehicleId: { in: vehicleIds }, endAt: null, driverId: { not: null } }, select: { vehicleId: true, driverId: true } }),
+    ]);
+    const m = new Map<string, string>();
+    for (const a of assignments) m.set(a.vehicleId, a.driverId!);
+    for (const t of trips) m.set(t.vehicleId!, t.driverId!); // trip wins
+    return m;
   }
 
   /** Opens GPS_OFFLINE events for vehicles whose last fix is too old. */
@@ -169,6 +197,7 @@ export class TelemetryRulesService {
           id: e.id,
           companyId: e.companyId,
           vehicleId: e.vehicleId,
+          driverId: e.driverId ?? null,
           type: e.type,
           occurredAt: e.occurredAt,
           endedAt: e.endedAt ?? null,

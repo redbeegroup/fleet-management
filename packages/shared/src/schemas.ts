@@ -173,6 +173,12 @@ export const telematicsSettingsSchema = z.object({
   idleMinutes: z.number().int().min(1).max(240).default(10),
   /** No position for this long = GPS offline. */
   offlineMinutes: z.number().int().min(5).max(1440).default(30),
+  /** Harsh driving from GPS speed/heading changes (km/h per second, g). */
+  harshAccelKmhPerS: z.number().min(3).max(40).default(10),
+  harshBrakeKmhPerS: z.number().min(3).max(40).default(12),
+  harshCornerG: z.number().min(0.1).max(1.5).default(0.4),
+  /** Computed harsh events need fixes at most this far apart (sparser data is skipped). */
+  harshMaxGapSeconds: z.number().int().min(1).max(60).default(15),
 });
 export type TelematicsSettings = z.infer<typeof telematicsSettingsSchema>;
 
@@ -181,6 +187,7 @@ export const companySettingsSchema = z.object({
   // Declared lazily: dispatchSettingsSchema is defined further down this file.
   dispatch: z.lazy(() => dispatchSettingsSchema).default({}),
   maintenance: z.lazy(() => maintenanceSettingsSchema).default({}),
+  safety: z.lazy(() => safetySettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -188,6 +195,7 @@ export const updateCompanySettingsSchema = z.object({
   telematics: telematicsSettingsSchema.partial().optional(),
   dispatch: z.lazy(() => dispatchSettingsSchema.partial()).optional(),
   maintenance: z.lazy(() => maintenanceSettingsSchema.partial()).optional(),
+  safety: z.lazy(() => safetySettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -416,3 +424,86 @@ export const registerDeviceSchema = z.object({
   platform: z.enum(['ios', 'android', 'web']),
 });
 export type RegisterDeviceInput = z.infer<typeof registerDeviceSchema>;
+
+// ---------------------------------------------------------------------------
+// Safety (Phase 2 / S7)
+// ---------------------------------------------------------------------------
+
+export const safetySettingsSchema = z.object({
+  /** Penalty points per event (or per 10 idle minutes); score = 100 − points per 100 km. */
+  weights: z
+    .object({
+      overspeed: z.number().min(0).max(50).default(5),
+      harshBrake: z.number().min(0).max(50).default(4),
+      harshAccel: z.number().min(0).max(50).default(3),
+      harshCorner: z.number().min(0).max(50).default(3),
+      idlePer10Min: z.number().min(0).max(50).default(1),
+    })
+    .default({}),
+  /** Below this distance in the period there is not enough data for a score. */
+  minDistanceKm: z.number().min(0).max(10_000).default(50),
+  /** Drivers scoring below this are flagged (and managers alerted). */
+  alertBelow: z.number().min(0).max(100).default(70),
+});
+export type SafetySettings = z.infer<typeof safetySettingsSchema>;
+
+export const IncidentType = {
+  COLLISION: 'COLLISION',
+  DAMAGE: 'DAMAGE',
+  THEFT: 'THEFT',
+  INJURY: 'INJURY',
+  NEAR_MISS: 'NEAR_MISS',
+  BREAKDOWN: 'BREAKDOWN',
+  OTHER: 'OTHER',
+} as const;
+
+export const createIncidentSchema = z.object({
+  vehicleId: z.string().uuid().optional().nullable(),
+  driverId: z.string().uuid().optional().nullable(),
+  tripId: z.string().uuid().optional().nullable(),
+  type: z.nativeEnum(IncidentType),
+  severity: z.nativeEnum(RepairSeverity).default('MEDIUM'),
+  occurredAt: z.coerce.date(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  location: z.string().max(300).optional().nullable(),
+  description: z.string().trim().min(5).max(4000),
+  injuries: z.boolean().default(false),
+  thirdParty: z.string().max(2000).optional().nullable(),
+  policeReportNo: z.string().max(64).optional().nullable(),
+  estimatedCost: z.number().nonnegative().optional().nullable(),
+  photoFileIds: z.array(z.string().uuid()).max(20).default([]),
+});
+export type CreateIncidentInput = z.infer<typeof createIncidentSchema>;
+
+export const updateIncidentSchema = z.object({
+  severity: z.nativeEnum(RepairSeverity).optional(),
+  status: z.enum(['REPORTED', 'INVESTIGATING', 'CLOSED']).optional(),
+  findings: z.string().max(4000).optional().nullable(),
+  correctiveActions: z.string().max(4000).optional().nullable(),
+  estimatedCost: z.number().nonnegative().optional().nullable(),
+  policeReportNo: z.string().max(64).optional().nullable(),
+  thirdParty: z.string().max(2000).optional().nullable(),
+  workOrderId: z.string().uuid().optional().nullable(),
+  driverId: z.string().uuid().optional().nullable(),
+  photoFileIds: z.array(z.string().uuid()).max(20).optional(),
+});
+export type UpdateIncidentInput = z.infer<typeof updateIncidentSchema>;
+
+export const createClaimSchema = z.object({
+  insurer: z.string().max(200).optional().nullable(),
+  policyNo: z.string().max(64).optional().nullable(),
+  externalRef: z.string().max(64).optional().nullable(),
+  amountClaimed: z.number().positive(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type CreateClaimInput = z.infer<typeof createClaimSchema>;
+
+export const updateClaimSchema = z.object({
+  status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED', 'SETTLED']).optional(),
+  externalRef: z.string().max(64).optional().nullable(),
+  amountApproved: z.number().nonnegative().optional().nullable(),
+  amountPaid: z.number().nonnegative().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type UpdateClaimInput = z.infer<typeof updateClaimSchema>;

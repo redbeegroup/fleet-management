@@ -8,6 +8,7 @@ import { JsonLogger, logLevels } from './common/observability/json-logger';
 import { startMetricsServer } from './common/observability/metrics';
 import { AnalyticsService } from './modules/analytics/analytics.service';
 import { MaintenanceService } from './modules/maintenance/maintenance.service';
+import { SafetyService } from './modules/safety/safety.service';
 import { TelematicsService } from './modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 
@@ -58,6 +59,7 @@ async function runJob(name: string | undefined) {
     'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
     'gps-offline': () => app.get(TelematicsService).checkOffline(),
     'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),
+    'safety-alerts': () => app.get(SafetyService).lowScoreAlerts(),
     'daily-stats': () => app.get(AnalyticsService).rollup(process.env.JOB_FROM, process.env.JOB_TO),
   };
   const job = name ? jobs[name] : undefined;

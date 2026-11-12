@@ -30,6 +30,8 @@ export class MockTelematicsProvider implements TelematicsProvider {
         speedKmh: speeding ? 95 : moving ? 25 + ((this.tick * 7 + i * 13) % 45) : 0,
         heading: ((angle * 180) / Math.PI + 90) % 360,
         ignition: !parked,
+        // Occasional simulated accelerometer events (as a device would report them).
+        ...((this.tick + i * 11) % 47 === 0 && { attributes: { event: ['harsh_braking', 'harsh_acceleration', 'harsh_cornering'][(this.tick + i) % 3] } }),
       };
     });
   }

@@ -27,6 +27,9 @@ export const EVENT_LABELS: Record<string, { label: string; tone: 'ok' | 'info' |
   GPS_RESTORED: { label: 'GPS restored', tone: 'ok' },
   IGNITION_ON: { label: 'Ignition on', tone: 'muted' },
   IGNITION_OFF: { label: 'Ignition off', tone: 'muted' },
+  HARSH_BRAKE: { label: 'Harsh braking', tone: 'danger' },
+  HARSH_ACCEL: { label: 'Harsh acceleration', tone: 'warn' },
+  HARSH_CORNER: { label: 'Harsh cornering', tone: 'warn' },
 };
 
 /** One-line description of a telemetry event. */
@@ -40,6 +43,10 @@ export function describeEvent(e: { type: string; speedKmh: number | null; data: 
     case 'GEOFENCE_ENTER':
     case 'GEOFENCE_EXIT':
       return String(d.geofence ?? '');
+    case 'HARSH_BRAKE':
+    case 'HARSH_ACCEL':
+    case 'HARSH_CORNER':
+      return `${d.value} ${d.unit}${d.source === 'device' ? ' (device)' : ''}${e.speedKmh != null ? ` at ${Math.round(e.speedKmh)} km/h` : ''}`;
     case 'GPS_OFFLINE':
       return d.lastFixAt ? `last fix ${new Date(String(d.lastFixAt)).toLocaleString('en-GB')}` : '';
     default:
@@ -106,3 +113,7 @@ export function lastDays(n: number): { from: string; to: string } {
 }
 
 export const shortDay = (iso: string) => new Date(`${iso}T00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+
+export const BAND_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { GOOD: 'ok', FAIR: 'warn', POOR: 'danger', INSUFFICIENT_DATA: 'muted' };
+export const INCIDENT_TONE: Record<string, 'warn' | 'info' | 'ok'> = { REPORTED: 'warn', INVESTIGATING: 'info', CLOSED: 'ok' };
+export const CLAIM_TONE: Record<string, 'info' | 'ok' | 'danger' | 'muted'> = { SUBMITTED: 'info', APPROVED: 'ok', REJECTED: 'danger', SETTLED: 'muted' };

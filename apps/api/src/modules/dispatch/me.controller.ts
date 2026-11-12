@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CompleteTripInput,
   completeTripSchema,
+  CreateIncidentInput,
+  createIncidentSchema,
   createFuelRecordSchema,
   CreateRepairRequestInput,
   createRepairRequestSchema,
@@ -12,6 +14,9 @@ import {
 } from '@fms/shared';
 import { FuelService } from '../fuel/fuel.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
+import { IncidentsService } from '../safety/incidents.service';
+import { SafetyService } from '../safety/safety.service';
+import { localDate } from '../../common/time';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -36,6 +41,8 @@ export class MeController {
     private readonly duty: DutyService,
     private readonly maintenance: MaintenanceService,
     private readonly fuel: FuelService,
+    private readonly incidents: IncidentsService,
+    private readonly safety: SafetyService,
   ) {}
 
   /** Vehicles the driver may report on / refuel: standing assignment or an active trip. */
@@ -138,5 +145,32 @@ export class MeController {
       throw new ForbiddenException('You can only record fuel for a vehicle assigned to you');
     }
     return this.fuel.create(user, { ...body, driverId }, 'app');
+  }
+
+  /** Incident/accident report from the driver app (driver = the signed-in driver). */
+  @Post('incidents')
+  @RequirePermissions(Permission.INCIDENT_REPORT)
+  async reportIncident(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createIncidentSchema)) body: CreateIncidentInput) {
+    const driverId = await this.driverId(user);
+    return this.incidents.create(user, body, { allowedVehicleIds: await this.myVehicleIds(user, driverId), forceDriverId: driverId });
+  }
+
+  @Get('incidents')
+  @RequirePermissions(Permission.INCIDENT_REPORT)
+  async myIncidents(@CurrentUser() user: AuthUser) {
+    await this.driverId(user);
+    return this.incidents.list(user, { reportedBy: user.userId, page: 1, pageSize: 50 });
+  }
+
+  /** The driver's own safety score for the last 30 days. */
+  @Get('safety')
+  @RequirePermissions(Permission.TRIP_READ)
+  async mySafety(@CurrentUser() user: AuthUser) {
+    const driverId = await this.driverId(user);
+    const tz = (await this.db.tenant(user.companyId, (tx) => tx.company.findFirstOrThrow({ select: { timezone: true } }))).timezone;
+    const now = new Date();
+    const card = await this.safety.driver(user, driverId, { from: localDate(new Date(now.getTime() - 29 * 86_400_000), tz), to: localDate(now, tz) });
+    const { recentEvents, ...summary } = card;
+    return { ...summary, recentEvents: recentEvents.slice(0, 10) };
   }
 }

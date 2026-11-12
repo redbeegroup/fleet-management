@@ -3,6 +3,7 @@ import { haversineM, pointInPolygon, trackDistanceKm } from './geo';
 import { EMPTY_STATE, evaluate, evaluateOffline, Fence, RuleContext, RuleFix, RuleState } from './rules-engine';
 
 const settings = telematicsSettingsSchema.parse({ speedLimitKmh: 60, idleMinutes: 10, offlineMinutes: 30 });
+// Rule tests use 1-minute fixes, so computed harsh events never fire here (gap > harshMaxGapSeconds).
 const yard: Fence = { id: 'yard', name: 'Yard', shape: 'CIRCLE', centerLat: 16.8, centerLng: 96.15, radiusM: 500, alertOnEnter: true, alertOnExit: false };
 const ctx: RuleContext = { settings, speedLimitKmh: 60, geofences: [yard] };
 const t0 = new Date('2026-01-01T08:00:00Z');
@@ -98,5 +99,13 @@ describe('rules engine', () => {
     const back = run([{ min: 50 }], off.state);
     expect(back.closed[0].id).toBe(off.opened[0].id);
     expect(back.opened.map((e) => e.type)).toContain('GPS_RESTORED');
+  });
+
+  it('emits harsh braking between close fixes and carries speed/heading in state', () => {
+    const r1 = evaluate(EMPTY_STATE, { recordedAt: t0, latitude: 16.9, longitude: 96.2, speedKmh: 70, heading: 0, ignition: true }, ctx);
+    expect(r1.state).toMatchObject({ lastSpeedKmh: 70, lastHeading: 0 });
+    const r2 = evaluate(r1.state, { recordedAt: new Date(t0.getTime() + 4000), latitude: 16.9, longitude: 96.2, speedKmh: 10, heading: 0, ignition: true }, ctx);
+    const harsh = r2.opened.find((e) => e.type === 'HARSH_BRAKE');
+    expect(harsh).toMatchObject({ notify: false, data: { value: 15, unit: 'km/h/s', source: 'gps' } });
   });
 });

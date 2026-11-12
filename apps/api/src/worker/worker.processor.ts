@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { jobRuns } from '../common/observability/metrics';
 import { AnalyticsService } from '../modules/analytics/analytics.service';
 import { MaintenanceService } from '../modules/maintenance/maintenance.service';
+import { SafetyService } from '../modules/safety/safety.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
 
@@ -20,6 +21,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly telematics: TelematicsService,
     private readonly maintenance: MaintenanceService,
     private readonly analytics: AnalyticsService,
+    private readonly safety: SafetyService,
   ) {
     super();
   }
@@ -33,6 +35,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
       name: 'position-partitions',
     });
     await this.queue.upsertJobScheduler('maintenance-due', { pattern: '0 0 2 * * *', tz: 'Asia/Yangon' }, { name: 'maintenance-due' });
+    await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
     this.logger.log('Job schedulers registered');
@@ -51,6 +54,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
 
   private async run(job: Job): Promise<unknown> {
     switch (job.name) {
+      case 'safety-alerts':
+        return this.safety.lowScoreAlerts();
       case 'daily-stats':
         return this.analytics.rollup();
       case 'compliance-alerts':

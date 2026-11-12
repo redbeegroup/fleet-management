@@ -163,3 +163,25 @@ export interface RepairRequest {
   vehicle?: { plateNumber: string };
   workOrder?: { woNo: string; status: string } | null;
 }
+
+export interface MySafety {
+  score: number | null;
+  band: 'GOOD' | 'FAIR' | 'POOR' | 'INSUFFICIENT_DATA';
+  distanceKm: number;
+  overspeed: number;
+  harshBrake: number;
+  harshAccel: number;
+  harshCorner: number;
+  idleMinutes: number;
+  recentEvents: { id: string; type: string; occurredAt: string; speedKmh: number | null; plateNumber: string | null }[];
+}
+
+export interface MyIncident {
+  id: string;
+  incidentNo: string;
+  type: string;
+  status: string;
+  occurredAt: string;
+  description: string;
+  vehicle: { plateNumber: string } | null;
+}

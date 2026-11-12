@@ -19,6 +19,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { FilesModule } from './modules/files/files.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { SafetyModule } from './modules/safety/safety.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
@@ -52,6 +53,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     MaintenanceModule,
     ExpensesModule,
     AnalyticsModule,
+    SafetyModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [
@@ -83,6 +85,7 @@ const redisConnection = () => {
     BullModule.registerQueue({ name: MAINTENANCE_QUEUE }),
     MaintenanceModule,
     AnalyticsModule,
+    SafetyModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -97,7 +100,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

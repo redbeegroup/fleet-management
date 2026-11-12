@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `company_counters`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -126,6 +126,13 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 
 KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)` (SQL, window functions + haversine, GPS jumps > 250 km/h excluded, gaps > 10 min not counted as engine time) fills `vehicle_daily_stats` per vehicle and company-local day. `AnalyticsService.overview` combines it with fuel, work orders, expenses, trips, overspeed events and the status history, and `kpis.ts` (pure) turns those aggregates into fleet / vehicle / branch KPIs.
 
+## Driver safety
+
+- Harsh-driving detection is step 6 of the rules engine (`rules/harsh.ts`): computed from consecutive fixes when they are dense enough, or mapped from device events, which win. Events carry `data = { value, unit, source: gps|device }` and are not pushed as notifications individually.
+- `telemetry_events.driver_id` is resolved at ingest (`TelemetryRulesService.currentDrivers`: ONGOING trip driver, else open assignment).
+- `SafetyService` scores drivers over company-local days from `vehicle_daily_stats` (distance), trips/assignments (attribution, `score.ts#attributeDistance`) and grouped events. Weights and thresholds live in `companies.settings.safety`.
+- `IncidentsService`: incident numbers `INC-<year>-NNNNNN` and claim numbers `CLM-<year>-NNNNNN` from `company_counters`; status flows validated server-side; photos are `files` checked with `FilesService.assertOwned`.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -134,6 +141,7 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
 | `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
 | `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
+| `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).

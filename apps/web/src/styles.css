@@ -279,3 +279,14 @@ td .badge + .badge { margin-left: 4px; }
 .card-head h2 { margin: 0; }
 .tile.hero .tile-value { font-size: 34px; }
 .expense-cats { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+
+/* Safety */
+.bar-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.bar-list li { display: grid; grid-template-columns: 160px 1fr 150px; align-items: center; gap: 12px; }
+.bar-track { height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; border-radius: 999px; }
+.text-danger { color: var(--danger); }
+.photo-row { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) { .bar-list li { grid-template-columns: 1fr 90px; } .bar-list .bar-track { grid-column: 1 / -1; grid-row: 2; } }
+p.small { font-size: 12px; margin: 10px 0 0; }
+.span-all { grid-column: 1 / -1; }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TelematicsSettings, TelemetryEventType } from '@fms/shared';
 import { fenceContains, FenceShape } from './geo';
+import { detectHarsh } from './harsh';
 
 /**
  * Pure telematics rules engine. Given the carried state of one vehicle and a
@@ -13,12 +14,16 @@ export interface RuleFix {
   latitude: number;
   longitude: number;
   speedKmh?: number | null;
+  heading?: number | null;
   ignition?: boolean | null;
+  attributes?: Record<string, unknown> | null;
 }
 
 export interface RuleState {
   lastFixAt: Date | null;
   ignition: boolean | null;
+  lastSpeedKmh: number | null;
+  lastHeading: number | null;
   insideGeofenceIds: string[];
   overspeedEventId: string | null;
   overspeedMaxKmh: number | null;
@@ -30,6 +35,8 @@ export interface RuleState {
 export const EMPTY_STATE: RuleState = {
   lastFixAt: null,
   ignition: null,
+  lastSpeedKmh: null,
+  lastHeading: null,
   insideGeofenceIds: [],
   overspeedEventId: null,
   overspeedMaxKmh: null,
@@ -154,7 +161,15 @@ export function evaluate(prev: RuleState, fix: RuleFix, ctx: RuleContext): RuleR
     s.idleEventId = null;
   }
 
+  // 6. Harsh driving (instant events; they feed the safety score rather than alerts)
+  const prevSample = prev.lastFixAt ? { at: prev.lastFixAt, speedKmh: prev.lastSpeedKmh, heading: prev.lastHeading } : null;
+  for (const h of detectHarsh(prevSample, { at, speedKmh: fix.speedKmh ?? null, heading: fix.heading ?? null, attributes: fix.attributes }, ctx.settings)) {
+    opened.push({ id: randomUUID(), type: h.type, occurredAt: at, ...where, speedKmh: speed, data: { value: h.value, unit: h.unit, source: h.source }, notify: false });
+  }
+
   s.lastFixAt = at;
+  s.lastSpeedKmh = fix.speedKmh ?? null;
+  s.lastHeading = fix.heading ?? null;
   return { state: s, opened, closed };
 }
 

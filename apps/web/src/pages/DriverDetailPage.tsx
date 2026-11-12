@@ -5,8 +5,17 @@ import { Link, useParams } from 'react-router-dom';
 import { FileLink } from '../components/FileLink';
 import { LicenceFields, licenceShort } from '../components/LicenceFields';
 import { api, session, uploadFile } from '../lib/api';
-import { daysUntil, expiryTone, formatDate } from '../lib/format';
-import type { Driver } from '../lib/types';
+import {
+  daysUntil,
+  describeEvent,
+  EVENT_LABELS,
+  expiryTone,
+  formatDate,
+  formatDateTime,
+  lastDays,
+} from '../lib/format';
+import { ScoreBadge } from './SafetyPage';
+import type { Driver, DriverScorecard } from '../lib/types';
 
 export function DriverDetailPage() {
   const { id } = useParams();
@@ -14,7 +23,17 @@ export function DriverDetailPage() {
   const canWrite = session.can(Permission.DRIVER_WRITE);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const { data: d, isLoading } = useQuery({ queryKey: ['driver', id], queryFn: () => api<Driver>(`/drivers/${id}`) });
+  const { data: d, isLoading } = useQuery({
+    queryKey: ['driver', id],
+    queryFn: () => api<Driver>(`/drivers/${id}`),
+  });
+  const canSafety = session.can(Permission.SAFETY_READ);
+  const [range] = useState(() => lastDays(30));
+  const card = useQuery({
+    queryKey: ['safety', 'driver', id, range],
+    queryFn: () => api<DriverScorecard>(`/safety/drivers/${id}?from=${range.from}&to=${range.to}`),
+    enabled: canSafety,
+  });
 
   const refresh = () => {
     setError(null);
@@ -23,7 +42,8 @@ export function DriverDetailPage() {
   };
   const onError = (e: Error) => setError(e.message);
   const update = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api(`/drivers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/drivers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: () => {
       setEditing(false);
       refresh();
@@ -33,13 +53,17 @@ export function DriverDetailPage() {
   const addLicense = useMutation({
     mutationFn: async (input: { body: Record<string, unknown>; file: File | null }) => {
       const fileId = input.file ? (await uploadFile(input.file)).id : null;
-      return api(`/drivers/${id}/licenses`, { method: 'POST', body: JSON.stringify({ ...input.body, fileId }) });
+      return api(`/drivers/${id}/licenses`, {
+        method: 'POST',
+        body: JSON.stringify({ ...input.body, fileId }),
+      });
     },
     onSuccess: refresh,
     onError,
   });
   const removeLicense = useMutation({
-    mutationFn: (licenseId: string) => api(`/drivers/${id}/licenses/${licenseId}`, { method: 'DELETE' }),
+    mutationFn: (licenseId: string) =>
+      api(`/drivers/${id}/licenses/${licenseId}`, { method: 'DELETE' }),
     onSuccess: refresh,
     onError,
   });
@@ -80,7 +104,8 @@ export function DriverDetailPage() {
             {d.fullName} {!d.active && <span className="badge badge-muted">inactive</span>}
           </h1>
           <p className="muted">
-            {d.employeeNo} · {d.phone ?? 'no phone'} · {d.user ? `app login: ${d.user.email}` : 'no app login'}
+            {d.employeeNo} · {d.phone ?? 'no phone'} ·{' '}
+            {d.user ? `app login: ${d.user.email}` : 'no app login'}
           </p>
         </div>
         {canWrite && (
@@ -91,8 +116,9 @@ export function DriverDetailPage() {
             <button
               className="btn"
               onClick={() =>
-                (d.active ? confirm('Deactivate this driver? Their vehicle will be released.') : true) &&
-                update.mutate({ active: !d.active })
+                (d.active
+                  ? confirm('Deactivate this driver? Their vehicle will be released.')
+                  : true) && update.mutate({ active: !d.active })
               }
             >
               {d.active ? 'Deactivate' : 'Reactivate'}
@@ -107,6 +133,46 @@ export function DriverDetailPage() {
           <input name="phone" defaultValue={d.phone ?? ''} placeholder="Phone" aria-label="Phone" />
           <button className="btn btn-primary">Save</button>
         </form>
+      )}
+      {canSafety && card.data && (
+        <section className="card">
+          <div className="card-head">
+            <h2>Safety · last 30 days</h2>
+            <ScoreBadge score={card.data.score} band={card.data.band} />
+          </div>
+          <dl className="facts">
+            <dt>Distance</dt>
+            <dd>{card.data.distanceKm} km</dd>
+            <dt>Overspeed</dt>
+            <dd>{card.data.overspeed}</dd>
+            <dt>Harsh brake / accel. / corner</dt>
+            <dd>
+              {card.data.harshBrake} / {card.data.harshAccel} / {card.data.harshCorner}
+            </dd>
+            <dt>Idling</dt>
+            <dd>{card.data.idleMinutes} min</dd>
+            <dt>Points per 100 km</dt>
+            <dd>{card.data.pointsPer100Km ?? '— (not enough distance)'}</dd>
+          </dl>
+          {card.data.recentEvents.length > 0 && (
+            <>
+              <h3>Recent events</h3>
+              <ul className="timeline">
+                {card.data.recentEvents.slice(0, 10).map((e) => (
+                  <li key={e.id}>
+                    <span>{formatDateTime(e.occurredAt)}</span>
+                    <span>
+                      <span className={`badge badge-${EVENT_LABELS[e.type]?.tone ?? 'muted'}`}>
+                        {EVENT_LABELS[e.type]?.label ?? e.type}
+                      </span>{' '}
+                      {describeEvent(e)} <span className="muted">{e.plateNumber}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       )}
       <section className="card">
         <h2>Driving licences</h2>
@@ -140,7 +206,9 @@ export function DriverDetailPage() {
                     <td>
                       {formatDate(l.expiresAt)}{' '}
                       {days !== null && (
-                        <span className={`badge badge-${expiryTone(days)}`}>{days < 0 ? 'expired' : `${days}d`}</span>
+                        <span className={`badge badge-${expiryTone(days)}`}>
+                          {days < 0 ? 'expired' : `${days}d`}
+                        </span>
                       )}
                     </td>
                     <td>
@@ -148,7 +216,10 @@ export function DriverDetailPage() {
                     </td>
                     <td className="num">
                       {canWrite && (
-                        <button className="link danger" onClick={() => confirm('Delete licence?') && removeLicense.mutate(l.id)}>
+                        <button
+                          className="link danger"
+                          onClick={() => confirm('Delete licence?') && removeLicense.mutate(l.id)}
+                        >
                           Delete
                         </button>
                       )}
@@ -162,7 +233,10 @@ export function DriverDetailPage() {
         {canWrite && (
           <form className="inline-form" onSubmit={submitLicense}>
             <input name="number" placeholder="Licence number" required />
-            <LicenceFields compact names={{ cls: 'licenseClass', issued: 'issuedAt', expires: 'expiresAt' }} />
+            <LicenceFields
+              compact
+              names={{ cls: 'licenseClass', issued: 'issuedAt', expires: 'expiresAt' }}
+            />
             <label className="mini">
               Scan (PDF/photo)
               <input name="file" type="file" accept="application/pdf,image/*" />
@@ -177,7 +251,11 @@ export function DriverDetailPage() {
         <h2>Vehicle assignments</h2>
         <p>
           Current vehicle:{' '}
-          {current ? <Link to={`/vehicles/${current.vehicle.id}`}>{current.vehicle.plateNumber}</Link> : <span className="muted">none</span>}
+          {current ? (
+            <Link to={`/vehicles/${current.vehicle.id}`}>{current.vehicle.plateNumber}</Link>
+          ) : (
+            <span className="muted">none</span>
+          )}
         </p>
         <ul className="timeline">
           {d.assignments.map((a) => (
@@ -185,7 +263,9 @@ export function DriverDetailPage() {
               <span>{formatDate(a.startAt)}</span>
               <span>
                 <Link to={`/vehicles/${a.vehicle.id}`}>{a.vehicle.plateNumber}</Link>{' '}
-                <span className="muted">{a.endAt ? `until ${formatDate(a.endAt)}` : '(current)'}</span>
+                <span className="muted">
+                  {a.endAt ? `until ${formatDate(a.endAt)}` : '(current)'}
+                </span>
               </span>
             </li>
           ))}
