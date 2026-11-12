@@ -5,6 +5,8 @@ import { jobRuns } from '../common/observability/metrics';
 import { AnalyticsService } from '../modules/analytics/analytics.service';
 import { MaintenanceService } from '../modules/maintenance/maintenance.service';
 import { SafetyService } from '../modules/safety/safety.service';
+import { TrainingService } from '../modules/training/training.service';
+import { IncentivesService } from '../modules/incentives/incentives.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
 
@@ -22,6 +24,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly maintenance: MaintenanceService,
     private readonly analytics: AnalyticsService,
     private readonly safety: SafetyService,
+    private readonly training: TrainingService,
+    private readonly incentives: IncentivesService,
   ) {
     super();
   }
@@ -35,6 +39,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
       name: 'position-partitions',
     });
     await this.queue.upsertJobScheduler('maintenance-due', { pattern: '0 0 2 * * *', tz: 'Asia/Yangon' }, { name: 'maintenance-due' });
+    await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
@@ -58,8 +63,12 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
         return this.safety.lowScoreAlerts();
       case 'daily-stats':
         return this.analytics.rollup();
-      case 'compliance-alerts':
-        return this.compliance.run();
+      case 'compliance-alerts': {
+        const r = await this.compliance.run();
+        return { ...r, training: await this.training.expiryAlerts() };
+      }
+      case 'incentives-monthly':
+        return this.incentives.proposeMonthly();
       case 'position-partitions':
         return this.telematics.maintainPartitions();
       case 'maintenance-due':

@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, Switch, Text, View } from 'react-native';
-import { api, MyIncident, MySafety, uploadPhoto } from '../api';
+import { api, MyAdjustment, MyIncident, MySafety, MyTraining, uploadPhoto } from '../api';
 import { Badge, Button, Card, Chips, colors, Field, s, when } from '../ui';
 import type { MyVehicle } from './FuelScreen';
 
@@ -14,6 +14,8 @@ const label = (v: string) => v.charAt(0) + v.slice(1).toLowerCase().replace(/_/g
 export function SafetyScreen({ vehicles }: { vehicles: MyVehicle[] }) {
   const [score, setScore] = useState<MySafety | null>(null);
   const [mine, setMine] = useState<MyIncident[]>([]);
+  const [training, setTraining] = useState<MyTraining['status']>([]);
+  const [pay, setPay] = useState<MyAdjustment[]>([]);
   const [vehicleId, setVehicleId] = useState(vehicles[0]?.id ?? '');
   const [type, setType] = useState<(typeof TYPES)[number]>('COLLISION');
   const [severity, setSeverity] = useState<(typeof SEVERITIES)[number]>('MEDIUM');
@@ -28,6 +30,8 @@ export function SafetyScreen({ vehicles }: { vehicles: MyVehicle[] }) {
     const [sc, inc] = await Promise.all([api<MySafety>('/me/safety').catch(() => null), api<{ items: MyIncident[] }>('/me/incidents').catch(() => ({ items: [] }))]);
     setScore(sc);
     setMine(inc.items);
+    setTraining((await api<MyTraining>('/me/training').catch(() => ({ status: [] }))).status);
+    setPay(await api<MyAdjustment[]>('/me/adjustments').catch(() => []));
   }, []);
   useEffect(() => {
     void load();
@@ -98,6 +102,41 @@ export function SafetyScreen({ vehicles }: { vehicles: MyVehicle[] }) {
           <Text style={s.muted}>No score yet.</Text>
         )}
       </Card>
+
+      {training.length > 0 && (
+        <>
+          <Text style={[s.h2, { marginTop: 12 }]}>My training</Text>
+          <Card>
+            {training.map((t) => (
+              <View key={t.courseId} style={[s.row, { justifyContent: 'space-between' }]}>
+                <Text style={{ flexShrink: 1 }}>{t.name}</Text>
+                <Badge
+                  text={t.status === 'MISSING' ? 'required' : t.expiresAt ? `${t.status === 'EXPIRED' ? 'expired' : 'until'} ${t.expiresAt.slice(0, 10)}` : 'valid'}
+                  tone={t.status === 'VALID' ? 'ok' : t.status === 'EXPIRING' ? 'warn' : 'danger'}
+                />
+              </View>
+            ))}
+          </Card>
+        </>
+      )}
+
+      {pay.length > 0 && (
+        <>
+          <Text style={[s.h2, { marginTop: 12 }]}>Incentives & deductions</Text>
+          {pay.map((p) => (
+            <Card key={p.id}>
+              <View style={[s.row, { justifyContent: 'space-between' }]}>
+                <Text style={{ fontWeight: '600', color: p.kind === 'INCENTIVE' ? colors.ok : colors.danger }}>
+                  {p.kind === 'INCENTIVE' ? '+' : '−'}
+                  {Number(p.amount).toLocaleString('en-US')}
+                </Text>
+                <Badge text={p.status === 'APPROVED' ? `approved · ${p.period}` : `pending · ${p.period}`} tone={p.status === 'APPROVED' ? 'ok' : 'muted'} />
+              </View>
+              <Text style={s.muted}>{p.reason}</Text>
+            </Card>
+          ))}
+        </>
+      )}
 
       <Text style={[s.h2, { marginTop: 12 }]}>Report an incident</Text>
       {vehicles.length > 0 && (

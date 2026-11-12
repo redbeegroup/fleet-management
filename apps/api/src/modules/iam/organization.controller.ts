@@ -71,6 +71,8 @@ export class OrganizationController {
         dispatch: { ...current.dispatch, ...body.dispatch },
         maintenance: { ...current.maintenance, ...body.maintenance },
         safety: { ...current.safety, ...body.safety, weights: { ...current.safety.weights, ...body.safety?.weights } },
+        inspections: { ...current.inspections, ...body.inspections },
+        incentives: { ...current.incentives, ...body.incentives },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

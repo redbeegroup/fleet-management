@@ -314,30 +314,32 @@ export function IncidentDetailPage() {
                     <td className="num">{money(c.amountClaimed)}</td>
                     <td className="num">{c.amountApproved ? money(c.amountApproved) : '—'}</td>
                     <td className="num">{c.amountPaid ? money(c.amountPaid) : '—'}</td>
-                    <td className="actions">
-                      {canWrite && c.status === 'SUBMITTED' && (
-                        <>
-                          <button className="link" onClick={() => claimAction(c, 'APPROVED')}>
-                            Approve
+                    <td>
+                      <span className="actions">
+                        {canWrite && c.status === 'SUBMITTED' && (
+                          <>
+                            <button className="link" onClick={() => claimAction(c, 'APPROVED')}>
+                              Approve
+                            </button>
+                            <button
+                              className="link danger"
+                              onClick={() => claimAction(c, 'REJECTED')}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {canWrite && c.status === 'APPROVED' && (
+                          <button className="link" onClick={() => claimAction(c, 'SETTLED')}>
+                            Mark settled
                           </button>
-                          <button
-                            className="link danger"
-                            onClick={() => claimAction(c, 'REJECTED')}
-                          >
-                            Reject
+                        )}
+                        {canWrite && c.status === 'REJECTED' && (
+                          <button className="link" onClick={() => claimAction(c, 'SUBMITTED')}>
+                            Resubmit
                           </button>
-                        </>
-                      )}
-                      {canWrite && c.status === 'APPROVED' && (
-                        <button className="link" onClick={() => claimAction(c, 'SETTLED')}>
-                          Mark settled
-                        </button>
-                      )}
-                      {canWrite && c.status === 'REJECTED' && (
-                        <button className="link" onClick={() => claimAction(c, 'SUBMITTED')}>
-                          Resubmit
-                        </button>
-                      )}
+                        )}
+                      </span>
                     </td>
                   </tr>
                 ))}

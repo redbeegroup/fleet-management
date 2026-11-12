@@ -58,7 +58,7 @@ docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.
 
 **Files** (documents, photos, receipts) go to the bundled **SeaweedFS** S3 service (`seaweedfs`, data in the `s3data` volume). Everything is set in `.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (and `S3_ENDPOINT` to use another S3 service instead). `STORAGE_DRIVER=local` stores files on the `files` volume as a fallback. The bucket is created automatically on first upload.
 
-**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
+**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `incentives-monthly`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env run --rm -e MODE=job -e JOB=compliance-alerts api

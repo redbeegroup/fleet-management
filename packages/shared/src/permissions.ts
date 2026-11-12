@@ -25,6 +25,16 @@ export const Permission = {
   SAFETY_READ: 'safety:read',
   SAFETY_WRITE: 'safety:write',
   INCIDENT_REPORT: 'incident:report',
+  INSPECTION_READ: 'inspection:read',
+  /** Manage checklists and record inspections for any vehicle. */
+  INSPECTION_WRITE: 'inspection:write',
+  /** Perform an inspection (drivers: own vehicles via /me). */
+  INSPECTION_PERFORM: 'inspection:perform',
+  INCENTIVE_READ: 'incentive:read',
+  /** Propose incentives/penalties. */
+  INCENTIVE_WRITE: 'incentive:write',
+  /** Approve or reject proposals (never one's own). */
+  INCENTIVE_APPROVE: 'incentive:approve',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -60,6 +70,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.COST_WRITE,
     Permission.SAFETY_WRITE,
     Permission.INCIDENT_REPORT,
+    Permission.INSPECTION_WRITE,
+    Permission.INSPECTION_PERFORM,
+    Permission.INCENTIVE_WRITE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -73,8 +86,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.REPAIR_REQUEST,
     Permission.SAFETY_READ,
     Permission.INCIDENT_REPORT,
+    Permission.INSPECTION_READ,
+    Permission.INSPECTION_PERFORM,
   ],
-  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST, Permission.INCIDENT_REPORT],
+  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST, Permission.INCIDENT_REPORT, Permission.INSPECTION_PERFORM],
   EXECUTIVE: READ_ONLY,
   VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ],
 };

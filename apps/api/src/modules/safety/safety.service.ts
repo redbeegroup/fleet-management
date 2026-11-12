@@ -29,6 +29,11 @@ export class SafetyService {
     return this.db.tenant(user.companyId, (tx) => this.compute(tx, q));
   }
 
+  /** Scores for a company outside a request (jobs). */
+  scoresFor(companyId: string, q: Range) {
+    return this.db.tenant(companyId, (tx) => this.compute(tx, q));
+  }
+
   async driver(user: AuthUser, driverId: string, q: Range) {
     return this.db.tenant(user.companyId, async (tx) => {
       const d = await tx.driver.findFirst({ where: { id: driverId }, select: { id: true } });

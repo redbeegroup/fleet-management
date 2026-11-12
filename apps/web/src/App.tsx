@@ -17,6 +17,10 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SafetyPage } from './pages/SafetyPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { IncidentDetailPage } from './pages/IncidentDetailPage';
+import { InspectionsPage } from './pages/InspectionsPage';
+import { InspectionDetailPage } from './pages/InspectionDetailPage';
+import { TrainingPage } from './pages/TrainingPage';
+import { IncentivesPage } from './pages/IncentivesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
@@ -65,6 +69,10 @@ export function App() {
         <Route path="safety" element={<SafetyPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
         <Route path="incidents/:id" element={<IncidentDetailPage />} />
+        <Route path="inspections" element={<InspectionsPage />} />
+        <Route path="inspections/:id" element={<InspectionDetailPage />} />
+        <Route path="training" element={<TrainingPage />} />
+        <Route path="incentives" element={<IncentivesPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />

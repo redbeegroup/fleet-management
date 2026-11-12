@@ -188,6 +188,8 @@ export const companySettingsSchema = z.object({
   dispatch: z.lazy(() => dispatchSettingsSchema).default({}),
   maintenance: z.lazy(() => maintenanceSettingsSchema).default({}),
   safety: z.lazy(() => safetySettingsSchema).default({}),
+  inspections: z.lazy(() => inspectionSettingsSchema).default({}),
+  incentives: z.lazy(() => incentiveSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -196,6 +198,8 @@ export const updateCompanySettingsSchema = z.object({
   dispatch: z.lazy(() => dispatchSettingsSchema.partial()).optional(),
   maintenance: z.lazy(() => maintenanceSettingsSchema.partial()).optional(),
   safety: z.lazy(() => safetySettingsSchema.partial()).optional(),
+  inspections: z.lazy(() => inspectionSettingsSchema.partial()).optional(),
+  incentives: z.lazy(() => incentiveSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -507,3 +511,125 @@ export const updateClaimSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export type UpdateClaimInput = z.infer<typeof updateClaimSchema>;
+
+// ---------------------------------------------------------------------------
+// Inspections, training, incentives (Phase 2 / S8)
+// ---------------------------------------------------------------------------
+
+export const inspectionSettingsSchema = z.object({
+  /** Trips can only start after a pre-trip inspection of the vehicle (that did not fail). */
+  requirePreTrip: z.boolean().default(false),
+  /** How long a pre-trip inspection stays valid. */
+  preTripValidHours: z.number().int().min(1).max(72).default(12),
+});
+export type InspectionSettings = z.infer<typeof inspectionSettingsSchema>;
+
+export const incentiveSettingsSchema = z.object({
+  /** Monthly job proposes a safety bonus for drivers at or above minScore. */
+  safetyBonusEnabled: z.boolean().default(false),
+  safetyBonusMinScore: z.number().min(0).max(100).default(90),
+  safetyBonusAmount: z.number().nonnegative().default(30_000),
+  /** Days before a training certificate expires to start alerting. */
+  trainingAlertDays: z.number().int().min(1).max(180).default(30),
+});
+export type IncentiveSettings = z.infer<typeof incentiveSettingsSchema>;
+
+export const InspectionKind = { PRE_TRIP: 'PRE_TRIP', POST_TRIP: 'POST_TRIP', PERIODIC: 'PERIODIC' } as const;
+export type InspectionKind = (typeof InspectionKind)[keyof typeof InspectionKind];
+
+export const checklistItemSchema = z.object({
+  key: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lowercase letters, digits and _'),
+  label: z.string().trim().min(1).max(200),
+  critical: z.boolean().default(false),
+});
+export type ChecklistItem = z.infer<typeof checklistItemSchema>;
+
+export const createInspectionTemplateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  kind: z.nativeEnum(InspectionKind),
+  vehicleClasses: z.array(z.string().trim().toUpperCase()).default([]),
+  items: z
+    .array(checklistItemSchema)
+    .min(1)
+    .max(100)
+    .refine((a) => new Set(a.map((i) => i.key)).size === a.length, 'Item keys must be unique'),
+  active: z.boolean().default(true),
+});
+export type CreateInspectionTemplateInput = z.infer<typeof createInspectionTemplateSchema>;
+export const updateInspectionTemplateSchema = createInspectionTemplateSchema.partial();
+export type UpdateInspectionTemplateInput = z.infer<typeof updateInspectionTemplateSchema>;
+
+export const inspectionAnswerSchema = z.object({
+  key: z.string(),
+  ok: z.boolean(),
+  note: z.string().trim().max(500).optional().nullable(),
+  photoFileId: z.string().uuid().optional().nullable(),
+});
+export type InspectionAnswer = z.infer<typeof inspectionAnswerSchema>;
+
+export const createInspectionSchema = z.object({
+  vehicleId: z.string().uuid(),
+  templateId: z.string().uuid(),
+  tripId: z.string().uuid().optional().nullable(),
+  driverId: z.string().uuid().optional().nullable(),
+  performedAt: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  answers: z.array(inspectionAnswerSchema).min(1).max(100),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+export type CreateInspectionInput = z.infer<typeof createInspectionSchema>;
+
+export const createCourseSchema = z.object({
+  code: z.string().trim().toUpperCase().min(1).max(32),
+  name: z.string().trim().min(2).max(160),
+  description: z.string().max(2000).optional().nullable(),
+  validityMonths: z.number().int().min(1).max(120).optional().nullable(),
+  mandatory: z.boolean().default(false),
+  active: z.boolean().default(true),
+});
+export type CreateCourseInput = z.infer<typeof createCourseSchema>;
+export const updateCourseSchema = createCourseSchema.partial();
+export type UpdateCourseInput = z.infer<typeof updateCourseSchema>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+export const createTrainingRecordSchema = z.object({
+  courseId: z.string().uuid(),
+  completedAt: isoDate,
+  /** Defaults to completedAt + course validity. */
+  expiresAt: isoDate.optional().nullable(),
+  provider: z.string().max(160).optional().nullable(),
+  score: z.number().min(0).max(100).optional().nullable(),
+  certificateNo: z.string().max(64).optional().nullable(),
+  certificateFileId: z.string().uuid().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type CreateTrainingRecordInput = z.infer<typeof createTrainingRecordSchema>;
+
+export const AdjustmentCategory = {
+  SAFETY_BONUS: 'SAFETY_BONUS',
+  FUEL_EFFICIENCY: 'FUEL_EFFICIENCY',
+  ON_TIME: 'ON_TIME',
+  ATTENDANCE: 'ATTENDANCE',
+  TRAFFIC_FINE: 'TRAFFIC_FINE',
+  DAMAGE: 'DAMAGE',
+  POLICY_VIOLATION: 'POLICY_VIOLATION',
+  OTHER: 'OTHER',
+} as const;
+export type AdjustmentCategory = (typeof AdjustmentCategory)[keyof typeof AdjustmentCategory];
+
+export const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
+export const createAdjustmentSchema = z.object({
+  driverId: z.string().uuid(),
+  kind: z.enum(['INCENTIVE', 'PENALTY']),
+  category: z.nativeEnum(AdjustmentCategory),
+  period: periodSchema,
+  amount: z.number().positive().max(1_000_000_000),
+  reason: z.string().trim().min(3).max(1000),
+  incidentId: z.string().uuid().optional().nullable(),
+});
+export type CreateAdjustmentInput = z.infer<typeof createAdjustmentSchema>;
+export const updateAdjustmentSchema = createAdjustmentSchema.omit({ driverId: true }).partial();
+export type UpdateAdjustmentInput = z.infer<typeof updateAdjustmentSchema>;
+export const decideAdjustmentSchema = z.object({ note: z.string().trim().max(1000).optional().nullable() });

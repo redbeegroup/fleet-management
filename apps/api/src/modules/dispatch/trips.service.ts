@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, TripStatus } from '@prisma/client';
+import { InspectionsService } from '../inspections/inspections.service';
 import {
   AssignTripInput,
   AvailabilityQuery,
@@ -42,6 +43,7 @@ export class TripsService {
   constructor(
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly inspections: InspectionsService,
   ) {}
 
   list(user: AuthUser, q: TripListQuery) {
@@ -144,6 +146,7 @@ export class TripsService {
         throw new BadRequestException(`Vehicle is ${vehicle.status.toLowerCase().replace('_', ' ')}`);
       }
       const at = input.at ?? new Date();
+      await this.inspections.assertPreTrip(tx, vehicle.id, at);
       await this.event(tx, user, id, trip.status, 'ONGOING', 'Started');
       await this.setVehicleStatus(tx, user, vehicle.id, vehicle.status, 'OPERATING', `Trip ${trip.tripNo} started`);
       return tx.trip.update({

@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety) delivered**; next S8 (inspections, training, incentives). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety) and S8 (inspections, training, incentives) delivered**; next S9 (API keys, DMS order API, webhooks, approvals). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -158,8 +158,8 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Driver behaviour monitoring | P2 | 2 / S7 | ✅ harsh accel/brake/corner computed from GPS (dense fixes) or taken from device events; attributed to the trip/assigned driver |
 | Driver performance score | P2 | 2 / S7 | ✅ safety score per 100 km with configurable weights, ranking, scorecard, weekly low-score alerts |
 | Accident & incident reporting | P2 | 2 / S7 | ✅ web + driver app (photos), REPORTED → INVESTIGATING → CLOSED with findings/corrective actions, manager alerts for high severity or injuries |
-| Driver training & certification | P2 | 2 | ⏳ |
-| Incentives & penalties (rules) | P2 | 2 | ⏳ |
+| Driver training & certification | P2 | 2 / S8 | ✅ course catalogue (validity, mandatory), certificates with scans, compliance matrix, expiry alerts to managers and the driver |
+| Incentives & penalties (rules) | P2 | 2 / S8 | ✅ monthly items proposed → approved/rejected (no self-approval), automatic safety bonus rule, payroll summary + CSV |
 | Fatigue monitoring | P3 | 4 | ⏳ hardware-dependent |
 | AI dashcam integration | P3 | 4 | ⏳ |
 
@@ -222,7 +222,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Road tax & registration tracking | P1 | 1 / S2 | ✅ as vehicle document types with expiry |
 | Insurance management | P1 | 1 / S2 | ✅ policy number, issuer, expiry, premium amount, policy scan |
 | Driving licence compliance | P1 | 1 / S2–S4 | ✅ expiry alerts; licence class vs vehicle class enforced at dispatch (configurable) |
-| Vehicle inspection checklist | P2 | 2 | ⏳ |
+| Vehicle inspection checklist | P2 | 2 / S8 | ✅ configurable pre-trip / post-trip / periodic checklists per vehicle class, critical items |
 | Accident management | P2 | 2 | ⏳ |
 | Insurance claims | P2 | 2 / S7 | ✅ per incident; insurer/policy from the vehicle's insurance document; SUBMITTED → APPROVED/REJECTED → SETTLED |
 | Regulatory compliance (country config) | P2 | 3 | ⏳ |
@@ -235,7 +235,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Driver mobile app | P1 | 1 / S6 | ✅ Expo app: trips, duty, fuel, problem reports, alerts |
 | Trip start/end | P1 | 1 / S6 | ✅ in the app, with optional odometer |
 | Driver notifications (push) | P1 | 1 / S6 | ✅ Expo push (device registration, dead-token pruning) + in-app list |
-| Vehicle inspection | P2 | 2 | ⏳ |
+| Vehicle inspection | P2 | 2 / S8 | ✅ driver app with defect photos; defects raise repair requests; optional pre-trip gate on trip start |
 | Fuel expense submission | P2 | 2 | ✅ delivered early (S5/S6) |
 | Repair requests | P2 | 2 | ✅ delivered early (S5/S6) |
 | Proof of delivery | P2 | 2 | ⏳ |
@@ -393,4 +393,11 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Safety score** (`safety/score.ts`, pure): `100 − Σ(weight × events) per 100 km` (idling per 10 min), bands GOOD ≥ 85 / FAIR ≥ `alertBelow` / POOR; drivers under `minDistanceKm` are not scored. Distance per driver comes from `vehicle_daily_stats`, split by trip GPS distance or given to the driver assigned at local noon. Computed on request (no extra rollup table — the inputs are already daily aggregates).
 - **Incidents & claims** (`/api/incidents`, `/api/claims`, driver `/api/me/incidents`), safety API (`/api/safety/scores`, `/api/safety/drivers/:id`, driver `/api/me/safety`), `safety-alerts` daily job (07:30 Asia/Yangon).
 - Web: Driver safety, Incidents & claims, scorecard on the driver page. Driver app: Safety tab (own score, incident report with photos).
+
+### Phase 2 — Sprint 8 (inspections, training, incentives) delivered
+
+- **Inspections** (`modules/inspections`): checklists (`inspection_templates`) per kind and vehicle class; two defaults are created on first use. An inspection stores a copy of the items with each answer, so later checklist edits do not rewrite history. `evaluate.ts` (pure) requires every item answered and a note or photo per defect; a failed critical item → `FAIL`, other defects → `DEFECTS`. Any defect raises a repair request (HIGH if critical) and alerts managers. With `settings.inspections.requirePreTrip`, `TripsService.start` refuses to start a trip unless the vehicle has a pre-trip inspection within `preTripValidHours` that did not fail.
+- **Training** (`modules/training`): `training_courses` (validity months, mandatory) and `driver_trainings` (expiry defaults to completion + validity). `status.ts` (pure) → VALID / EXPIRING / EXPIRED / MISSING. Compliance matrix at `/api/training/matrix`; expiry alerts run with the daily `compliance-alerts` job (managers + the driver, once per bucket).
+- **Incentives & penalties** (`modules/incentives`): `driver_adjustments` per payroll month. Fleet managers propose; company admins approve or reject (with a reason) and nobody decides their own proposal. `incentives-monthly` job (1st of the month, 08:00 Asia/Yangon) proposes the safety bonus from last month's scores when enabled (idempotent via `dedupe_key`). Summary and payroll CSV per month.
+- Driver app: **Check** tab (inspection with defect photos), training status and incentive/deduction items on the Safety tab. Web: Inspections (list, record, checklist editor), Training (matrix, courses, driver records), Incentives (month view, approvals, CSV), new Settings section.
 

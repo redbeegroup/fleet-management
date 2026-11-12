@@ -117,3 +117,7 @@ export const shortDay = (iso: string) => new Date(`${iso}T00:00`).toLocaleDateSt
 export const BAND_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { GOOD: 'ok', FAIR: 'warn', POOR: 'danger', INSUFFICIENT_DATA: 'muted' };
 export const INCIDENT_TONE: Record<string, 'warn' | 'info' | 'ok'> = { REPORTED: 'warn', INVESTIGATING: 'info', CLOSED: 'ok' };
 export const CLAIM_TONE: Record<string, 'info' | 'ok' | 'danger' | 'muted'> = { SUBMITTED: 'info', APPROVED: 'ok', REJECTED: 'danger', SETTLED: 'muted' };
+export const RESULT_TONE: Record<string, 'ok' | 'warn' | 'danger'> = { PASS: 'ok', DEFECTS: 'warn', FAIL: 'danger' };
+export const TRAINING_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { VALID: 'ok', EXPIRING: 'warn', EXPIRED: 'danger', MISSING: 'muted' };
+export const ADJ_TONE: Record<string, 'info' | 'ok' | 'danger'> = { PROPOSED: 'info', APPROVED: 'ok', REJECTED: 'danger' };
+export const KIND_LABEL: Record<string, string> = { PRE_TRIP: 'Pre-trip', POST_TRIP: 'Post-trip', PERIODIC: 'Periodic' };

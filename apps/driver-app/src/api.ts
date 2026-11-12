@@ -185,3 +185,34 @@ export interface MyIncident {
   description: string;
   vehicle: { plateNumber: string } | null;
 }
+
+export interface ChecklistTemplate {
+  id: string;
+  name: string;
+  kind: 'PRE_TRIP' | 'POST_TRIP' | 'PERIODIC';
+  items: { key: string; label: string; critical: boolean }[];
+}
+
+export interface MyInspection {
+  id: string;
+  inspectionNo: string;
+  kind: string;
+  performedAt: string;
+  result: 'PASS' | 'DEFECTS' | 'FAIL';
+  defects: number;
+  vehicle: { plateNumber: string };
+}
+
+export interface MyTraining {
+  status: { courseId: string; code: string; name: string; status: 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING'; expiresAt: string | null }[];
+}
+
+export interface MyAdjustment {
+  id: string;
+  kind: 'INCENTIVE' | 'PENALTY';
+  category: string;
+  period: string;
+  amount: string;
+  reason: string;
+  status: 'PROPOSED' | 'APPROVED';
+}

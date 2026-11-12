@@ -2,6 +2,7 @@ import { Permission } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { DriverTraining } from '../components/DriverTraining';
 import { FileLink } from '../components/FileLink';
 import { LicenceFields, licenceShort } from '../components/LicenceFields';
 import { api, session, uploadFile } from '../lib/api';
@@ -247,6 +248,7 @@ export function DriverDetailPage() {
           </form>
         )}
       </section>
+      <DriverTraining driverId={d.id} />
       <section className="card">
         <h2>Vehicle assignments</h2>
         <p>

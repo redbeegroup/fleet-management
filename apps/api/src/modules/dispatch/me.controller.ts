@@ -5,6 +5,8 @@ import {
   completeTripSchema,
   CreateIncidentInput,
   createIncidentSchema,
+  CreateInspectionInput,
+  createInspectionSchema,
   createFuelRecordSchema,
   CreateRepairRequestInput,
   createRepairRequestSchema,
@@ -16,6 +18,9 @@ import { FuelService } from '../fuel/fuel.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
 import { IncidentsService } from '../safety/incidents.service';
 import { SafetyService } from '../safety/safety.service';
+import { InspectionsService } from '../inspections/inspections.service';
+import { TrainingService } from '../training/training.service';
+import { IncentivesService } from '../incentives/incentives.service';
 import { localDate } from '../../common/time';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
@@ -25,6 +30,7 @@ import { ZodPipe } from '../../common/http/zod.pipe';
 import { DutyService } from './duty.service';
 import { tripInclude, TripsService } from './trips.service';
 
+const vehicleQuery = z.object({ vehicleId: z.string().uuid() });
 const scopeSchema = z.object({ scope: z.enum(['active', 'recent']).default('active') });
 
 /**
@@ -43,6 +49,9 @@ export class MeController {
     private readonly fuel: FuelService,
     private readonly incidents: IncidentsService,
     private readonly safety: SafetyService,
+    private readonly inspections: InspectionsService,
+    private readonly training: TrainingService,
+    private readonly incentives: IncentivesService,
   ) {}
 
   /** Vehicles the driver may report on / refuel: standing assignment or an active trip. */
@@ -172,5 +181,41 @@ export class MeController {
     const card = await this.safety.driver(user, driverId, { from: localDate(new Date(now.getTime() - 29 * 86_400_000), tz), to: localDate(now, tz) });
     const { recentEvents, ...summary } = card;
     return { ...summary, recentEvents: recentEvents.slice(0, 10) };
+  }
+
+  /** Checklists applicable to one of the driver's vehicles. */
+  @Get('inspection-templates')
+  @RequirePermissions(Permission.INSPECTION_PERFORM)
+  async inspectionTemplates(@CurrentUser() user: AuthUser, @Query(new ZodPipe(vehicleQuery)) q: { vehicleId: string }) {
+    const driverId = await this.driverId(user);
+    if (!(await this.myVehicleIds(user, driverId)).includes(q.vehicleId)) throw new ForbiddenException('Not your vehicle');
+    const v = await this.db.tenant(user.companyId, (tx) => tx.vehicle.findFirstOrThrow({ where: { id: q.vehicleId }, select: { vehicleClass: true } }));
+    return this.inspections.templates(user, { activeOnly: true, vehicleClass: v.vehicleClass });
+  }
+
+  @Post('inspections')
+  @RequirePermissions(Permission.INSPECTION_PERFORM)
+  async inspect(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createInspectionSchema)) body: CreateInspectionInput) {
+    const driverId = await this.driverId(user);
+    return this.inspections.create(user, { ...body, performedAt: undefined }, { allowedVehicleIds: await this.myVehicleIds(user, driverId), forceDriverId: driverId });
+  }
+
+  @Get('inspections')
+  @RequirePermissions(Permission.INSPECTION_PERFORM)
+  async myInspections(@CurrentUser() user: AuthUser) {
+    await this.driverId(user);
+    return this.inspections.list(user, { performedBy: user.userId, page: 1, pageSize: 30 });
+  }
+
+  @Get('training')
+  @RequirePermissions(Permission.TRIP_READ)
+  async myTraining(@CurrentUser() user: AuthUser) {
+    return this.training.driverTraining(user, await this.driverId(user));
+  }
+
+  @Get('adjustments')
+  @RequirePermissions(Permission.TRIP_READ)
+  async myAdjustments(@CurrentUser() user: AuthUser) {
+    return this.incentives.mine(user, await this.driverId(user));
   }
 }

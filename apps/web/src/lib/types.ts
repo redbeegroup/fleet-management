@@ -160,6 +160,9 @@ export interface CompanySettings {
     idleMinutes: number;
     offlineMinutes: number;
   };
+  safety: { minDistanceKm: number; alertBelow: number; weights: Record<string, number> };
+  inspections: { requirePreTrip: boolean; preTripValidHours: number };
+  incentives: { safetyBonusEnabled: boolean; safetyBonusMinScore: number; safetyBonusAmount: number; trainingAlertDays: number };
 }
 
 export interface Trip {
@@ -444,4 +447,94 @@ export interface Incident {
   vehicle: { id: string; plateNumber: string } | null;
   driver: { id: string; fullName: string; employeeNo: string } | null;
   claims: InsuranceClaim[];
+}
+
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  critical: boolean;
+}
+
+export interface InspectionTemplate {
+  id: string;
+  name: string;
+  kind: 'PRE_TRIP' | 'POST_TRIP' | 'PERIODIC';
+  vehicleClasses: string[];
+  items: ChecklistItem[];
+  active: boolean;
+}
+
+export interface Inspection {
+  id: string;
+  inspectionNo: string;
+  kind: InspectionTemplate['kind'];
+  performedAt: string;
+  odometerKm: string | null;
+  items: (ChecklistItem & { ok: boolean; note: string | null; photoFileId: string | null })[];
+  defects: number;
+  criticalDefects: number;
+  result: 'PASS' | 'DEFECTS' | 'FAIL';
+  notes: string | null;
+  repairRequestId: string | null;
+  tripId: string | null;
+  vehicle: { id: string; plateNumber: string };
+  driver: { id: string; fullName: string } | null;
+  template: { id: string; name: string };
+}
+
+export interface TrainingCourse {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  validityMonths: number | null;
+  mandatory: boolean;
+  active: boolean;
+}
+
+export type TrainingState = 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING';
+
+export interface TrainingMatrix {
+  today: string;
+  courses: { id: string; code: string; name: string; mandatory: boolean; validityMonths: number | null }[];
+  drivers: { id: string; fullName: string; employeeNo: string; compliant: boolean; cells: Record<string, { status: TrainingState; expiresAt: string | null }> }[];
+  summary: { drivers: number; compliant: number; mandatoryCells: Record<TrainingState, number> };
+}
+
+export interface DriverTrainingInfo {
+  records: {
+    id: string;
+    completedAt: string;
+    expiresAt: string | null;
+    provider: string | null;
+    score: string | null;
+    certificateNo: string | null;
+    certificateFileId: string | null;
+    course: { id: string; code: string; name: string };
+  }[];
+  status: { courseId: string; code: string; name: string; mandatory: boolean; status: TrainingState; expiresAt: string | null; completedAt: string | null }[];
+}
+
+export interface Adjustment {
+  id: string;
+  driverId: string;
+  kind: 'INCENTIVE' | 'PENALTY';
+  category: string;
+  period: string;
+  amount: string;
+  reason: string;
+  status: 'PROPOSED' | 'APPROVED' | 'REJECTED';
+  source: string;
+  proposedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  driver: { id: string; fullName: string; employeeNo: string };
+}
+
+export interface AdjustmentSummary {
+  period: string;
+  currency: string;
+  drivers: { id: string; fullName: string; employeeNo: string; incentives: number; penalties: number; net: number; pending: number }[];
+  totals: { incentives: number; penalties: number; net: number; pending: number };
 }

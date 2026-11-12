@@ -7,6 +7,7 @@ import { AlertsScreen } from './src/screens/AlertsScreen';
 import { FuelScreen, MyVehicle } from './src/screens/FuelScreen';
 import { ReportScreen } from './src/screens/ReportScreen';
 import { SafetyScreen } from './src/screens/SafetyScreen';
+import { InspectionScreen } from './src/screens/InspectionScreen';
 import { TripsScreen } from './src/screens/TripsScreen';
 import { Button, colors, Field, s } from './src/ui';
 
@@ -66,7 +67,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
   );
 }
 
-type Tab = 'trips' | 'fuel' | 'report' | 'safety' | 'alerts';
+type Tab = 'trips' | 'check' | 'fuel' | 'report' | 'safety' | 'alerts';
 
 function Main({ session, onSignOut }: { session: DriverSession; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('trips');
@@ -112,6 +113,7 @@ function Main({ session, onSignOut }: { session: DriverSession; onSignOut: () =>
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'trips', label: 'Trips' },
+    { key: 'check', label: 'Check' },
     { key: 'fuel', label: 'Fuel' },
     { key: 'report', label: 'Repair' },
     { key: 'safety', label: 'Safety' },
@@ -134,6 +136,7 @@ function Main({ session, onSignOut }: { session: DriverSession; onSignOut: () =>
       </View>
       <View style={{ flex: 1 }}>
         {tab === 'trips' && <TripsScreen />}
+        {tab === 'check' && <InspectionScreen vehicles={vehicles} />}
         {tab === 'fuel' && <FuelScreen vehicles={vehicles} />}
         {tab === 'report' && <ReportScreen vehicles={vehicles} />}
         {tab === 'safety' && <SafetyScreen vehicles={vehicles} />}

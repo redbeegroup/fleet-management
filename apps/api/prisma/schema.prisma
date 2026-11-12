@@ -205,6 +205,7 @@ model Vehicle {
   WorkOrder       WorkOrder[]
   expenses        VehicleExpense[]
   incidents       Incident[]
+  inspections     Inspection[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -290,6 +291,9 @@ model Driver {
   duty        DutySession[]
   fuelRecords FuelRecord[]
   incidents   Incident[]
+  inspections Inspection[]
+  trainings   DriverTraining[]
+  adjustments DriverAdjustment[]
 
   @@unique([companyId, employeeNo])
   @@map("drivers")
@@ -858,4 +862,157 @@ model InsuranceClaim {
   @@unique([companyId, claimNo])
   @@index([companyId, status])
   @@map("insurance_claims")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 / S8: inspections, training, incentives
+// ---------------------------------------------------------------------------
+
+enum InspectionKind {
+  PRE_TRIP
+  POST_TRIP
+  PERIODIC
+}
+
+enum InspectionResult {
+  PASS
+  DEFECTS
+  FAIL
+}
+
+model InspectionTemplate {
+  id             String         @id @default(uuid()) @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  name           String
+  kind           InspectionKind
+  /// Vehicle classes this checklist applies to; empty = all.
+  vehicleClasses String[]       @default([]) @map("vehicle_classes")
+  /// [{ key, label, critical }]
+  items          Json
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  inspections Inspection[]
+
+  @@index([companyId, kind])
+  @@map("inspection_templates")
+}
+
+model Inspection {
+  id              String           @id @default(uuid()) @db.Uuid
+  companyId       String           @map("company_id") @db.Uuid
+  inspectionNo    String           @map("inspection_no")
+  vehicleId       String           @map("vehicle_id") @db.Uuid
+  driverId        String?          @map("driver_id") @db.Uuid
+  tripId          String?          @map("trip_id") @db.Uuid
+  templateId      String           @map("template_id") @db.Uuid
+  kind            InspectionKind
+  performedAt     DateTime         @map("performed_at")
+  odometerKm      Decimal?         @map("odometer_km") @db.Decimal(12, 1)
+  latitude        Float?
+  longitude       Float?
+  /// [{ key, label, critical, ok, note, photoFileId }]
+  items           Json
+  defects         Int              @default(0)
+  criticalDefects Int              @default(0) @map("critical_defects")
+  result          InspectionResult
+  notes           String?
+  performedBy     String?          @map("performed_by") @db.Uuid
+  repairRequestId String?          @map("repair_request_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  vehicle  Vehicle            @relation(fields: [vehicleId], references: [id])
+  driver   Driver?            @relation(fields: [driverId], references: [id])
+  template InspectionTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([companyId, inspectionNo])
+  @@index([companyId, performedAt])
+  @@index([vehicleId, kind, performedAt])
+  @@map("inspections")
+}
+
+model TrainingCourse {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  code           String
+  name           String
+  description    String?
+  /// Certificate validity; null = does not expire.
+  validityMonths Int?     @map("validity_months")
+  /// Every active driver must hold a valid record.
+  mandatory      Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  records DriverTraining[]
+
+  @@unique([companyId, code])
+  @@map("training_courses")
+}
+
+model DriverTraining {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  driverId          String    @map("driver_id") @db.Uuid
+  courseId          String    @map("course_id") @db.Uuid
+  completedAt       DateTime  @map("completed_at") @db.Date
+  expiresAt         DateTime? @map("expires_at") @db.Date
+  provider          String?
+  score             Decimal?  @db.Decimal(5, 1)
+  certificateNo     String?   @map("certificate_no")
+  certificateFileId String?   @map("certificate_file_id") @db.Uuid
+  notes             String?
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  driver Driver         @relation(fields: [driverId], references: [id])
+  course TrainingCourse @relation(fields: [courseId], references: [id])
+
+  @@index([driverId, courseId])
+  @@index([companyId, expiresAt])
+  @@map("driver_trainings")
+}
+
+enum AdjustmentKind {
+  INCENTIVE
+  PENALTY
+}
+
+enum AdjustmentStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+}
+
+model DriverAdjustment {
+  id           String           @id @default(uuid()) @db.Uuid
+  companyId    String           @map("company_id") @db.Uuid
+  driverId     String           @map("driver_id") @db.Uuid
+  kind         AdjustmentKind
+  category     String
+  /// Payroll month, YYYY-MM.
+  period       String
+  amount       Decimal          @db.Decimal(14, 2)
+  reason       String
+  status       AdjustmentStatus @default(PROPOSED)
+  /// "manual" or an automatic rule, e.g. "auto:safety-bonus".
+  source       String           @default("manual")
+  /// Prevents an automatic rule from proposing twice.
+  dedupeKey    String?          @map("dedupe_key")
+  incidentId   String?          @map("incident_id") @db.Uuid
+  proposedBy   String?          @map("proposed_by") @db.Uuid
+  decidedBy    String?          @map("decided_by") @db.Uuid
+  decidedAt    DateTime?        @map("decided_at")
+  decisionNote String?          @map("decision_note")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([companyId, dedupeKey])
+  @@index([companyId, period])
+  @@index([driverId, period])
+  @@map("driver_adjustments")
 }

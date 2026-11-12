@@ -9,6 +9,8 @@ import { startMetricsServer } from './common/observability/metrics';
 import { AnalyticsService } from './modules/analytics/analytics.service';
 import { MaintenanceService } from './modules/maintenance/maintenance.service';
 import { SafetyService } from './modules/safety/safety.service';
+import { TrainingService } from './modules/training/training.service';
+import { IncentivesService } from './modules/incentives/incentives.service';
 import { TelematicsService } from './modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 
@@ -55,7 +57,8 @@ async function bootstrapBackground(module: typeof WorkerAppModule | typeof Inges
 async function runJob(name: string | undefined) {
   const app = await NestFactory.createApplicationContext(JobAppModule, { logger: logger() });
   const jobs: Record<string, () => Promise<unknown>> = {
-    'compliance-alerts': () => app.get(ComplianceAlertsJob).run(),
+    'compliance-alerts': async () => ({ ...(await app.get(ComplianceAlertsJob).run()), training: await app.get(TrainingService).expiryAlerts() }),
+    'incentives-monthly': () => app.get(IncentivesService).proposeMonthly(),
     'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
     'gps-offline': () => app.get(TelematicsService).checkOffline(),
     'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),

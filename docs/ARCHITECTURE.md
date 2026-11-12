@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `inspection_templates`, `inspections`, `training_courses`, `driver_trainings`, `driver_adjustments`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -133,14 +133,21 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - `SafetyService` scores drivers over company-local days from `vehicle_daily_stats` (distance), trips/assignments (attribution, `score.ts#attributeDistance`) and grouped events. Weights and thresholds live in `companies.settings.safety`.
 - `IncidentsService`: incident numbers `INC-<year>-NNNNNN` and claim numbers `CLM-<year>-NNNNNN` from `company_counters`; status flows validated server-side; photos are `files` checked with `FilesService.assertOwned`.
 
+## Inspections, training, incentives
+
+- Inspection numbers `INS-<year>-NNNNNN`; results PASS / DEFECTS / FAIL from `inspections/evaluate.ts`. The pre-trip gate (`InspectionsService.assertPreTrip`) runs inside the trip-start transaction.
+- Training status is derived (never stored) from the record with the latest expiry per driver and course.
+- Incentive approval is segregated: `incentive:write` (fleet managers) proposes, `incentive:approve` (company admins) decides, and the service refuses a decision by the proposer.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
 |---|---|---|
-| `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS` |
+| `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS`; mandatory training certificates expiring within `incentives.trainingAlertDays` |
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
 | `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
 | `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
+| `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 
