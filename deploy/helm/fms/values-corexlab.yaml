@@ -26,7 +26,8 @@ ingest: { replicas: 1 }
 web:
   replicas: 2
 redis:
-  internal: { enabled: true }
+  # Google's Docker Hub mirror: the cluster's pulls from docker.io time out intermittently.
+  internal: { enabled: true, image: mirror.gcr.io/library/redis:7-alpine }
 migrations:
   enabled: true
   seed: true                         # demo data for testing
@@ -38,11 +39,12 @@ networkPolicy:
         matchLabels: { kubernetes.io/metadata.name: traefik }
 
 # wo4's pod network is broken (flannel: "cni0 already has an IP address different
-# from 10.244.6.1/24"). Keep FMS off that node until it is repaired.
+# from 10.244.6.1/24") and wo1 cannot pull from ghcr.io (pulls hang). Keep FMS off
+# both until they are repaired.
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
       nodeSelectorTerms:
         - matchExpressions:
-            - { key: kubernetes.io/hostname, operator: NotIn, values: [wo4] }
+            - { key: kubernetes.io/hostname, operator: NotIn, values: [wo1, wo4] }
             - { key: node-role.kubernetes.io/control-plane, operator: DoesNotExist }
