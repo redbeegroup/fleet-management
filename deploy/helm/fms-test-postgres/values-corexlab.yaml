@@ -1,0 +1,11 @@
+# CorexLab Talos: synology-iscsi only mounts on nodes with the iscsi-tools extension
+# (wo1–wo3, cp2 at the time of writing); synology-nfs currently fails (NAS rejects NFS 4.1).
+storageClass: synology-iscsi
+size: 10Gi
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - { key: extensions.talos.dev/iscsi-tools, operator: Exists }
+            - { key: node-role.kubernetes.io/control-plane, operator: DoesNotExist }

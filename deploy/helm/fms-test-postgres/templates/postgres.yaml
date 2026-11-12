@@ -51,6 +51,14 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: fms-test-postgres, app.kubernetes.io/instance: {{ .Release.Name }} }
     spec:
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         fsGroup: 999
         seccompProfile: { type: RuntimeDefault }

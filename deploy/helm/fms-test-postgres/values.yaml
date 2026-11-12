@@ -9,3 +9,8 @@ appPassword: ""
 resources:
   requests: { cpu: 100m, memory: 256Mi }
   limits: { memory: 1Gi }
+# Pod scheduling, e.g. only nodes that can mount the volume type (Talos iscsi-tools extension):
+#   affinity: { nodeAffinity: { requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: [
+#     { matchExpressions: [ { key: extensions.talos.dev/iscsi-tools, operator: Exists } ] } ] } } }
+affinity: {}
+nodeSelector: {}
