@@ -43,6 +43,9 @@ secrets:
     REDIS_URL: ""
     JWT_ACCESS_SECRET: ""
     WATCHTOWER_API_KEY: ""
+    S3_ACCESS_KEY: ""
+    S3_SECRET_KEY: ""
+    SMTP_URL: ""                     # smtp(s)://user:pass@host:port
 
 config:
   NODE_ENV: production
@@ -54,6 +57,15 @@ config:
   TELEMATICS_PROVIDER: watchtower
   WATCHTOWER_BASE_URL: ""
   WATCHTOWER_POLL_SECONDS: "30"
+  # Files: S3-compatible object storage (required with more than one API replica)
+  STORAGE_DRIVER: s3
+  S3_ENDPOINT: ""                    # e.g. https://s3.example.internal (empty = AWS)
+  S3_REGION: us-east-1
+  S3_BUCKET: fms
+  S3_FORCE_PATH_STYLE: "true"
+  FILE_MAX_MB: "20"
+  MAIL_FROM: FMS <no-reply@example.com>
+  APP_URL: https://fms.example.com
 
 # ---------------------------------------------------------------------------
 # Workloads

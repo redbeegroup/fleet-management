@@ -11,6 +11,8 @@ import {
   createVehicleSchema,
   paginationSchema,
   Permission,
+  UpdateVehicleDocumentInput,
+  updateVehicleDocumentSchema,
   UpdateVehicleInput,
   updateVehicleSchema,
   VehicleStatus,
@@ -116,6 +118,23 @@ export class VehiclesController {
     @Body(new ZodPipe(createVehicleDocumentSchema)) body: CreateVehicleDocumentInput,
   ) {
     return this.vehicles.addDocument(user, id, body);
+  }
+
+  @Patch(':id/documents/:documentId')
+  @RequirePermissions(Permission.VEHICLE_DOCUMENT_WRITE)
+  updateDocument(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body(new ZodPipe(updateVehicleDocumentSchema)) body: UpdateVehicleDocumentInput,
+  ) {
+    return this.vehicles.updateDocument(user, id, documentId, body);
+  }
+
+  @Get(':id/history')
+  @RequirePermissions(Permission.VEHICLE_READ)
+  history(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehicles.history(user, id);
   }
 
   @Delete(':id/documents/:documentId')

@@ -116,6 +116,20 @@ async function main() {
       }
     }
 
+    // Driver login for the mobile app, linked to the first driver below.
+    const driverUser = await tx.user.upsert({
+      where: { email: 'driver@fms.local' },
+      update: {},
+      create: {
+        companyId: company.id,
+        branchId: branches[0].id,
+        email: 'driver@fms.local',
+        fullName: 'Aung Aung',
+        passwordHash,
+        roles: ['DRIVER'],
+      },
+    });
+
     for (const [i, name] of ['Aung Aung', 'Kyaw Kyaw', 'Thida'].entries()) {
       const employeeNo = `DRV-${String(i + 1).padStart(3, '0')}`;
       const existing = await tx.driver.findUnique({
@@ -128,6 +142,8 @@ async function main() {
             branchId: branches[0].id,
             employeeNo,
             fullName: name,
+            userId: i === 0 ? driverUser.id : null,
+            phone: `+95 9 4500 ${1000 + i}`,
             licenses: {
               create: {
                 companyId: company.id,

@@ -32,7 +32,8 @@ RUN --mount=type=secret,id=extra_ca,required=false \
  && ENGINES=$(ls -d node_modules/.pnpm/@prisma+engines@*/node_modules/@prisma/engines) \
  && node "$ENGINES/scripts/postinstall.js" \
  && node node_modules/prisma/build/index.js generate \
- && ls "$ENGINES"/schema-engine-debian-openssl-3.0.x
+ && ls "$ENGINES"/schema-engine-debian-openssl-3.0.x \
+ && mkdir -p /out/.data/files
 
 # Distroless: no shell or package manager, ships libssl3 + CA certificates, runs as non-root (uid 65532).
 FROM gcr.io/distroless/nodejs22-debian12:nonroot AS runtime

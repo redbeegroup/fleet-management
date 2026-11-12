@@ -13,6 +13,7 @@ export const Permission = {
   TRACKING_READ: 'tracking:read',
   TRIP_READ: 'trip:read',
   TRIP_WRITE: 'trip:write',
+  FILE_UPLOAD: 'file:upload',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -39,6 +40,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.VEHICLE_DOCUMENT_WRITE,
     Permission.DRIVER_WRITE,
     Permission.TRIP_WRITE,
+    Permission.FILE_UPLOAD,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -46,8 +48,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.TRACKING_READ,
     Permission.TRIP_READ,
     Permission.TRIP_WRITE,
+    Permission.FILE_UPLOAD,
   ],
-  DRIVER: [Permission.TRIP_READ],
+  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD],
   EXECUTIVE: READ_ONLY,
   VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ],
 };

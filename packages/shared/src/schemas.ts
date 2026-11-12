@@ -57,7 +57,7 @@ export const createVehicleDocumentSchema = z.object({
   issuedAt: optionalDate,
   expiresAt: optionalDate,
   amount: z.number().nonnegative().optional().nullable(),
-  fileKey: z.string().max(512).optional().nullable(),
+  fileId: z.string().uuid().optional().nullable(),
 });
 export type CreateVehicleDocumentInput = z.infer<typeof createVehicleDocumentSchema>;
 
@@ -80,6 +80,27 @@ export const createDriverSchema = z.object({
   licenseExpiresAt: optionalDate,
 });
 export type CreateDriverInput = z.infer<typeof createDriverSchema>;
+
+export const updateVehicleDocumentSchema = createVehicleDocumentSchema.partial();
+export type UpdateVehicleDocumentInput = z.infer<typeof updateVehicleDocumentSchema>;
+
+export const updateDriverSchema = z.object({
+  fullName: z.string().trim().min(1).max(128).optional(),
+  phone: z.string().max(32).optional().nullable(),
+  branchId: z.string().uuid().optional().nullable(),
+  active: z.boolean().optional(),
+  userId: z.string().uuid().optional().nullable(),
+});
+export type UpdateDriverInput = z.infer<typeof updateDriverSchema>;
+
+export const createDriverLicenseSchema = z.object({
+  number: z.string().trim().min(1).max(64),
+  licenseClass: z.string().trim().min(1).max(16),
+  issuedAt: optionalDate,
+  expiresAt: optionalDate,
+  fileId: z.string().uuid().optional().nullable(),
+});
+export type CreateDriverLicenseInput = z.infer<typeof createDriverLicenseSchema>;
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

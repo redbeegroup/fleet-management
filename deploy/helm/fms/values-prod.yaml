@@ -10,7 +10,8 @@ database:
     externalName: pg-vip.db.example.internal   # VIP / pgbouncer of the PostgreSQL cluster
     port: 5432
 secrets:
-  # Keys: DATABASE_URL, DATABASE_MIGRATION_URL, REDIS_URL, JWT_ACCESS_SECRET, WATCHTOWER_API_KEY
+  # Keys: DATABASE_URL, DATABASE_MIGRATION_URL, REDIS_URL, JWT_ACCESS_SECRET,
+  #       WATCHTOWER_API_KEY, S3_ACCESS_KEY, S3_SECRET_KEY, SMTP_URL
   # e.g. DATABASE_URL=postgresql://fms_app:***@fms-fms-db:5432/fms?sslmode=require
   existingSecret: fms-prod-secrets
 config:
@@ -18,6 +19,9 @@ config:
   CORS_ORIGINS: https://fms.example.com
   TELEMATICS_PROVIDER: watchtower
   WATCHTOWER_BASE_URL: https://watchtower.example.com
+  S3_ENDPOINT: https://s3.example.internal
+  S3_BUCKET: fms-prod
+  APP_URL: https://fms.example.com
 api:
   autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 10 }
   pdb: { minAvailable: 2 }

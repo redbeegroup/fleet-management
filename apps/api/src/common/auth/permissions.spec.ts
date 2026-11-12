@@ -1,8 +1,8 @@
 import { Permission, permissionsForRoles } from '@fms/shared';
 
 describe('role → permission mapping', () => {
-  it('gives drivers only trip read', () => {
-    expect(permissionsForRoles(['DRIVER'])).toEqual([Permission.TRIP_READ]);
+  it('gives drivers trip read and uploads only', () => {
+    expect(permissionsForRoles(['DRIVER']).sort()).toEqual([Permission.FILE_UPLOAD, Permission.TRIP_READ].sort());
   });
   it('merges multiple roles', () => {
     const perms = permissionsForRoles(['DRIVER', 'VIEWER']);

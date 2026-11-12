@@ -120,6 +120,7 @@ model User {
   branch        Branch?        @relation(fields: [branchId], references: [id])
   refreshTokens RefreshToken[]
   driver        Driver?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -220,11 +221,12 @@ model VehicleDocument {
   issuedAt  DateTime?    @map("issued_at") @db.Date
   expiresAt DateTime?    @map("expires_at") @db.Date
   amount    Decimal?     @db.Decimal(14, 2)
-  fileKey   String?      @map("file_key")
+  fileId    String?      @map("file_id") @db.Uuid
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicle Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  file    StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([companyId, expiresAt])
   @@map("vehicle_documents")
@@ -280,9 +282,11 @@ model DriverLicense {
   licenseClass String    @map("license_class")
   issuedAt     DateTime? @map("issued_at") @db.Date
   expiresAt    DateTime? @map("expires_at") @db.Date
+  fileId       String?   @map("file_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  driver Driver      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  file   StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([companyId, expiresAt])
   @@map("driver_licenses")
@@ -301,4 +305,48 @@ model VehicleLastPosition {
 
   @@index([companyId])
   @@map("vehicle_last_positions")
+}
+
+/// Binary objects (documents, photos, signatures). Content lives in the
+/// configured storage driver (local filesystem or S3-compatible); access is
+/// always streamed through the API so tenant checks apply.
+model StoredFile {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  storageKey  String   @unique @map("storage_key")
+  filename    String
+  contentType String   @map("content_type")
+  sizeBytes   Int      @map("size_bytes")
+  sha256      String
+  uploadedBy  String?  @map("uploaded_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vehicleDocuments VehicleDocument[]
+  driverLicenses   DriverLicense[]
+
+  @@index([companyId, createdAt])
+  @@map("files")
+}
+
+/// In-app notification for one user. `dedupeKey` prevents repeated alerts
+/// for the same event/threshold.
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  topic     String
+  severity  String    @default("info")
+  title     String
+  body      String
+  data      Json?
+  dedupeKey String?   @map("dedupe_key")
+  readAt    DateTime? @map("read_at")
+  emailedAt DateTime? @map("emailed_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
 }

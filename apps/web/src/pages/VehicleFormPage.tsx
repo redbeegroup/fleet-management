@@ -1,22 +1,34 @@
 import { OwnershipType, VehicleClass } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { humanize } from '../lib/format';
 import type { Branch, Vehicle } from '../lib/types';
 
+/** Create (/vehicles/new) or edit (/vehicles/:id/edit) a vehicle. */
 export function VehicleFormPage() {
+  const { id } = useParams();
+  const editing = Boolean(id);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const branches = useQuery({ queryKey: ['branches'], queryFn: () => api<Branch[]>('/branches') });
+  const existing = useQuery({
+    queryKey: ['vehicle', id],
+    queryFn: () => api<Vehicle>(`/vehicles/${id}`),
+    enabled: editing,
+  });
   const [error, setError] = useState<string | null>(null);
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
-      api<Vehicle>('/vehicles', { method: 'POST', body: JSON.stringify(body) }),
+      api<Vehicle>(editing ? `/vehicles/${id}` : '/vehicles', {
+        method: editing ? 'PATCH' : 'POST',
+        body: JSON.stringify(body),
+      }),
     onSuccess: (v) => {
       void qc.invalidateQueries({ queryKey: ['vehicles'] });
+      void qc.invalidateQueries({ queryKey: ['vehicle', v.id] });
       navigate(`/vehicles/${v.id}`);
     },
     onError: (err) => {
@@ -26,12 +38,15 @@ export function VehicleFormPage() {
     },
   });
 
+  if (editing && !existing.data) return <p className="muted">Loading…</p>;
+  const v = existing.data;
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const str = (k: string) => (f.get(k) as string)?.trim() || null;
     const num = (k: string) => (str(k) ? Number(str(k)) : null);
-    create.mutate({
+    save.mutate({
       plateNumber: str('plateNumber'),
       vin: str('vin'),
       make: str('make'),
@@ -41,41 +56,44 @@ export function VehicleFormPage() {
       ownership: str('ownership'),
       fuelType: str('fuelType'),
       capacityKg: num('capacityKg'),
+      capacityM3: num('capacityM3'),
       odometerKm: num('odometerKm') ?? 0,
       branchId: str('branchId'),
       gpsDeviceId: str('gpsDeviceId'),
+      acquiredAt: str('acquiredAt'),
+      notes: str('notes'),
     });
   }
 
   return (
     <>
       <header className="page-head">
-        <h1>Register vehicle</h1>
+        <h1>{editing ? `Edit ${v?.plateNumber}` : 'Register vehicle'}</h1>
       </header>
       <form className="card form-grid" onSubmit={submit}>
         <label>
           Plate number *
-          <input name="plateNumber" required />
+          <input name="plateNumber" required defaultValue={v?.plateNumber} />
         </label>
         <label>
           VIN
-          <input name="vin" />
+          <input name="vin" defaultValue={v?.vin ?? ''} />
         </label>
         <label>
           Make *
-          <input name="make" required />
+          <input name="make" required defaultValue={v?.make} />
         </label>
         <label>
           Model *
-          <input name="model" required />
+          <input name="model" required defaultValue={v?.model} />
         </label>
         <label>
           Year
-          <input name="year" type="number" min={1950} max={2100} />
+          <input name="year" type="number" min={1950} max={2100} defaultValue={v?.year ?? ''} />
         </label>
         <label>
           Class *
-          <select name="vehicleClass" required defaultValue="TRUCK">
+          <select name="vehicleClass" required defaultValue={v?.vehicleClass ?? 'TRUCK'}>
             {Object.values(VehicleClass).map((c) => (
               <option key={c} value={c}>
                 {humanize(c)}
@@ -85,7 +103,7 @@ export function VehicleFormPage() {
         </label>
         <label>
           Ownership
-          <select name="ownership" defaultValue="OWNED">
+          <select name="ownership" defaultValue={v?.ownership ?? 'OWNED'}>
             {Object.values(OwnershipType).map((c) => (
               <option key={c} value={c}>
                 {humanize(c)}
@@ -95,19 +113,27 @@ export function VehicleFormPage() {
         </label>
         <label>
           Fuel type
-          <input name="fuelType" placeholder="Diesel" />
+          <input name="fuelType" placeholder="Diesel" defaultValue={v?.fuelType ?? ''} />
         </label>
         <label>
           Capacity (kg)
-          <input name="capacityKg" type="number" min={0} />
+          <input name="capacityKg" type="number" min={0} step="any" defaultValue={v?.capacityKg ?? ''} />
+        </label>
+        <label>
+          Capacity (m³)
+          <input name="capacityM3" type="number" min={0} step="any" defaultValue={v?.capacityM3 ?? ''} />
         </label>
         <label>
           Odometer (km)
-          <input name="odometerKm" type="number" min={0} />
+          <input name="odometerKm" type="number" min={0} step="any" defaultValue={v ? Number(v.odometerKm) : ''} />
+        </label>
+        <label>
+          Acquired on
+          <input name="acquiredAt" type="date" defaultValue={v?.acquiredAt?.slice(0, 10) ?? ''} />
         </label>
         <label>
           Branch
-          <select name="branchId" defaultValue="">
+          <select name="branchId" defaultValue={v?.branchId ?? ''}>
             <option value="">—</option>
             {branches.data?.map((b) => (
               <option key={b.id} value={b.id}>
@@ -118,15 +144,19 @@ export function VehicleFormPage() {
         </label>
         <label>
           GPS device ID (Watch Tower)
-          <input name="gpsDeviceId" />
+          <input name="gpsDeviceId" defaultValue={v?.gpsDeviceId ?? ''} />
+        </label>
+        <label className="span-2">
+          Notes
+          <textarea name="notes" rows={3} defaultValue={v?.notes ?? ''} />
         </label>
         {error && <p className="error span-2">{error}</p>}
         <div className="span-2 actions">
           <button type="button" className="btn" onClick={() => navigate(-1)}>
             Cancel
           </button>
-          <button className="btn btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Saving…' : 'Save vehicle'}
+          <button className="btn btn-primary" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : editing ? 'Save changes' : 'Save vehicle'}
           </button>
         </div>
       </form>

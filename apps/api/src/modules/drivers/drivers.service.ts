@@ -1,22 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CreateDriverInput, Paginated, PaginationInput } from '@fms/shared';
+import { CreateDriverInput, CreateDriverLicenseInput, Paginated, PaginationInput, UpdateDriverInput } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
-import { PrismaService } from '../../common/db/prisma.service';
+import { PrismaService, Tx } from '../../common/db/prisma.service';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class DriversService {
   constructor(private readonly db: PrismaService) {}
 
-  list(user: AuthUser, q: PaginationInput): Promise<Paginated<unknown>> {
-    const where: Prisma.DriverWhereInput = q.search
-      ? {
-          OR: [
-            { fullName: { contains: q.search, mode: 'insensitive' } },
-            { employeeNo: { contains: q.search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
+  list(user: AuthUser, q: PaginationInput & { active?: boolean }): Promise<Paginated<unknown>> {
+    const where: Prisma.DriverWhereInput = {
+      ...(q.active !== undefined && { active: q.active }),
+      ...(q.search && {
+        OR: [
+          { fullName: { contains: q.search, mode: 'insensitive' } },
+          { employeeNo: { contains: q.search, mode: 'insensitive' } },
+        ],
+      }),
+    };
     return this.db.tenant(user.companyId, async (tx) => {
       const [items, total] = await Promise.all([
         tx.driver.findMany({
@@ -40,7 +42,11 @@ export class DriversService {
       tx.driver.findFirst({
         where: { id },
         include: {
-          licenses: { orderBy: { expiresAt: 'desc' } },
+          licenses: {
+            orderBy: { expiresAt: 'desc' },
+            include: { file: { select: { id: true, filename: true, contentType: true } } },
+          },
+          user: { select: { id: true, email: true } },
           assignments: {
             orderBy: { startAt: 'desc' },
             take: 50,
@@ -85,5 +91,41 @@ export class DriversService {
         orderBy: { expiresAt: 'asc' },
       }),
     );
+  }
+
+  update(user: AuthUser, id: string, input: UpdateDriverInput) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      await this.mustExist(tx, id);
+      if (input.userId) {
+        const linked = await tx.user.findFirst({ where: { id: input.userId }, select: { id: true } });
+        if (!linked) throw new BadRequestException('userId does not exist');
+      }
+      if (input.active === false) {
+        // A deactivated driver releases any vehicle they hold.
+        await tx.vehicleAssignment.updateMany({ where: { driverId: id, endAt: null }, data: { endAt: new Date() } });
+      }
+      return tx.driver.update({ where: { id }, data: input });
+    });
+  }
+
+  addLicense(user: AuthUser, driverId: string, input: CreateDriverLicenseInput) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      await this.mustExist(tx, driverId);
+      await FilesService.assertOwned(tx, input.fileId);
+      return tx.driverLicense.create({ data: { ...input, driverId, companyId: user.companyId } });
+    });
+  }
+
+  removeLicense(user: AuthUser, driverId: string, licenseId: string) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const { count } = await tx.driverLicense.deleteMany({ where: { id: licenseId, driverId } });
+      if (!count) throw new NotFoundException('Licence not found');
+    });
+  }
+
+  private async mustExist(tx: Tx, id: string) {
+    const driver = await tx.driver.findFirst({ where: { id } });
+    if (!driver) throw new NotFoundException('Driver not found');
+    return driver;
   }
 }

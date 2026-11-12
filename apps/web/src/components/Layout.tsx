@@ -1,6 +1,7 @@
 import { Permission } from '@fms/shared';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { logout, session } from '../lib/api';
+import { NotificationBell } from './NotificationBell';
 
 const nav = [
   { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
@@ -27,6 +28,7 @@ export function Layout() {
                 {n.label}
               </NavLink>
             ))}
+          <NotificationBell />
         </nav>
         <div className="sidebar-foot">
           <div className="who">

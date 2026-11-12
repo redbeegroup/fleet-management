@@ -17,7 +17,13 @@ x-api-env: &api-env
   WATCHTOWER_BASE_URL: ${WATCHTOWER_BASE_URL:-}
   WATCHTOWER_API_KEY: ${WATCHTOWER_API_KEY:-}
   WATCHTOWER_POLL_SECONDS: ${WATCHTOWER_POLL_SECONDS:-30}
+  # Files: local volume in the test stack (single API replica). Use STORAGE_DRIVER=s3 for production.
+  STORAGE_DRIVER: local
+  STORAGE_LOCAL_DIR: /app/.data/files
+  FILE_MAX_MB: ${FILE_MAX_MB:-20}
   SMTP_URL: smtp://mailpit:1025
+  MAIL_FROM: ${MAIL_FROM:-FMS <no-reply@fms.local>}
+  APP_URL: http://localhost:${WEB_PORT:-8080}
 
 x-api-image: &api-image
   image: fms/api:${IMAGE_TAG:-local}
@@ -87,6 +93,8 @@ services:
     environment:
       <<: *api-env
       MODE: api
+    volumes:
+      - files:/app/.data/files
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -130,4 +138,5 @@ services:
 
 volumes:
   pgdata:
+  files:
   redisdata:

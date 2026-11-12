@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  MODE: z.enum(['api', 'worker', 'ingest']).default('api'),
+  MODE: z.enum(['api', 'worker', 'ingest', 'job']).default('api'),
+  /** With MODE=job: name of the job to run once, then exit. */
+  JOB: z.string().optional(),
   PORT: z.coerce.number().int().default(3000),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
@@ -19,6 +21,25 @@ const envSchema = z.object({
   WATCHTOWER_API_KEY: z.string().optional(),
   WATCHTOWER_POLL_SECONDS: z.coerce.number().int().positive().default(30),
   TELEMATICS_PROVIDER: z.enum(['watchtower', 'mock']).default('mock'),
+
+  // File storage
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_LOCAL_DIR: z.string().default('./.data/files'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_BUCKET: z.string().default('fms'),
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  S3_FORCE_PATH_STYLE: z
+    .string()
+    .default('true')
+    .transform((v) => v === 'true'),
+  FILE_MAX_MB: z.coerce.number().positive().default(20),
+
+  // Notifications
+  SMTP_URL: z.string().optional(),
+  MAIL_FROM: z.string().default('FMS <no-reply@fms.local>'),
+  APP_URL: z.string().default('http://localhost:8080'),
 });
 
 export type Env = z.infer<typeof envSchema>;

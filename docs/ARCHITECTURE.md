@@ -48,7 +48,8 @@ apps/api/src
 │  ├─ vehicles/
 │  ├─ drivers/
 │  ├─ telematics/             # providers/ (TelematicsProvider, WatchTower, Mock)
-│  └─ notifications/          # NotificationChannel registry
+│  ├─ files/                  # StorageDriver (local | s3), upload/download
+│  └─ notifications/          # in-app notifications, channels (log, email)
 └─ worker/                    # job processor, compliance alerts, ingest runner
 ```
 
@@ -102,6 +103,14 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
+## Files
+
+`POST /api/files` (multipart `file`) → magic-number sniffing (PDF, JPEG, PNG, WebP, HEIC), size limit `FILE_MAX_MB`, stored under `<companyId>/<yyyy>/<mm>/<uuid>` in the configured `StorageDriver`, metadata (name, type, size, SHA-256) in `files`. `GET /api/files/:id` streams the object after an RLS-scoped lookup — storage is never exposed directly. Documents and licences reference files by `fileId`; `FilesService.assertOwned` checks ownership because PostgreSQL foreign-key checks bypass RLS.
+
+## Notifications
+
+`NotificationsService.notify()` resolves recipients (explicit users, or users holding the given roles; default super/company admins and fleet managers), inserts one `notifications` row per user with `skipDuplicates` on `(user_id, dedupe_key)`, and then fans *newly created* notifications out to channels. The email channel sends warning/critical only. Users read their own notifications via `/api/notifications`.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -109,7 +118,7 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 | `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS` |
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
 
-BullMQ job schedulers are idempotent, so several worker replicas are safe.
+BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).
 
 ## Extension points
 

@@ -11,6 +11,7 @@ import { HealthController } from './common/health/health.controller';
 import { PrismaExceptionFilter } from './common/http/prisma-exception.filter';
 import { RedisModule } from './common/redis/redis.module';
 import { DriversModule } from './modules/drivers/drivers.module';
+import { FilesModule } from './modules/files/files.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsModule } from './modules/telematics/telematics.module';
@@ -34,6 +35,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     IamModule,
+    FilesModule,
     VehiclesModule,
     DriversModule,
     TelematicsModule,
@@ -76,3 +78,10 @@ export class WorkerAppModule {}
   providers: [IngestRunner],
 })
 export class IngestAppModule {}
+
+/** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
+@Module({
+  imports: [...core, TelematicsModule],
+  providers: [ComplianceAlertsJob],
+})
+export class JobAppModule {}

@@ -3,7 +3,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { session } from './lib/api';
 import { DashboardPage } from './pages/DashboardPage';
+import { DriverDetailPage } from './pages/DriverDetailPage';
+import { DriverFormPage } from './pages/DriverFormPage';
 import { DriversPage } from './pages/DriversPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { VehicleFormPage } from './pages/VehicleFormPage';
@@ -39,7 +42,11 @@ export function App() {
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />
+        <Route path="vehicles/:id/edit" element={<VehicleFormPage />} />
         <Route path="drivers" element={<DriversPage />} />
+        <Route path="drivers/new" element={<DriverFormPage />} />
+        <Route path="drivers/:id" element={<DriverDetailPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

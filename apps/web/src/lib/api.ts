@@ -87,7 +87,8 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   const headers = new Headers(init.headers);
   const token = storage.get(ACCESS);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type'))
+    headers.set('Content-Type', 'application/json');
 
   const res = await fetch(`/api${path}`, { ...init, headers });
   if (res.status === 401 && retry && (await refresh())) return api<T>(path, init, false);
@@ -115,4 +116,36 @@ export async function logout(): Promise<void> {
     }).catch(() => undefined);
   }
   session.clear();
+}
+
+export interface UploadedFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+/** Multipart upload; the browser sets the multipart boundary header. */
+export function uploadFile(file: File): Promise<UploadedFile> {
+  const body = new FormData();
+  body.append('file', file);
+  return api<UploadedFile>('/files', { method: 'POST', body });
+}
+
+/** Files require the bearer token, so fetch as a blob and open it in a new tab. */
+export async function openFile(id: string): Promise<void> {
+  const win = window.open('', '_blank');
+  const token = storage.get(ACCESS);
+  let res = await fetch(`/api/files/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (res.status === 401 && (await refresh())) {
+    res = await fetch(`/api/files/${id}`, { headers: { Authorization: `Bearer ${storage.get(ACCESS)}` } });
+  }
+  if (!res.ok) {
+    win?.close();
+    throw new ApiError(res.status, {});
+  }
+  const url = URL.createObjectURL(await res.blob());
+  if (win) win.location.href = url;
+  else window.location.assign(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

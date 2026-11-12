@@ -74,9 +74,9 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle classification | P1 | 1 / S1 | ✅ truck, van, car, pickup, bus, motorcycle, trailer, other |
 | Vehicle assignment (branch / department / driver) | P1 | 1 / S1–S2 | ✅ assignment history, one vehicle per driver |
 | Vehicle status | P1 | 1 / S1 | ✅ state machine + status history |
-| Document management | P1 | 1 / S2 | 🟡 metadata done; file upload in S2 |
-| Document expiry alerts | P1 | 1 / S2 | 🟡 daily worker scan + expiring endpoint; delivery channels in S6 |
-| Vehicle history | P1 | 1 / S2–S5 | 🟡 status + assignments; trips, fuel and maintenance join as they ship |
+| Document management | P1 | 1 / S2 | ✅ metadata, scans/photos (PDF, JPEG, PNG, WebP, HEIC) via S3-compatible storage |
+| Document expiry alerts | P1 | 1 / S2 | ✅ daily scan, 30/14/7/1-day + expired thresholds, renewal-aware, in-app + email |
+| Vehicle history | P1 | 1 / S2–S5 | 🟡 consolidated timeline (status, assignments, documents); trips, fuel and maintenance join as they ship |
 | Vehicle lifecycle (acquisition → disposal) | P2 | 3 | ⏳ (acquired/disposed dates already stored) |
 | Asset & equipment tracking (trailers, containers) | P2 | 3 | ⏳ |
 | Vehicle replacement planning | P3 | 4 | ⏳ |
@@ -152,7 +152,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
 | Driver profile | P1 | 1 / S2 | ✅ |
-| Driving licence management + expiry | P1 | 1 / S2 | ✅ licences, expiring endpoint, daily alert scan |
+| Driving licence management + expiry | P1 | 1 / S2 | ✅ licences with scans, expiry alerts to managers and the driver |
 | Driver attendance | P1 | 1 / S4 | ⏳ duty status from the driver app |
 | Driver assignment history | P1 | 1 / S2 | ✅ |
 | Driver behaviour monitoring | P2 | 2 | ⏳ harsh accel/brake/corner from telematics |
@@ -220,7 +220,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
 | Road tax & registration tracking | P1 | 1 / S2 | ✅ as vehicle document types with expiry |
-| Insurance management | P1 | 1 / S2 | 🟡 policy number, expiry, premium amount |
+| Insurance management | P1 | 1 / S2 | ✅ policy number, issuer, expiry, premium amount, policy scan |
 | Driving licence compliance | P1 | 1 / S2–S4 | 🟡 expiry done; licence-class vs vehicle-class check at dispatch in S4 |
 | Vehicle inspection checklist | P2 | 2 | ⏳ |
 | Accident management | P2 | 2 | ⏳ |
@@ -267,7 +267,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Multi-company & multi-branch | P1 | 1 / S1 | ✅ company/branch/department, RLS; consolidated group view in S6 |
 | Audit logs | P1 | 1 / S1 | ✅ every mutating request, sensitive fields redacted |
 | GPS device integration | P1 | 1 / S1–S3 | 🟡 `TelematicsProvider` + Watch Tower adapter |
-| Notification engine | P1 | 1 / S6 | 🟡 pluggable channels (log); email/push in S6 |
+| Notification engine | P1 | 1 / S2–S6 | 🟡 in-app + SMTP email, role-based recipients, dedupe; push in S6 |
 | ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
 | DMS / TMS integration | P2 | 3 | ⏳ |
 | BI integration (Tableau, Metabase) | P2 | 3 | ⏳ read-only reporting schema / replica |
@@ -329,4 +329,13 @@ Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
 - Driver app skeleton (Expo).
 - Docker Compose test stack; Helm chart for production with the external PostgreSQL cluster; GitHub Actions CI.
 
-Next: Sprint 2. Object storage choice and file uploads, notification channels (SMTP and push), driver CRUD UI, then Sprint 3 telematics with the confirmed Watch Tower API contract.
+### Sprint 2 (delivered)
+
+- **Files:** `files` table; storage drivers `local` (dev/test, Docker volume) and `s3` (any S3-compatible store — verified against SeaweedFS). Uploads are type-sniffed (magic numbers), size-limited and streamed back through the API so RLS applies; attaching another company's file id is rejected.
+- **Notifications:** per-user in-app notifications with unread counts, role-based recipients, de-duplication per threshold, SMTP email for warning/critical (Mailpit in Docker).
+- **Compliance alerts:** thresholds 30/14/7/1 days and expired; only the latest document per vehicle+type (renewals stop alerts); drivers are notified about their own licence.
+- **Drivers:** edit, activate/deactivate (releases vehicle), licences with scans, link to an app login.
+- **Vehicles:** edit page, assign/reassign/release driver, documents with scans, consolidated history timeline.
+- **Ops:** `MODE=job JOB=<name>` one-shot runner (`compliance-alerts`, `position-partitions`).
+
+Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

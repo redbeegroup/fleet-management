@@ -53,3 +53,15 @@ export const VEHICLE_STATUS_TRANSITIONS: Record<VehicleStatus, VehicleStatus[]> 
   INACTIVE: ['AVAILABLE', 'DISPOSED'],
   DISPOSED: [],
 };
+
+export const NotificationSeverity = { INFO: 'info', WARNING: 'warning', CRITICAL: 'critical' } as const;
+export type NotificationSeverity = (typeof NotificationSeverity)[keyof typeof NotificationSeverity];
+
+/** Content types accepted for uploads (documents, photos, signatures). */
+export const ALLOWED_UPLOAD_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+] as const;

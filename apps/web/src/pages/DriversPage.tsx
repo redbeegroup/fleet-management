@@ -1,20 +1,40 @@
-import { Paginated } from '@fms/shared';
-import { useQuery } from '@tanstack/react-query';
+import { Paginated, Permission } from '@fms/shared';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, session } from '../lib/api';
 import { daysUntil, expiryTone, formatDate } from '../lib/format';
 import type { Driver } from '../lib/types';
 
 export function DriversPage() {
+  const [search, setSearch] = useState('');
+  const [active, setActive] = useState('true');
+  const params = new URLSearchParams({ pageSize: '100' });
+  if (search) params.set('search', search);
+  if (active) params.set('active', active);
   const { data, isLoading } = useQuery({
-    queryKey: ['drivers'],
-    queryFn: () => api<Paginated<Driver>>('/drivers?pageSize=100'),
+    queryKey: ['drivers', params.toString()],
+    queryFn: () => api<Paginated<Driver>>(`/drivers?${params}`),
+    placeholderData: keepPreviousData,
   });
   return (
     <>
       <header className="page-head">
         <h1>Drivers</h1>
+        {session.can(Permission.DRIVER_WRITE) && (
+          <Link className="btn btn-primary" to="/drivers/new">
+            Add driver
+          </Link>
+        )}
       </header>
+      <div className="toolbar">
+        <input placeholder="Search name or employee no." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select value={active} onChange={(e) => setActive(e.target.value)} aria-label="Status">
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+          <option value="">All</option>
+        </select>
+      </div>
       <div className="card table-card">
         <table>
           <thead>
@@ -35,6 +55,13 @@ export function DriversPage() {
                 </td>
               </tr>
             )}
+            {data?.items.length === 0 && (
+              <tr>
+                <td colSpan={6} className="muted">
+                  No drivers match.
+                </td>
+              </tr>
+            )}
             {data?.items.map((d) => {
               const lic = d.licenses[0];
               const days = daysUntil(lic?.expiresAt ?? null);
@@ -42,7 +69,10 @@ export function DriversPage() {
                 <tr key={d.id}>
                   <td>{d.employeeNo}</td>
                   <td>
-                    <strong>{d.fullName}</strong>
+                    <Link to={`/drivers/${d.id}`}>
+                      <strong>{d.fullName}</strong>
+                    </Link>
+                    {!d.active && <span className="badge badge-muted"> inactive</span>}
                   </td>
                   <td>{d.phone ?? '—'}</td>
                   <td>{lic ? `${lic.number} (${lic.licenseClass})` : '—'}</td>

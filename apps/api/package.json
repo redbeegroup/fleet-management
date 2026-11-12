@@ -19,6 +19,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1167.0",
     "@fms/shared": "workspace:*",
     "@nestjs/bullmq": "^10.2.3",
     "@nestjs/common": "^10.4.15",
@@ -32,6 +33,7 @@
     "argon2": "^0.41.1",
     "bullmq": "^5.34.0",
     "ioredis": "^5.4.1",
+    "nodemailer": "^6.10.1",
     "prisma": "^5.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -41,7 +43,9 @@
     "@nestjs/testing": "^10.4.15",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^1.4.13",
     "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.24",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",

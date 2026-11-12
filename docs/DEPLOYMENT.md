@@ -55,7 +55,15 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.Dockerfile -t fms/api:local .
 ```
 
-> Object storage (documents and photos) arrives with file uploads in Sprint 2. MinIO no longer publishes free community images, so pick an S3-compatible store then (for example SeaweedFS, Garage, Ceph RGW, or an existing company S3 service).
+**Files** are stored on the `files` Docker volume (local driver, one API replica). To test the S3 driver, point `STORAGE_DRIVER=s3` and `S3_*` at any S3-compatible service.
+
+**Run a background job on demand:**
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env run --rm -e MODE=job -e JOB=compliance-alerts api
+```
+
+Alert emails appear in Mailpit at http://127.0.0.1:8025.
 
 ---
 
@@ -101,6 +109,8 @@ Create the Secret with your secret tooling (External Secrets, Vault, sealed-secr
 | `REDIS_URL` | `rediss://:***@redis.internal:6380/0` |
 | `JWT_ACCESS_SECRET` | 64+ random characters |
 | `WATCHTOWER_API_KEY` | issued by Watch Tower |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object storage credentials (bucket from `config.S3_BUCKET`) |
+| `SMTP_URL` | `smtps://user:***@smtp.example.com:465` (optional; email alerts) |
 
 Manual example (for a first test only):
 
@@ -125,6 +135,7 @@ What happens:
 - `database.externalService`: an in-cluster name (`<release>-fms-db`) for the external cluster, either as an `ExternalName` or as a selector-less Service with an EndpointSlice when only IPs are available.
 - `networkPolicy`: default deny, then egress allowed to DNS, the DB CIDRs, intra-release traffic and HTTPS.
 - Pod security: non-root, read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp. The API image is distroless.
+- Files: `STORAGE_DRIVER=s3` (default in the chart). The API needs egress to the S3 endpoint (add its CIDR to `networkPolicy.extraEgressCidrs` if you restrict egress).
 
 ### 2.4 Rollback
 

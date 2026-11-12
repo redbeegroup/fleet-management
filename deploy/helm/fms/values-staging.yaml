@@ -4,6 +4,8 @@ image:
   web: { tag: "" }
 config:
   SWAGGER_ENABLED: "true"
+  S3_BUCKET: fms-staging
+  APP_URL: https://fms-staging.example.com
   CORS_ORIGINS: https://fms-staging.example.com
 api:
   replicas: 1

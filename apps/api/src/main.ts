@@ -3,7 +3,9 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { env } from './common/config/env';
-import { ApiAppModule, IngestAppModule, WorkerAppModule } from './app.module';
+import { ApiAppModule, IngestAppModule, JobAppModule, WorkerAppModule } from './app.module';
+import { TelematicsService } from './modules/telematics/telematics.service';
+import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 
 async function bootstrapApi() {
   const cfg = env();
@@ -34,13 +36,28 @@ async function bootstrapBackground(module: typeof WorkerAppModule | typeof Inges
   Logger.log(`${label} started`, 'Bootstrap');
 }
 
-const mode = env().MODE;
+async function runJob(name: string | undefined) {
+  const app = await NestFactory.createApplicationContext(JobAppModule);
+  const jobs: Record<string, () => Promise<unknown>> = {
+    'compliance-alerts': () => app.get(ComplianceAlertsJob).run(),
+    'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
+  };
+  const job = name ? jobs[name] : undefined;
+  if (!job) throw new Error(`Unknown JOB "${name}". Available: ${Object.keys(jobs).join(', ')}`);
+  const result = await job();
+  Logger.log(`Job ${name} finished: ${JSON.stringify(result ?? {})}`, 'Job');
+  await app.close();
+}
+
+const { MODE: mode, JOB: jobName } = env();
 const run =
   mode === 'worker'
     ? bootstrapBackground(WorkerAppModule, 'Worker')
     : mode === 'ingest'
       ? bootstrapBackground(IngestAppModule, 'Ingest')
-      : bootstrapApi();
+      : mode === 'job'
+        ? runJob(jobName)
+        : bootstrapApi();
 
 run.catch((err) => {
   Logger.error(err, 'Bootstrap');
