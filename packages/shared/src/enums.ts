@@ -42,6 +42,14 @@ export const TripStatus = {
 } as const;
 export type TripStatus = (typeof TripStatus)[keyof typeof TripStatus];
 
+export const TRIP_STATUS_TRANSITIONS: Record<TripStatus, TripStatus[]> = {
+  PLANNED: ['ASSIGNED', 'CANCELLED'],
+  ASSIGNED: ['PLANNED', 'ONGOING', 'CANCELLED'],
+  ONGOING: ['COMPLETED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
 /**
  * Allowed vehicle status transitions. DISPOSED is terminal.
  */

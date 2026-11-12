@@ -7,8 +7,11 @@ const nav = [
   { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
   { to: '/map', label: 'Live map', perm: Permission.TRACKING_READ },
   { to: '/events', label: 'Events', perm: Permission.TRACKING_READ },
+  { to: '/dispatch', label: 'Dispatch board', perm: Permission.TRIP_WRITE },
+  { to: '/trips', label: 'Trips', perm: Permission.TRIP_WRITE },
   { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
   { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
+  { to: '/attendance', label: 'Attendance', perm: Permission.DRIVER_READ },
   { to: '/geofences', label: 'Geofences', perm: Permission.TRACKING_READ },
   { to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ },
 ];

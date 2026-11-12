@@ -207,13 +207,19 @@ export class VehiclesService {
   history(user: AuthUser, id: string) {
     return this.db.tenant(user.companyId, async (tx) => {
       await this.mustExist(tx, id);
-      const [statuses, assignments, documents] = await Promise.all([
+      const [statuses, assignments, documents, trips] = await Promise.all([
         tx.vehicleStatusEvent.findMany({ where: { vehicleId: id } }),
         tx.vehicleAssignment.findMany({
           where: { vehicleId: id },
           include: { driver: { select: { fullName: true } } },
         }),
         tx.vehicleDocument.findMany({ where: { vehicleId: id } }),
+        tx.trip.findMany({
+          where: { vehicleId: id, status: 'COMPLETED' },
+          include: { driver: { select: { fullName: true } } },
+          orderBy: { actualEnd: 'desc' },
+          take: 200,
+        }),
       ]);
       const events = [
         ...statuses.map((e) => ({
@@ -233,6 +239,14 @@ export class VehiclesService {
           kind: 'document' as const,
           summary: `${d.type} ${d.number ?? ''} added${d.expiresAt ? `, expires ${d.expiresAt.toISOString().slice(0, 10)}` : ''}`,
           refId: d.id,
+        })),
+        ...trips.map((t) => ({
+          at: t.actualEnd ?? t.plannedEnd,
+          kind: 'trip' as const,
+          summary: `${t.tripNo} ${t.originName} → ${t.destinationName}${t.driver ? ` (${t.driver.fullName})` : ''}${
+            t.gpsDistanceKm ? `, ${Number(t.gpsDistanceKm)} km` : ''
+          }`,
+          refId: t.id,
         })),
       ];
       return events.sort((a, b) => b.at.getTime() - a.at.getTime());

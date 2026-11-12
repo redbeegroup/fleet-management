@@ -10,6 +10,7 @@ import { DbModule } from './common/db/db.module';
 import { HealthController } from './common/health/health.controller';
 import { PrismaExceptionFilter } from './common/http/prisma-exception.filter';
 import { RedisModule } from './common/redis/redis.module';
+import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { FilesModule } from './modules/files/files.module';
 import { IamModule } from './modules/iam/iam.module';
@@ -40,6 +41,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     DriversModule,
     TelematicsModule,
     TelematicsLiveModule,
+    DispatchModule,
   ],
   controllers: [HealthController],
   providers: [

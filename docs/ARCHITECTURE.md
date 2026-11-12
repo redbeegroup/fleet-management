@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -112,6 +112,10 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 ## Notifications
 
 `NotificationsService.notify()` resolves recipients (explicit users, or users holding the given roles; default super/company admins and fleet managers), inserts one `notifications` row per user with `skipDuplicates` on `(user_id, dedupe_key)`, and then fans *newly created* notifications out to channels. The email channel sends warning/critical only. Users read their own notifications via `/api/notifications`.
+
+## Dispatch
+
+`modules/dispatch`: `TripsService` (lifecycle, availability), `DutyService` (attendance), `MeController` (driver self-service; every call resolves the driver linked to the signed-in user). Assignment validation runs inside the tenant transaction after `SELECT … FOR UPDATE` on the vehicle and driver rows, which serialises competing bookings without needing the `btree_gist` extension. Trip numbers come from `company_counters` (atomic upsert-increment).
 
 ## Background jobs
 

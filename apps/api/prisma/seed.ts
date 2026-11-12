@@ -187,6 +187,52 @@ async function main() {
         });
       }
     }
+
+    // Demo trips around "now" so the dispatch board has content.
+    if (!(await tx.trip.count({ where: { companyId: company.id } }))) {
+      const H = 3_600_000;
+      const now = Date.now();
+      const vs = await tx.vehicle.findMany({ where: { companyId: company.id }, orderBy: { plateNumber: 'asc' } });
+      const ds = await tx.driver.findMany({ where: { companyId: company.id }, orderBy: { employeeNo: 'asc' } });
+      const plate = (p: string) => vs.find((v) => v.plateNumber === p)!.id;
+      const demo = [
+        { from: 'Yangon HQ', to: 'Bago distributor', s: -7, e: -4, v: 'YGN-1A-1001', d: 0, status: 'COMPLETED' as const },
+        { from: 'Yangon HQ', to: 'Thilawa port', s: -1, e: 2, v: 'YGN-2B-2002', d: 1, status: 'ONGOING' as const },
+        { from: 'Yangon HQ', to: 'Hlaing Tharyar warehouse', s: 3, e: 6, v: 'YGN-1A-1001', d: 0, status: 'ASSIGNED' as const },
+        { from: 'Mandalay branch', to: 'Pyin Oo Lwin', s: 1, e: 5, v: 'MDY-4D-4004', d: 0, status: 'PLANNED' as const },
+        { from: 'Yangon HQ', to: 'Insein market', s: 5, e: 7, v: null, d: null, status: 'PLANNED' as const },
+      ];
+      for (const [i, t] of demo.entries()) {
+        const assigned = t.status !== 'PLANNED';
+        const start = new Date(now + t.s * H);
+        await tx.trip.create({
+          data: {
+            companyId: company.id,
+            tripNo: `TRP-${start.getUTCFullYear()}-${String(i + 1).padStart(6, '0')}`,
+            originName: t.from,
+            destinationName: t.to,
+            plannedStart: start,
+            plannedEnd: new Date(now + t.e * H),
+            status: t.status,
+            vehicleId: assigned && t.v ? plate(t.v) : null,
+            driverId: assigned && t.d !== null ? ds[t.d].id : null,
+            actualStart: t.status === 'ONGOING' || t.status === 'COMPLETED' ? start : null,
+            actualEnd: t.status === 'COMPLETED' ? new Date(now + t.e * H) : null,
+            gpsDistanceKm: t.status === 'COMPLETED' ? 74.3 : null,
+            purpose: 'Delivery',
+            statusHistory: { create: { companyId: company.id, toStatus: t.status, note: 'Seeded' } },
+          },
+        });
+        if (t.status === 'ONGOING' && t.v) {
+          await tx.vehicle.update({ where: { id: plate(t.v) }, data: { status: 'OPERATING' } });
+        }
+      }
+      await tx.companyCounter.upsert({
+        where: { companyId_key: { companyId: company.id, key: `trip:${new Date().getUTCFullYear()}` } },
+        update: {},
+        create: { companyId: company.id, key: `trip:${new Date().getUTCFullYear()}`, value: demo.length },
+      });
+    }
   });
 
   console.log(`Seed complete. Admin login: ${adminEmail}`);

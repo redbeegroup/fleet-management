@@ -6,9 +6,14 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DriverDetailPage } from './pages/DriverDetailPage';
 import { DriverFormPage } from './pages/DriverFormPage';
 import { DriversPage } from './pages/DriversPage';
+import { AttendancePage } from './pages/AttendancePage';
+import { DispatchBoardPage } from './pages/DispatchBoardPage';
 import { EventsPage } from './pages/EventsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TripDetailPage } from './pages/TripDetailPage';
+import { TripFormPage } from './pages/TripFormPage';
+import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { VehicleFormPage } from './pages/VehicleFormPage';
@@ -40,6 +45,11 @@ export function App() {
         <Route path="map" element={withMap(<LiveMapPage />)} />
         <Route path="geofences" element={withMap(<GeofencesPage />)} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="dispatch" element={<DispatchBoardPage />} />
+        <Route path="trips" element={<TripsPage />} />
+        <Route path="trips/new" element={<TripFormPage />} />
+        <Route path="trips/:id" element={<TripDetailPage />} />
+        <Route path="attendance" element={<AttendancePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />

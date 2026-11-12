@@ -102,13 +102,13 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Vehicle scheduling | P1 | 1 / S4 | ⏳ |
-| Driver assignment | P1 | 1 / S4 | 🟡 vehicle↔driver assignment exists |
-| Trip management | P1 | 1 / S4 | ⏳ (statuses defined in `@fms/shared`) |
-| Dispatch management | P1 | 1 / S4 | ⏳ |
-| Vehicle & driver availability | P1 | 1 / S4 | ⏳ |
-| Trip status | P1 | 1 / S4 | ⏳ |
-| Trip completion (actuals) | P1 | 1 / S4 | ⏳ |
+| Vehicle scheduling | P1 | 1 / S4 | ✅ dispatch board (vehicle × time), day/3-day/week |
+| Driver assignment | P1 | 1 / S4 | ✅ per trip, with availability and licence checks; standing vehicle↔driver assignment |
+| Trip management | P1 | 1 / S4 | ✅ create, edit, assign, start, complete, cancel; numbered per company |
+| Dispatch management | P1 | 1 / S4 | ✅ dispatch board + driver notifications on assignment |
+| Vehicle & driver availability | P1 | 1 / S4 | ✅ overlap, vehicle status, licence validity/class, with reasons; row locks prevent double booking |
+| Trip status | P1 | 1 / S4 | ✅ state machine + status history |
+| Trip completion (actuals) | P1 | 1 / S4 | ✅ actual times, odometer, GPS distance; vehicle odometer/status updated |
 | Vehicle capacity | P2 | 2 | 🟡 kg / m³ stored on vehicle |
 | Multi-stop routing | P2 | 2 | ⏳ |
 | Route optimization | P2 | 2 | ⏳ OSRM + VROOM containers |
@@ -153,7 +153,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 |---|---|---|---|
 | Driver profile | P1 | 1 / S2 | ✅ |
 | Driving licence management + expiry | P1 | 1 / S2 | ✅ licences with scans, expiry alerts to managers and the driver |
-| Driver attendance | P1 | 1 / S4 | ⏳ duty status from the driver app |
+| Driver attendance | P1 | 1 / S4 | ✅ duty sessions (app or supervisor), daily attendance report |
 | Driver assignment history | P1 | 1 / S2 | ✅ |
 | Driver behaviour monitoring | P2 | 2 | ⏳ harsh accel/brake/corner from telematics |
 | Driver performance score | P2 | 2 | ⏳ |
@@ -221,7 +221,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 |---|---|---|---|
 | Road tax & registration tracking | P1 | 1 / S2 | ✅ as vehicle document types with expiry |
 | Insurance management | P1 | 1 / S2 | ✅ policy number, issuer, expiry, premium amount, policy scan |
-| Driving licence compliance | P1 | 1 / S2–S4 | 🟡 expiry done; licence-class vs vehicle-class check at dispatch in S4 |
+| Driving licence compliance | P1 | 1 / S2–S4 | ✅ expiry alerts; licence class vs vehicle class enforced at dispatch (configurable) |
 | Vehicle inspection checklist | P2 | 2 | ⏳ |
 | Accident management | P2 | 2 | ⏳ |
 | Insurance claims | P2 | 2 | ⏳ |
@@ -233,7 +233,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
 | Driver mobile app | P1 | 1 / S6 | 🟡 Expo skeleton with login |
-| Trip start/end | P1 | 1 / S6 | ⏳ |
+| Trip start/end | P1 | 1 / S6 | 🟡 API ready (`/api/me/trips/:id/start|complete`); app screens in S6 |
 | Driver notifications (push) | P1 | 1 / S6 | ⏳ |
 | Vehicle inspection | P2 | 2 | ⏳ |
 | Fuel expense submission | P2 | 2 | ⏳ |
@@ -346,5 +346,14 @@ Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
 - **Live map over WebSocket:** ingest publishes to Redis; every API pod forwards to its company room (socket.io at `/api/socket.io`, WebSocket transport only so no sticky sessions are needed).
 - **Web:** live map with fences and live event feed, trip playback, events list, geofence editor (circle/polygon), settings page.
 - **Watch Tower contract test** against a recorded sample payload (`providers/__fixtures__`) — replace with a real recording once the API contract is confirmed.
+
+### Sprint 4 (delivered)
+
+- **Trips** with company-sequential numbers (`TRP-2026-000123`), lifecycle PLANNED → ASSIGNED → ONGOING → COMPLETED/CANCELLED, status history.
+- **Assignment rules** (pure, unit-tested `dispatch/eligibility.ts`): no overlapping active trips (ongoing trips block until completed), vehicle not under repair/inactive, driver active with a licence valid through the trip end and of an allowed class (`settings.dispatch.licenceRules`, default TRUCK: C/D/E, BUS: D/E, TRAILER: E, MOTORCYCLE: A). Vehicle and driver rows are locked (`FOR UPDATE`) while checking, so concurrent bookings cannot both succeed (e2e-tested).
+- **Actuals:** start sets the vehicle to OPERATING and records the start odometer; completion computes GPS distance from the track, derives the end odometer if not entered, advances the vehicle odometer and returns the vehicle to ASSIGNED/AVAILABLE.
+- **Attendance:** duty sessions (one open session per driver, enforced by a partial unique index), daily report in the company timezone.
+- **Driver self-service API** (`/api/me/...`): profile, active/recent trips, start/complete own trips, duty on/off.
+- **Web:** dispatch board (double-click to plan), trips list, trip form with live availability, trip detail with lifecycle actions, attendance page.
 
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

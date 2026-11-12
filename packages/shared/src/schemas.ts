@@ -161,10 +161,100 @@ export type TelematicsSettings = z.infer<typeof telematicsSettingsSchema>;
 
 export const companySettingsSchema = z.object({
   telematics: telematicsSettingsSchema.default({}),
+  // Declared lazily: dispatchSettingsSchema is defined further down this file.
+  dispatch: z.lazy(() => dispatchSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
 export const updateCompanySettingsSchema = z.object({
   telematics: telematicsSettingsSchema.partial().optional(),
+  dispatch: z.lazy(() => dispatchSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Dispatch (Sprint 4)
+// ---------------------------------------------------------------------------
+
+const place = {
+  originName: z.string().trim().min(1).max(200),
+  originLat: z.number().min(-90).max(90).optional().nullable(),
+  originLng: z.number().min(-180).max(180).optional().nullable(),
+  destinationName: z.string().trim().min(1).max(200),
+  destinationLat: z.number().min(-90).max(90).optional().nullable(),
+  destinationLng: z.number().min(-180).max(180).optional().nullable(),
+};
+
+const window = z
+  .object({ plannedStart: z.coerce.date(), plannedEnd: z.coerce.date() })
+  .refine((w) => w.plannedEnd > w.plannedStart, { path: ['plannedEnd'], message: 'plannedEnd must be after plannedStart' })
+  .refine((w) => w.plannedEnd.getTime() - w.plannedStart.getTime() <= 14 * 86_400_000, {
+    path: ['plannedEnd'],
+    message: 'A trip can be planned for at most 14 days',
+  });
+
+export const createTripSchema = z
+  .object({
+    ...place,
+    plannedStart: z.coerce.date(),
+    plannedEnd: z.coerce.date(),
+    branchId: z.string().uuid().optional().nullable(),
+    vehicleId: z.string().uuid().optional().nullable(),
+    driverId: z.string().uuid().optional().nullable(),
+    purpose: z.string().max(200).optional().nullable(),
+    cargoDescription: z.string().max(500).optional().nullable(),
+    cargoWeightKg: z.number().nonnegative().optional().nullable(),
+    notes: z.string().max(2000).optional().nullable(),
+  })
+  .and(window);
+export type CreateTripInput = z.infer<typeof createTripSchema>;
+
+export const updateTripSchema = z.object({
+  ...Object.fromEntries(Object.entries(place).map(([k, v]) => [k, v.optional()])),
+  plannedStart: z.coerce.date().optional(),
+  plannedEnd: z.coerce.date().optional(),
+  purpose: z.string().max(200).optional().nullable(),
+  cargoDescription: z.string().max(500).optional().nullable(),
+  cargoWeightKg: z.number().nonnegative().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+}) as z.ZodType<Partial<Omit<CreateTripInput, 'vehicleId' | 'driverId' | 'branchId'>>>;
+export type UpdateTripInput = z.infer<typeof updateTripSchema>;
+
+export const assignTripSchema = z.object({
+  vehicleId: z.string().uuid(),
+  driverId: z.string().uuid(),
+});
+export type AssignTripInput = z.infer<typeof assignTripSchema>;
+
+export const startTripSchema = z.object({
+  at: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional(),
+});
+export type StartTripInput = z.infer<typeof startTripSchema>;
+
+export const completeTripSchema = z.object({
+  at: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional(),
+  notes: z.string().max(2000).optional(),
+});
+export type CompleteTripInput = z.infer<typeof completeTripSchema>;
+
+export const cancelTripSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+export type CancelTripInput = z.infer<typeof cancelTripSchema>;
+
+export const availabilityQuerySchema = z
+  .object({ from: z.coerce.date(), to: z.coerce.date(), excludeTripId: z.string().uuid().optional() })
+  .refine((w) => w.to > w.from, { path: ['to'], message: '`to` must be after `from`' });
+export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;
+
+/**
+ * Licence classes allowed per vehicle class (configurable per company).
+ * An empty list means any valid licence is accepted.
+ */
+export const dispatchSettingsSchema = z.object({
+  enforceLicenceClass: z.boolean().default(true),
+  licenceRules: z
+    .record(z.string(), z.array(z.string().trim().toUpperCase()))
+    .default({ TRUCK: ['C', 'D', 'E'], BUS: ['D', 'E'], TRAILER: ['E'], MOTORCYCLE: ['A'] }),
+});
+export type DispatchSettings = z.infer<typeof dispatchSettingsSchema>;

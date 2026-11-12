@@ -52,3 +52,22 @@ export function formatDuration(minutes: number): string {
   const m = minutes % 60;
   return h ? `${h} h ${m} min` : `${m} min`;
 }
+
+export const TRIP_TONE: Record<string, 'ok' | 'info' | 'warn' | 'danger' | 'muted'> = {
+  PLANNED: 'muted',
+  ASSIGNED: 'info',
+  ONGOING: 'warn',
+  COMPLETED: 'ok',
+  CANCELLED: 'danger',
+};
+
+/** "12 Nov, 08:30" */
+export function formatDateTime(d: string | Date | null): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Value for <input type="datetime-local"> in the browser's timezone. */
+export function toLocalInput(d: Date): string {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}

@@ -65,7 +65,11 @@ export class OrganizationController {
     return this.db.tenant(user.companyId, async (tx) => {
       const company = await tx.company.findFirst({ select: { settings: true } });
       const current = parseCompanySettings(company?.settings);
-      const next = parseCompanySettings({ ...current, telematics: { ...current.telematics, ...body.telematics } });
+      const next = parseCompanySettings({
+        ...current,
+        telematics: { ...current.telematics, ...body.telematics },
+        dispatch: { ...current.dispatch, ...body.dispatch },
+      });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;
     });

@@ -159,3 +159,49 @@ export interface CompanySettings {
     offlineMinutes: number;
   };
 }
+
+export interface Trip {
+  id: string;
+  tripNo: string;
+  status: 'PLANNED' | 'ASSIGNED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
+  purpose: string | null;
+  originName: string;
+  destinationName: string;
+  plannedStart: string;
+  plannedEnd: string;
+  actualStart: string | null;
+  actualEnd: string | null;
+  startOdometerKm: string | null;
+  endOdometerKm: string | null;
+  gpsDistanceKm: string | null;
+  cargoDescription: string | null;
+  cargoWeightKg: string | null;
+  notes: string | null;
+  cancelReason: string | null;
+  vehicleId: string | null;
+  driverId: string | null;
+  vehicle: { id: string; plateNumber: string; vehicleClass: string; make: string; model: string } | null;
+  driver: { id: string; fullName: string; employeeNo: string; phone: string | null } | null;
+  statusHistory?: { id: string; fromStatus: string | null; toStatus: string; note: string | null; createdAt: string }[];
+}
+
+export interface Availability {
+  vehicles: { id: string; plateNumber: string; vehicleClass: string; status: string; make: string; model: string; available: boolean; reasons: string[] }[];
+  drivers: { id: string; fullName: string; employeeNo: string; onDuty: boolean; licenceClasses: string[]; available: boolean; reasons: string[] }[];
+}
+
+export interface Attendance {
+  day: string;
+  timezone: string;
+  drivers: {
+    id: string;
+    fullName: string;
+    employeeNo: string;
+    present: boolean;
+    onDutyNow: boolean;
+    firstIn: string | null;
+    lastOut: string | null;
+    dutyMinutes: number;
+    completedTrips: number;
+  }[];
+}

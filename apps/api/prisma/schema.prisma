@@ -192,6 +192,7 @@ model Vehicle {
   documents     VehicleDocument[]
   assignments   VehicleAssignment[]
   statusHistory VehicleStatusEvent[]
+  Trip          Trip[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -273,6 +274,8 @@ model Driver {
   user        User?               @relation(fields: [userId], references: [id])
   licenses    DriverLicense[]
   assignments VehicleAssignment[]
+  trips       Trip[]
+  duty        DutySession[]
 
   @@unique([companyId, employeeNo])
   @@map("drivers")
@@ -430,4 +433,98 @@ model VehicleTelemetryState {
 
   @@index([companyId])
   @@map("vehicle_telemetry_state")
+}
+
+enum TripStatus {
+  PLANNED
+  ASSIGNED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+/// Per-company sequence numbers (trip numbers, work orders…).
+model CompanyCounter {
+  companyId String @map("company_id") @db.Uuid
+  key       String
+  value     Int    @default(0)
+
+  @@id([companyId, key])
+  @@map("company_counters")
+}
+
+/// A transport task: one vehicle + driver from origin to destination.
+model Trip {
+  id               String     @id @default(uuid()) @db.Uuid
+  companyId        String     @map("company_id") @db.Uuid
+  tripNo           String     @map("trip_no")
+  branchId         String?    @map("branch_id") @db.Uuid
+  vehicleId        String?    @map("vehicle_id") @db.Uuid
+  driverId         String?    @map("driver_id") @db.Uuid
+  status           TripStatus @default(PLANNED)
+  purpose          String?
+  originName       String     @map("origin_name")
+  originLat        Float?     @map("origin_lat")
+  originLng        Float?     @map("origin_lng")
+  destinationName  String     @map("destination_name")
+  destinationLat   Float?     @map("destination_lat")
+  destinationLng   Float?     @map("destination_lng")
+  plannedStart     DateTime   @map("planned_start")
+  plannedEnd       DateTime   @map("planned_end")
+  actualStart      DateTime?  @map("actual_start")
+  actualEnd        DateTime?  @map("actual_end")
+  startOdometerKm  Decimal?   @map("start_odometer_km") @db.Decimal(12, 1)
+  endOdometerKm    Decimal?   @map("end_odometer_km") @db.Decimal(12, 1)
+  gpsDistanceKm    Decimal?   @map("gps_distance_km") @db.Decimal(10, 1)
+  cargoDescription String?    @map("cargo_description")
+  cargoWeightKg    Decimal?   @map("cargo_weight_kg") @db.Decimal(12, 2)
+  notes            String?
+  cancelReason     String?    @map("cancel_reason")
+  createdBy        String?    @map("created_by") @db.Uuid
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  vehicle       Vehicle?          @relation(fields: [vehicleId], references: [id])
+  driver        Driver?           @relation(fields: [driverId], references: [id])
+  statusHistory TripStatusEvent[]
+
+  @@unique([companyId, tripNo])
+  @@index([companyId, plannedStart])
+  @@index([vehicleId, plannedStart])
+  @@index([driverId, plannedStart])
+  @@index([companyId, status])
+  @@map("trips")
+}
+
+model TripStatusEvent {
+  id         String      @id @default(uuid()) @db.Uuid
+  companyId  String      @map("company_id") @db.Uuid
+  tripId     String      @map("trip_id") @db.Uuid
+  fromStatus TripStatus? @map("from_status")
+  toStatus   TripStatus  @map("to_status")
+  note       String?
+  userId     String?     @map("user_id") @db.Uuid
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, createdAt])
+  @@map("trip_status_events")
+}
+
+/// Driver on-duty session (attendance). endedAt null = currently on duty.
+model DutySession {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  driverId  String    @map("driver_id") @db.Uuid
+  startedAt DateTime  @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  source    String    @default("web")
+  createdBy String?   @map("created_by") @db.Uuid
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, startedAt])
+  @@index([companyId, startedAt])
+  @@map("duty_sessions")
 }
