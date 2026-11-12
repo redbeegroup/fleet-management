@@ -153,6 +153,7 @@ export interface TrackResponse {
 }
 
 export interface CompanySettings {
+  dispatch: { enforceLicenceClass: boolean; licenceRules: Record<string, string[]> };
   telematics: {
     speedLimitKmh: number;
     overspeedHysteresisKmh: number;

@@ -2,6 +2,7 @@ import { Paginated, Permission } from '@fms/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { licenceShort } from '../components/LicenceFields';
 import { api, session } from '../lib/api';
 import { daysUntil, expiryTone, formatDate } from '../lib/format';
 import type { Driver } from '../lib/types';
@@ -75,7 +76,7 @@ export function DriversPage() {
                     {!d.active && <span className="badge badge-muted"> inactive</span>}
                   </td>
                   <td>{d.phone ?? '—'}</td>
-                  <td>{lic ? `${lic.number} (${lic.licenseClass})` : '—'}</td>
+                  <td>{lic ? `${lic.number} (${licenceShort(lic.licenseClass)})` : '—'}</td>
                   <td>
                     {formatDate(lic?.expiresAt ?? null)}{' '}
                     {days !== null && days <= 30 && (

@@ -26,7 +26,8 @@ describe('Sprint 4 dispatch (e2e)', () => {
   let truck: string;
   let van: string;
   let heavyDriver: string; // class E, linked to driver login
-  let carDriver: string; // class B, linked to other login
+  let carDriver: string; // class D (commercial), linked to other login
+  let privateDriver: string; // class B (private) — not enough for company vehicles
 
   const http = () => request(app.getHttpServer());
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -48,7 +49,10 @@ describe('Sprint 4 dispatch (e2e)', () => {
         data: { companyId: a, employeeNo: `${run}-1`, fullName: 'Heavy Driver', userId: u1.id, licenses: { create: { companyId: a, number: 'H1', licenseClass: 'B/E', expiresAt: new Date(Date.now() + 365 * 86_400_000) } } },
       })).id;
       carDriver = (await tx.driver.create({
-        data: { companyId: a, employeeNo: `${run}-2`, fullName: 'Car Driver', userId: u2.id, licenses: { create: { companyId: a, number: 'C1', licenseClass: 'B', expiresAt: new Date(Date.now() + 365 * 86_400_000) } } },
+        data: { companyId: a, employeeNo: `${run}-2`, fullName: 'Car Driver', userId: u2.id, licenses: { create: { companyId: a, number: 'C1', licenseClass: 'D', expiresAt: new Date(Date.now() + 365 * 86_400_000) } } },
+      })).id;
+      privateDriver = (await tx.driver.create({
+        data: { companyId: a, employeeNo: `${run}-3`, fullName: 'Private Driver', licenses: { create: { companyId: a, number: 'P1', licenseClass: 'B', expiresAt: new Date(Date.now() + 365 * 86_400_000) } } },
       })).id;
       truck = (await tx.vehicle.create({ data: { companyId: a, plateNumber: `${run}-TRK`, make: 'Hino', model: '500', vehicleClass: 'TRUCK', odometerKm: 1000, gpsDeviceId: `GPS-${run}` } })).id;
       van = (await tx.vehicle.create({ data: { companyId: a, plateNumber: `${run}-VAN`, make: 'Toyota', model: 'Hiace', vehicleClass: 'VAN' } })).id;
@@ -97,9 +101,11 @@ describe('Sprint 4 dispatch (e2e)', () => {
     await http().post('/api/trips').set(auth(token)).send(trip(0, 1, { vehicleId: truck })).expect(400); // vehicle without driver
   });
 
-  it('enforces licence class for heavy vehicles', async () => {
+  it('enforces Myanmar licence classes (commercial rules)', async () => {
     const res = await http().post('/api/trips').set(auth(token)).send(trip(10, 12, { vehicleId: truck, driverId: carDriver })).expect(409);
-    expect(res.body.reasons.join(' ')).toMatch(/requires licence class/);
+    expect(res.body.reasons.join(' ')).toMatch(/requires licence class င \(E\)/);
+    const priv = await http().post('/api/trips').set(auth(token)).send(trip(10, 12, { vehicleId: van, driverId: privateDriver })).expect(409);
+    expect(priv.body.reasons.join(' ')).toMatch(/ဃ \(D\) or င \(E\)/);
     await http().post('/api/trips').set(auth(token)).send(trip(10, 12, { vehicleId: van, driverId: carDriver })).expect(201);
   });
 

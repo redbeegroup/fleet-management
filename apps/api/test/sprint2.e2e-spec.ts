@@ -198,6 +198,19 @@ describe('Sprint 2 (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ number: 'L-77', licenseClass: 'E', expiresAt: '2030-01-01' })
         .expect(201);
+      // Myanmar letter input is normalised; expiry defaults to the category validity (ဃ D = 3 years).
+      const mm = await http()
+        .post(`/api/drivers/${d.body.id}/licenses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ number: 'L-78', licenseClass: 'ဃ', issuedAt: '2026-01-15' })
+        .expect(201);
+      expect(mm.body.licenseClass).toBe('D');
+      expect(mm.body.expiresAt.slice(0, 10)).toBe('2029-01-15');
+      await http()
+        .post(`/api/drivers/${d.body.id}/licenses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ number: 'L-79', licenseClass: 'Z' })
+        .expect(400);
       await http()
         .post(`/api/vehicles/${vehicleId}/assignments`)
         .set('Authorization', `Bearer ${tokenA}`)
@@ -211,7 +224,7 @@ describe('Sprint 2 (e2e)', () => {
 
       const detail = await http().get(`/api/drivers/${d.body.id}`).set('Authorization', `Bearer ${tokenA}`).expect(200);
       expect(detail.body).toMatchObject({ phone: '+95 9 123', active: false });
-      expect(detail.body.licenses[0].number).toBe('L-77');
+      expect(detail.body.licenses.map((l: { number: string }) => l.number).sort()).toEqual(['L-77', 'L-78']);
       expect(detail.body.assignments.every((a: { endAt: string | null }) => a.endAt !== null)).toBe(true);
 
       // Not visible from company B

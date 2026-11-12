@@ -377,4 +377,11 @@ Delivered in Sprint 1:
 - **Push:** `user_devices` + Expo push channel (warning/critical and personal notifications such as trip assignments); unregistered tokens pruned.
 - **Observability:** Prometheus `/metrics` (HTTP latency, positions ingested, telemetry events, notifications, job runs; worker/ingest on `METRICS_PORT`), JSON logs (`LOG_FORMAT=json`), Helm scrape annotations.
 
+### Post-Phase-1 decisions (applied)
+
+- **Myanmar licence categories** (`packages/shared/src/licences.ts`): သ T learner (1 y), က A motorcycle, ခ B private, ဂ C machinery, ဃ D taxi & commercial (3 y), င E heavy (3 y), ဌ TR tractor, ဟ TW three-wheeler, စ CO conductor (5 y unless noted). Myanmar letters or Latin codes are accepted; expiry defaults from the category validity. **Company vehicles are commercial**: cars/vans/pickups need ဃ or င; trucks, buses and trailers need င; tractors ဌ; machinery ဂ; motorcycles က/ခ/ဃ/င/ဟ. Learner and conductor permits never qualify. Rules are editable per company (`settings.dispatch.licenceRules`). New vehicle classes: three-wheeler, tractor, machinery.
+- **Storage**: SeaweedFS (S3 API) in the Docker test stack, configured only through environment variables; production points `S3_*` at any S3-compatible service.
+- **Driver app** configuration via environment (`EXPO_PUBLIC_API_URL`, `EAS_PROJECT_ID`).
+- **Watch Tower API**: pending from the customer.
+
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

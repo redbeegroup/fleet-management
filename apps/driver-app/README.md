@@ -10,7 +10,7 @@ npm install
 npx expo start
 ```
 
-The API base URL is `expo.extra.apiUrl` in `app.json` (default `http://10.0.2.2:8080/api`, i.e. the Docker test stack seen from an Android emulator). For a phone on the LAN use the host's IP.
+Configuration comes from the environment (`app.config.ts`): copy `.env.example` to `.env` and set `EXPO_PUBLIC_API_URL` (default `http://10.0.2.2:8080/api`, the Docker test stack seen from an Android emulator; for a phone on the same Wi-Fi use your computer's LAN IP) and `EAS_PROJECT_ID`.
 
 ## Builds
 
@@ -20,7 +20,7 @@ Production builds use [EAS](https://docs.expo.dev/build/introduction/):
 npx eas build --platform android --profile production
 ```
 
-Set `expo.extra.eas.projectId` (needed for push tokens) and `expo.extra.apiUrl` per environment. Push requires `PUSH_ENABLED=true` on the API (and `EXPO_ACCESS_TOKEN` if the Expo project enforces access tokens).
+Set `EAS_PROJECT_ID` (needed for push tokens) and `EXPO_PUBLIC_API_URL` per build profile (EAS environment variables). Push requires `PUSH_ENABLED=true` on the API (and `EXPO_ACCESS_TOKEN` if the Expo project enforces access tokens).
 
 ## Checks (also in CI)
 

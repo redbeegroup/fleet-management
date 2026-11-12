@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CreateDriverInput, CreateDriverLicenseInput, Paginated, PaginationInput, UpdateDriverInput } from '@fms/shared';
+import { CreateDriverInput, CreateDriverLicenseInput, defaultLicenceExpiry, Paginated, PaginationInput, UpdateDriverInput } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService, Tx } from '../../common/db/prisma.service';
 import { FilesService } from '../files/files.service';
@@ -60,7 +60,8 @@ export class DriversService {
   }
 
   create(user: AuthUser, input: CreateDriverInput) {
-    const { licenseNumber, licenseClass, licenseExpiresAt, ...driver } = input;
+    const { licenseNumber, licenseClass, licenseIssuedAt, licenseExpiresAt, ...driver } = input;
+    if (licenseNumber && !licenseClass) throw new BadRequestException('licenseClass is required with licenseNumber');
     return this.db.tenant(user.companyId, (tx) =>
       tx.driver.create({
         data: {
@@ -71,8 +72,9 @@ export class DriversService {
               create: {
                 companyId: user.companyId,
                 number: licenseNumber,
-                licenseClass: licenseClass ?? 'UNSPECIFIED',
-                expiresAt: licenseExpiresAt ?? null,
+                licenseClass: licenseClass!,
+                issuedAt: licenseIssuedAt ?? null,
+                expiresAt: licenseExpiresAt ?? (licenseIssuedAt ? defaultLicenceExpiry(licenseIssuedAt, licenseClass!) : null),
               },
             },
           }),
@@ -112,7 +114,8 @@ export class DriversService {
     return this.db.tenant(user.companyId, async (tx) => {
       await this.mustExist(tx, driverId);
       await FilesService.assertOwned(tx, input.fileId);
-      return tx.driverLicense.create({ data: { ...input, driverId, companyId: user.companyId } });
+      const expiresAt = input.expiresAt ?? (input.issuedAt ? defaultLicenceExpiry(input.issuedAt, input.licenseClass) : null);
+      return tx.driverLicense.create({ data: { ...input, expiresAt, driverId, companyId: user.companyId } });
     });
   }
 

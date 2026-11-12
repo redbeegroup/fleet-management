@@ -71,12 +71,31 @@ export class S3StorageDriver implements StorageDriver {
   }
 
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
-    await this.ensureBucket();
-    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+    await this.retry(async () => {
+      await this.ensureBucket();
+      await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+    });
+  }
+
+  /** Retries transient network failures (e.g. the S3 service still starting up). */
+  private async retry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+    for (let i = 1; ; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const code = (err as { code?: string; $metadata?: { httpStatusCode?: number } }).code;
+        const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+        const transient = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE'].includes(code ?? '') || (status !== undefined && status >= 500);
+        if (!transient || i >= attempts) throw err;
+        this.logger.warn(`S3 call failed (${code ?? status}), retry ${i}/${attempts - 1}`);
+        this.bucketChecked = false;
+        await new Promise((r) => setTimeout(r, 250 * 2 ** i));
+      }
+    }
   }
 
   async get(key: string): Promise<Readable> {
-    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const res = await this.retry(() => this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key })));
     return res.Body as Readable;
   }
 

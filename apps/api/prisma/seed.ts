@@ -179,7 +179,8 @@ async function main() {
               create: {
                 companyId: company.id,
                 number: `LIC-${5000 + i}`,
-                licenseClass: i === 0 ? 'E' : 'B',
+                // Myanmar categories: င (E) heavy, ဃ (D) commercial, ခ (B) private only.
+                licenseClass: ['E', 'D', 'B'][i],
                 expiresAt: new Date(Date.now() + (i * 200 + 10) * 86_400_000),
               },
             },
@@ -187,6 +188,9 @@ async function main() {
         });
       }
     }
+
+    // Upgrade databases seeded before the Myanmar licence rules: Kyaw Kyaw drives the company van (needs ဃ D).
+    await tx.driverLicense.updateMany({ where: { companyId: company.id, number: 'LIC-5001', licenseClass: 'B' }, data: { licenseClass: 'D' } });
 
     // Demo trips around "now" so the dispatch board has content.
     if (!(await tx.trip.count({ where: { companyId: company.id } }))) {

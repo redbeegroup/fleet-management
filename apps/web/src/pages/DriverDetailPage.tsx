@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileLink } from '../components/FileLink';
+import { LicenceFields, licenceShort } from '../components/LicenceFields';
 import { api, session, uploadFile } from '../lib/api';
 import { daysUntil, expiryTone, formatDate } from '../lib/format';
 import type { Driver } from '../lib/types';
@@ -134,7 +135,7 @@ export function DriverDetailPage() {
                 return (
                   <tr key={l.id}>
                     <td>{l.number}</td>
-                    <td>{l.licenseClass}</td>
+                    <td>{licenceShort(l.licenseClass)}</td>
                     <td>{formatDate(l.issuedAt)}</td>
                     <td>
                       {formatDate(l.expiresAt)}{' '}
@@ -161,15 +162,7 @@ export function DriverDetailPage() {
         {canWrite && (
           <form className="inline-form" onSubmit={submitLicense}>
             <input name="number" placeholder="Licence number" required />
-            <input name="licenseClass" placeholder="Class" required size={6} />
-            <label className="mini">
-              Issued
-              <input name="issuedAt" type="date" />
-            </label>
-            <label className="mini">
-              Expires
-              <input name="expiresAt" type="date" />
-            </label>
+            <LicenceFields compact names={{ cls: 'licenseClass', issued: 'issuedAt', expires: 'expiresAt' }} />
             <label className="mini">
               Scan (PDF/photo)
               <input name="file" type="file" accept="application/pdf,image/*" />

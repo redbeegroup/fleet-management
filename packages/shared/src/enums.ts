@@ -16,6 +16,9 @@ export const VehicleClass = {
   BUS: 'BUS',
   MOTORCYCLE: 'MOTORCYCLE',
   TRAILER: 'TRAILER',
+  THREE_WHEELER: 'THREE_WHEELER',
+  TRACTOR: 'TRACTOR',
+  MACHINERY: 'MACHINERY',
   OTHER: 'OTHER',
 } as const;
 export type VehicleClass = (typeof VehicleClass)[keyof typeof VehicleClass];

@@ -9,7 +9,9 @@ describe('licenceClasses', () => {
     ['E', ['E']],
     ['b/e', ['B', 'E']],
     ['B, E', ['B', 'E']],
-    ['BE', ['B', 'E']],
+    ['ခ, င', ['B', 'E']],
+    ['TR', ['TR']], // not split into T + R
+    ['ဟ', ['TW']],
     ['UNSPECIFIED', ['UNSPECIFIED']],
   ])('%s', (raw, out) => expect(licenceClasses(raw)).toEqual(out));
 });
@@ -22,10 +24,25 @@ describe('checkLicence', () => {
     const r = checkLicence('CAR', [{ licenseClass: 'B', expiresAt: new Date('2026-06-01T00:00:00Z') }], end, settings);
     expect(r).toEqual({ ok: false, reasons: ['Driving licence expires before the trip ends'] });
   });
-  it('enforces class rules for heavy vehicles', () => {
-    expect(checkLicence('TRUCK', [{ licenseClass: 'B', expiresAt: null }], end, settings).ok).toBe(false);
-    expect(checkLicence('TRUCK', [{ licenseClass: 'B/E', expiresAt: null }], end, settings).ok).toBe(true);
-    expect(checkLicence('VAN', [{ licenseClass: 'B', expiresAt: null }], end, settings).ok).toBe(true); // no rule
+  it('enforces the Myanmar commercial rules', () => {
+    const ok = (cls: string, lic: string) => checkLicence(cls, [{ licenseClass: lic, expiresAt: null }], end, settings).ok;
+    expect(ok('TRUCK', 'D')).toBe(false);
+    expect(ok('TRUCK', 'E')).toBe(true);
+    expect(ok('VAN', 'B')).toBe(false); // private licence is not enough for a company van
+    expect(ok('VAN', 'ဃ')).toBe(true);
+    expect(ok('MOTORCYCLE', 'A')).toBe(true);
+    expect(ok('THREE_WHEELER', 'TW')).toBe(true);
+    expect(ok('TRACTOR', 'TR')).toBe(true);
+    expect(ok('TRACTOR', 'E')).toBe(false);
+    expect(ok('MACHINERY', 'C')).toBe(true);
+    expect(checkLicence('VAN', [{ licenseClass: 'B', expiresAt: null }], end, settings).reasons[0]).toMatch(/requires licence class ဃ \(D\) or င \(E\)/);
+  });
+  it('never accepts learner or conductor permits', () => {
+    expect(checkLicence('OTHER', [{ licenseClass: 'T', expiresAt: null }], end, { ...settings, enforceLicenceClass: false })).toEqual({
+      ok: false,
+      reasons: ['Driver holds only a learner/conductor permit'],
+    });
+    expect(checkLicence('VAN', [{ licenseClass: 'CO/E', expiresAt: null }], end, settings).ok).toBe(true);
   });
   it('ignores expired licences when checking class', () => {
     const r = checkLicence('TRUCK', [
@@ -36,6 +53,7 @@ describe('checkLicence', () => {
   });
   it('can be relaxed per company', () => {
     expect(checkLicence('TRUCK', [{ licenseClass: 'B', expiresAt: null }], end, { ...settings, enforceLicenceClass: false }).ok).toBe(true);
+    expect(checkLicence('VAN', [{ licenseClass: 'B', expiresAt: null }], end, { ...settings, licenceRules: { ...settings.licenceRules, VAN: [] } }).ok).toBe(true);
   });
 });
 

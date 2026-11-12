@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { LicenceFields } from '../components/LicenceFields';
 import { api, ApiError } from '../lib/api';
 import type { Branch, Driver } from '../lib/types';
 
@@ -29,7 +30,8 @@ export function DriverFormPage() {
       phone: str('phone'),
       branchId: str('branchId'),
       licenseNumber: str('licenseNumber'),
-      licenseClass: str('licenseClass'),
+      licenseClass: str('licenseNumber') ? str('licenseClass') : null,
+      licenseIssuedAt: str('licenseIssuedAt'),
       licenseExpiresAt: str('licenseExpiresAt'),
     });
   }
@@ -67,14 +69,7 @@ export function DriverFormPage() {
           Licence number
           <input name="licenseNumber" />
         </label>
-        <label>
-          Licence class
-          <input name="licenseClass" placeholder="e.g. B, E" />
-        </label>
-        <label>
-          Licence expiry
-          <input name="licenseExpiresAt" type="date" />
-        </label>
+        <LicenceFields names={{ cls: 'licenseClass', issued: 'licenseIssuedAt', expires: 'licenseExpiresAt' }} />
         {error && <p className="error span-2">{error}</p>}
         <div className="span-2 actions">
           <button type="button" className="btn" onClick={() => navigate(-1)}>

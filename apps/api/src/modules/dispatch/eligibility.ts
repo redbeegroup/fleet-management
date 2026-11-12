@@ -1,4 +1,4 @@
-import type { DispatchSettings } from '@fms/shared';
+import { DispatchSettings, licenceInfo, parseLicenceClasses } from '@fms/shared';
 
 /** Pure rules deciding whether a vehicle/driver can take a trip. No I/O. */
 
@@ -9,12 +9,16 @@ export interface LicenceLike {
   expiresAt: Date | null;
 }
 
-/** "B/E", "B, E" or "BE"-style class strings → ['B', 'E']. */
-export function licenceClasses(raw: string): string[] {
-  const parts = raw.toUpperCase().split(/[\s,/;|+]+/).filter(Boolean);
-  // A single token of several single letters ("BE") is treated as multiple classes.
-  return parts.flatMap((p) => (p.length > 1 && /^[A-Z]+$/.test(p) && p.length <= 4 ? p.split('') : [p]));
-}
+/** "B/E", "ခ, င", "TR" → ['B', 'E'] / ['TR']; see @fms/shared licences. */
+export const licenceClasses = parseLicenceClasses;
+
+/** Learner (T) and conductor (CO) permits never allow driving a fleet vehicle. */
+const drives = (code: string) => licenceInfo(code)?.drives ?? false;
+
+const label = (code: string) => {
+  const i = licenceInfo(code);
+  return i ? `${i.myanmar} (${code})` : code;
+};
 
 export interface Verdict {
   ok: boolean;
@@ -28,16 +32,24 @@ export function checkLicence(
   tripEnd: Date,
   settings: DispatchSettings,
 ): Verdict {
-  const valid = licences.filter((l) => !l.expiresAt || l.expiresAt >= tripEnd);
-  if (!licences.length) return { ok: false, reasons: ['Driver has no driving licence on record'] };
+  const driving = licences.filter((l) => licenceClasses(l.licenseClass).some(drives));
+  if (!driving.length) {
+    return { ok: false, reasons: [licences.length ? 'Driver holds only a learner/conductor permit' : 'Driver has no driving licence on record'] };
+  }
+  const valid = driving.filter((l) => !l.expiresAt || l.expiresAt >= tripEnd);
   if (!valid.length) return { ok: false, reasons: ['Driving licence expires before the trip ends'] };
   if (!vehicleClass || !settings.enforceLicenceClass) return { ok: true, reasons: [] };
   const allowed = settings.licenceRules[vehicleClass] ?? [];
   if (!allowed.length) return { ok: true, reasons: [] };
-  const held = new Set(valid.flatMap((l) => licenceClasses(l.licenseClass)));
+  const held = new Set(valid.flatMap((l) => licenceClasses(l.licenseClass)).filter(drives));
   return allowed.some((c) => held.has(c))
     ? { ok: true, reasons: [] }
-    : { ok: false, reasons: [`A ${vehicleClass.toLowerCase()} requires licence class ${allowed.join('/')} (driver holds ${[...held].join('/') || 'none'})`] };
+    : {
+        ok: false,
+        reasons: [
+          `A ${vehicleClass.toLowerCase().replace('_', ' ')} requires licence class ${allowed.map(label).join(' or ')} (driver holds ${[...held].map(label).join(', ') || 'none'})`,
+        ],
+      };
 }
 
 export interface TripWindowLike {

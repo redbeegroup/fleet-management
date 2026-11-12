@@ -17,9 +17,15 @@ x-api-env: &api-env
   WATCHTOWER_BASE_URL: ${WATCHTOWER_BASE_URL:-}
   WATCHTOWER_API_KEY: ${WATCHTOWER_API_KEY:-}
   WATCHTOWER_POLL_SECONDS: ${WATCHTOWER_POLL_SECONDS:-30}
-  # Files: local volume in the test stack (single API replica). Use STORAGE_DRIVER=s3 for production.
-  STORAGE_DRIVER: local
+  # Files: S3 API (SeaweedFS in this stack). STORAGE_DRIVER=local + the files volume is a fallback.
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
   STORAGE_LOCAL_DIR: /app/.data/files
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://seaweedfs:8333}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-fms}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY}
+  S3_FORCE_PATH_STYLE: "true"
   FILE_MAX_MB: ${FILE_MAX_MB:-20}
   SMTP_URL: smtp://mailpit:1025
   MAIL_FROM: ${MAIL_FROM:-FMS <no-reply@fms.local>}
@@ -64,6 +70,27 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # S3-compatible object storage for documents, photos and receipts.
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.80
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        printf '{"identities":[{"name":"fms","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json -master.volumeSizeLimitMB=1024 -volume.max=0
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
   mailpit:
     image: axllent/mailpit:v1.21
     ports:
@@ -101,6 +128,8 @@ services:
       migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
 
   worker:
@@ -141,4 +170,5 @@ services:
 volumes:
   pgdata:
   files:
+  s3data:
   redisdata:

@@ -1,7 +1,9 @@
 import { Permission } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
+import { licenceShort } from '../components/LicenceFields';
 import { api, ApiError, session } from '../lib/api';
+import { humanize } from '../lib/format';
 import type { CompanySettings } from '../lib/types';
 
 export function SettingsPage() {
@@ -63,6 +65,29 @@ export function SettingsPage() {
           </div>
         )}
       </form>
+      <section className="card">
+        <h2>Licence rules for dispatch</h2>
+        <p className="muted">
+          Myanmar licence categories required to assign a driver to each vehicle class{data.dispatch.enforceLicenceClass ? '' : ' (currently not enforced)'}. Company vehicles are
+          treated as commercial, so cars, vans and pickups need ဃ (D) or င (E). Learner (သ) and conductor (စ) permits never qualify.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Vehicle class</th>
+              <th>Accepted licences</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(data.dispatch.licenceRules).map(([cls, codes]) => (
+              <tr key={cls}>
+                <td>{humanize(cls)}</td>
+                <td>{codes.length ? licenceShort(codes.join(',')) : <span className="muted">any valid licence</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </>
   );
 }

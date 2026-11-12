@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DocumentType, OwnershipType, VehicleClass, VehicleStatus } from './enums';
+import { DEFAULT_LICENCE_RULES, normalizeLicenceClass } from './licences';
 
 const optionalDate = z.coerce.date().optional().nullable();
 
@@ -78,7 +79,15 @@ export const createDriverSchema = z.object({
   phone: z.string().max(32).optional().nullable(),
   branchId: z.string().uuid().optional().nullable(),
   licenseNumber: z.string().max(64).optional().nullable(),
-  licenseClass: z.string().max(16).optional().nullable(),
+  licenseClass: z
+    .string()
+    .trim()
+    .transform((v, ctx) => {
+      const c = normalizeLicenceClass(v);
+      if (!c) ctx.addIssue({ code: 'custom', message: 'Unknown licence class (use T, A, B, C, D, E, TR, TW, CO or the Myanmar letter)' });
+      return c ?? v;
+    }).optional().nullable(),
+  licenseIssuedAt: optionalDate,
   licenseExpiresAt: optionalDate,
 });
 export type CreateDriverInput = z.infer<typeof createDriverSchema>;
@@ -97,7 +106,14 @@ export type UpdateDriverInput = z.infer<typeof updateDriverSchema>;
 
 export const createDriverLicenseSchema = z.object({
   number: z.string().trim().min(1).max(64),
-  licenseClass: z.string().trim().min(1).max(16),
+  licenseClass: z
+    .string()
+    .trim()
+    .transform((v, ctx) => {
+      const c = normalizeLicenceClass(v);
+      if (!c) ctx.addIssue({ code: 'custom', message: 'Unknown licence class (use T, A, B, C, D, E, TR, TW, CO or the Myanmar letter)' });
+      return c ?? v;
+    }),
   issuedAt: optionalDate,
   expiresAt: optionalDate,
   fileId: z.string().uuid().optional().nullable(),
@@ -258,7 +274,7 @@ export const dispatchSettingsSchema = z.object({
   enforceLicenceClass: z.boolean().default(true),
   licenceRules: z
     .record(z.string(), z.array(z.string().trim().toUpperCase()))
-    .default({ TRUCK: ['C', 'D', 'E'], BUS: ['D', 'E'], TRAILER: ['E'], MOTORCYCLE: ['A'] }),
+    .default(DEFAULT_LICENCE_RULES),
 });
 export type DispatchSettings = z.infer<typeof dispatchSettingsSchema>;
 

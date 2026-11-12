@@ -25,6 +25,7 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 |---|---|
 | `postgres` | `postgis/postgis:16-3.4`. The init script creates the non-superuser `fms_app` role and extensions |
 | `redis` | queues, locks |
+| `seaweedfs` | S3-compatible object storage for files |
 | `mailpit` | catches outgoing email (UI on `127.0.0.1:8025`) |
 | `migrate` | one-shot: `prisma migrate deploy` as the owner, then the demo seed if `SEED=true` |
 | `api`, `worker`, `ingest` | the API image with `MODE=api / worker / ingest` |
@@ -55,7 +56,7 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.Dockerfile -t fms/api:local .
 ```
 
-**Files** are stored on the `files` Docker volume (local driver, one API replica). To test the S3 driver, point `STORAGE_DRIVER=s3` and `S3_*` at any S3-compatible service.
+**Files** (documents, photos, receipts) go to the bundled **SeaweedFS** S3 service (`seaweedfs`, data in the `s3data` volume). Everything is set in `.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (and `S3_ENDPOINT` to use another S3 service instead). `STORAGE_DRIVER=local` stores files on the `files` volume as a fallback. The bucket is created automatically on first upload.
 
 **Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
 

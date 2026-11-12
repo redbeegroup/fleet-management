@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { licenceShort } from './LicenceFields';
 import { humanize } from '../lib/format';
 import type { Availability } from '../lib/types';
 
@@ -48,7 +49,7 @@ export function AssignmentPicker({ from, to, vehicleId, driverId, excludeTripId,
           <option value="">— not yet —</option>
           {data?.drivers.map((d) => (
             <option key={d.id} value={d.id} disabled={!d.available}>
-              {d.fullName} ({d.employeeNo}) · licence {d.licenceClasses.join(', ') || 'none'}
+              {d.fullName} ({d.employeeNo}) · licence {d.licenceClasses.map(licenceShort).join(', ') || 'none'}
               {d.onDuty ? ' · on duty' : ''}
               {d.available ? '' : ` — ${d.reasons[0]}`}
             </option>
