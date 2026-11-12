@@ -168,3 +168,26 @@ Set `PUSH_ENABLED=true` (chart default) and, if your Expo project requires it, t
 3. **images**: builds both images. To publish, add a registry login and set `push: true` on `main`.
 
 Suggested CD: tag images with the git SHA, then `helm upgrade` to staging automatically and to production with a manual approval (GitHub Environments or Argo CD).
+
+---
+
+## 4. CorexLab test cluster (Talos via Portainer)
+
+Deployed to Portainer environment `talos-corexlab-portainer` (id 17), namespace `fms`:
+
+| Release | Chart | Notes |
+|---|---|---|
+| `fms-db` | `deploy/helm/fms-test-postgres` + `values-corexlab.yaml` | PostGIS 16 on `synology-iscsi`, pinned to nodes with the Talos `iscsi-tools` extension |
+| `fms` | `deploy/helm/fms` + `values-corexlab.yaml` | Public GHCR images (pinned commit tag), SeaweedFS `https://s3.corexlab.net` bucket `cannopy-fms`, mock telematics, internal Redis |
+
+Secrets live in the `fms-secrets` Secret (created out of band; keys: `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `JWT_ACCESS_SECRET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `SEED_ADMIN_PASSWORD`).
+
+**Ingress** is managed manually (Traefik): route `fms.corexlab.net` to service **`fms-web`** port **80** in namespace `fms` (it serves the SPA, `/api` and the `/api/socket.io` WebSocket). The NetworkPolicy admits the `traefik` namespace.
+
+**Upgrade** to a newer build (images are published by `.github/workflows/images.yml` on every push):
+
+```bash
+helm upgrade fms deploy/helm/fms -n fms -f deploy/helm/fms/values-corexlab.yaml --set image.api.tag=<git-sha> --set image.web.tag=<git-sha> --wait --timeout 15m
+```
+
+**Known cluster issues** (at deployment time): `wo4` — flannel `cni0` has a wrong address (no pod can start) and lacks `iscsi-tools`; `wo1` — image pulls from ghcr.io hang; `synology-nfs` — the NAS rejects NFS 4.1; outbound pulls from Docker Hub/GHCR are slow and reset intermittently (Redis comes from `mirror.gcr.io`). FMS pods avoid `wo1` and `wo4` via affinity in `values-corexlab.yaml`; remove those exclusions once the nodes are fixed.
