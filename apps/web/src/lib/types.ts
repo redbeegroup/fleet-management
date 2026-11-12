@@ -304,3 +304,67 @@ export interface MaintenanceReport {
   totals: { cost: number; workOrders: number; downtimeMinutes: number };
   vehicles: { id: string; plateNumber: string; vehicleClass: string; status: string; downtimeMinutes: number; downtimePct: number; workOrders: number; cost: number; labour: number; parts: number; external: number }[];
 }
+
+export interface FleetKpis {
+  vehicles: number;
+  days: number;
+  distanceKm: number;
+  engineHours: number;
+  tripsCompleted: number;
+  fuelCost: number;
+  fuelLitres: number;
+  maintenanceCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+  fuelCostPerKm: number | null;
+  maintenanceCostPerKm: number | null;
+  fuelKmPerLitre: number | null;
+  utilizationPct: number | null;
+  availabilityPct: number | null;
+  downtimePct: number | null;
+  idlePct: number | null;
+  tripsPerVehiclePerDay: number | null;
+  overspeedEvents: number;
+  overspeedPer100Km: number | null;
+}
+
+export interface VehicleKpis {
+  id: string;
+  plateNumber: string;
+  vehicleClass: string;
+  branchName: string | null;
+  distanceKm: number;
+  daysUsed: number;
+  tripsCompleted: number;
+  fuelCost: number;
+  fuelLitres: number;
+  maintenanceCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+  fuelKmPerLitre: number | null;
+  utilizationPct: number | null;
+  idlePct: number | null;
+  downtimeMinutes: number;
+  overspeedEvents: number;
+  overspeedPer100Km: number | null;
+}
+
+export interface Overview {
+  range: { from: string; to: string; days: number; timezone: string; currency: string };
+  fleet: FleetKpis;
+  vehicles: VehicleKpis[];
+  branches: (FleetKpis & { branchId: string | null; branchName: string })[];
+  expenseByCategory: Record<string, number>;
+  series: { day: string; distanceKm: number; fuelCost: number; maintenanceCost: number; otherCost: number; totalCost: number; activeVehicles: number }[];
+}
+
+export interface Expense {
+  id: string;
+  category: string;
+  incurredAt: string;
+  amount: string;
+  description: string | null;
+  vehicle: { id: string; plateNumber: string };
+}

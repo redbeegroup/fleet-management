@@ -40,6 +40,19 @@ const envSchema = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('FMS <no-reply@fms.local>'),
   APP_URL: z.string().default('http://localhost:8080'),
+  /** Expo push service (mobile notifications). */
+  PUSH_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  EXPO_PUSH_URL: z.string().default('https://exp.host/--/api/v2/push/send'),
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+
+  // Observability
+  LOG_FORMAT: z.enum(['text', 'json']).default('text'),
+  LOG_LEVEL: z.enum(['error', 'warn', 'log', 'debug', 'verbose']).default('log'),
+  /** Port for /metrics in worker/ingest processes (the API serves /metrics on its own port). */
+  METRICS_PORT: z.coerce.number().int().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

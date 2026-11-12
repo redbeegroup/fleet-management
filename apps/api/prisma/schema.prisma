@@ -123,6 +123,7 @@ model User {
   refreshTokens RefreshToken[]
   driver        Driver?
   notifications Notification[]
+  devices       UserDevice[]
 
   @@map("users")
 }
@@ -199,6 +200,7 @@ model Vehicle {
   MaintenancePlan MaintenancePlan[]
   RepairRequest   RepairRequest[]
   WorkOrder       WorkOrder[]
+  expenses        VehicleExpense[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -693,4 +695,63 @@ model WorkOrderLine {
 
   @@index([workOrderId])
   @@map("work_order_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Costs, analytics, devices (Sprint 6)
+// ---------------------------------------------------------------------------
+
+/// Operating expenses other than fuel and maintenance (tolls, parking, fines…).
+model VehicleExpense {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  vehicleId     String   @map("vehicle_id") @db.Uuid
+  tripId        String?  @map("trip_id") @db.Uuid
+  category      String
+  incurredAt    DateTime @map("incurred_at")
+  amount        Decimal  @db.Decimal(14, 2)
+  description   String?
+  receiptFileId String?  @map("receipt_file_id") @db.Uuid
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([companyId, incurredAt])
+  @@index([vehicleId, incurredAt])
+  @@map("vehicle_expenses")
+}
+
+/// Per vehicle per company-local day, rolled up from GPS positions by the worker.
+model VehicleDailyStat {
+  vehicleId     String   @map("vehicle_id") @db.Uuid
+  day           DateTime @db.Date
+  companyId     String   @map("company_id") @db.Uuid
+  distanceKm    Decimal  @default(0) @map("distance_km") @db.Decimal(10, 2)
+  engineMinutes Int      @default(0) @map("engine_minutes")
+  movingMinutes Int      @default(0) @map("moving_minutes")
+  idleMinutes   Int      @default(0) @map("idle_minutes")
+  maxSpeedKmh   Float?   @map("max_speed_kmh")
+  positions     Int      @default(0)
+  computedAt    DateTime @default(now()) @map("computed_at")
+
+  @@id([vehicleId, day])
+  @@index([companyId, day])
+  @@map("vehicle_daily_stats")
+}
+
+/// Mobile push tokens (Expo) per user.
+model UserDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  pushToken  String   @unique @map("push_token")
+  platform   String
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_devices")
 }

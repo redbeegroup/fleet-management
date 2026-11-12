@@ -61,6 +61,15 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
+    # Prometheus (any namespace) scraping /metrics
+    - ports:
+        - { protocol: TCP, port: {{ .Values.api.port }} }
+        - { protocol: TCP, port: {{ .Values.config.METRICS_PORT }} }
+      from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
     # Within the release
     - from:
         - podSelector:

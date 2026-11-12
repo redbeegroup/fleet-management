@@ -10,6 +10,7 @@ const sections: { title: string; items: { to: string; label: string; perm: strin
       { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
       { to: '/map', label: 'Live map', perm: Permission.TRACKING_READ },
       { to: '/events', label: 'Events', perm: Permission.TRACKING_READ },
+      { to: '/reports', label: 'Reports & costs', perm: Permission.COST_READ },
     ],
   },
   {

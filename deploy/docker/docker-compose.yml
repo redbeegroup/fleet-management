@@ -24,6 +24,8 @@ x-api-env: &api-env
   SMTP_URL: smtp://mailpit:1025
   MAIL_FROM: ${MAIL_FROM:-FMS <no-reply@fms.local>}
   APP_URL: http://localhost:${WEB_PORT:-8080}
+  LOG_FORMAT: ${LOG_FORMAT:-text}
+  PUSH_ENABLED: ${PUSH_ENABLED:-false}
 
 x-api-image: &api-image
   image: fms/api:${IMAGE_TAG:-local}

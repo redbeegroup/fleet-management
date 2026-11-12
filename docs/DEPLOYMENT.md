@@ -57,7 +57,7 @@ docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.
 
 **Files** are stored on the `files` Docker volume (local driver, one API replica). To test the S3 driver, point `STORAGE_DRIVER=s3` and `S3_*` at any S3-compatible service.
 
-**Run a background job on demand:**
+**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env run --rm -e MODE=job -e JOB=compliance-alerts api
@@ -148,8 +148,13 @@ Migrations are forward-only. Ship schema changes as expand → migrate → contr
 ### 2.5 Observability
 
 - Probes: `/api/health/live` (liveness/startup) and `/api/health/ready` (checks DB and Redis).
-- Logs: Nest logs to stdout, collected by the cluster log stack (Loki or ELK). Structured JSON logging (pino) is planned for Sprint 6.
-- Planned: `/metrics` (Prometheus) and OpenTelemetry tracing in Sprint 6.
+- Logs: `LOG_FORMAT=json` (chart default) writes one JSON object per line (`time`, `level`, `context`, `msg`) for Loki/ELK; `LOG_LEVEL` controls verbosity.
+- Metrics: Prometheus format at `/metrics` — the API on its HTTP port (outside `/api`, so not exposed by the ingress), worker and ingest on `METRICS_PORT` (9100). Pods carry `prometheus.io/*` annotations; the NetworkPolicy admits pods labelled `app.kubernetes.io/name: prometheus`. Key series: `fms_http_request_duration_seconds`, `fms_positions_ingested_total`, `fms_telemetry_events_total{type}`, `fms_notifications_total{channel,result}`, `fms_job_runs_total{job,result}`.
+- Suggested alerts: ingest stalled (`rate(fms_positions_ingested_total[15m]) == 0` during working hours), job failures, API p95 latency, readiness failures.
+
+### 2.6 Mobile push
+
+Set `PUSH_ENABLED=true` (chart default) and, if your Expo project requires it, the `EXPO_ACCESS_TOKEN` secret key. The API needs egress to `exp.host:443`. The driver app registers its token after sign-in (`apps/driver-app/README.md`).
 
 ---
 

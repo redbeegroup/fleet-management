@@ -20,6 +20,8 @@ export const Permission = {
   MAINTENANCE_READ: 'maintenance:read',
   MAINTENANCE_WRITE: 'maintenance:write',
   REPAIR_REQUEST: 'repair-request:create',
+  COST_READ: 'cost:read',
+  COST_WRITE: 'cost:write',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -52,6 +54,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.FUEL_WRITE,
     Permission.MAINTENANCE_WRITE,
     Permission.REPAIR_REQUEST,
+    Permission.COST_WRITE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,

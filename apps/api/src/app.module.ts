@@ -11,7 +11,11 @@ import { HealthController } from './common/health/health.controller';
 import { PrismaExceptionFilter } from './common/http/prisma-exception.filter';
 import { RedisModule } from './common/redis/redis.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { MetricsInterceptor } from './common/observability/metrics';
+import { MetricsController } from './common/observability/metrics.controller';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { DriversModule } from './modules/drivers/drivers.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 import { FilesModule } from './modules/files/files.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
@@ -46,9 +50,12 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     DispatchModule,
     FuelModule,
     MaintenanceModule,
+    ExpensesModule,
+    AnalyticsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MetricsController],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
@@ -75,6 +82,7 @@ const redisConnection = () => {
     BullModule.forRootAsync({ useFactory: () => ({ connection: redisConnection() }) }),
     BullModule.registerQueue({ name: MAINTENANCE_QUEUE }),
     MaintenanceModule,
+    AnalyticsModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -89,7 +97,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, TelemetryEventType } from '@prisma/client';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService } from '../../common/db/prisma.service';
+import { positionsIngested, telemetryEvents } from '../../common/observability/metrics';
 import { RedisService } from '../../common/redis/redis.service';
 import type { PositionFix } from './providers/telematics-provider';
 import { haversineM, trackDistanceKm } from './rules/geo';
@@ -104,6 +105,8 @@ export class TelematicsService {
       return { stored: rows.length, latest, events };
     });
 
+    positionsIngested.inc(stored);
+    for (const e of events) telemetryEvents.inc({ type: e.type });
     await this.publish(latest, events);
     await this.rules.notify(events);
     return stored;

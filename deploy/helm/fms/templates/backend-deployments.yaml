@@ -26,6 +26,11 @@ spec:
         {{- include "fms.selectorLabels" (dict "root" $ "component" $component) | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        {{- if $.Values.metrics.annotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: {{ if eq $component "api" }}{{ $.Values.api.port | quote }}{{ else }}{{ $.Values.config.METRICS_PORT | quote }}{{ end }}
+        {{- end }}
     spec:
       {{- include "fms.podSecurity" $ | nindent 6 }}
       terminationGracePeriodSeconds: 30
@@ -37,6 +42,11 @@ spec:
           {{- include "fms.apiEnv" $ | nindent 10 }}
             - name: MODE
               value: {{ $component }}
+          {{- if ne $component "api" }}
+          ports:
+            - name: metrics
+              containerPort: {{ $.Values.config.METRICS_PORT }}
+          {{- end }}
           {{- if eq $component "api" }}
           ports:
             - name: http

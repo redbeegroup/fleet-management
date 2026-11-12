@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Role } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
+import { notificationsSent } from '../../common/observability/metrics';
 import { PrismaService } from '../../common/db/prisma.service';
 
 export type Severity = 'info' | 'warning' | 'critical';
@@ -81,6 +82,7 @@ export class NotificationsService {
       }),
     );
 
+    notificationsSent.inc({ channel: 'in-app', result: 'ok' }, created.length);
     const byUser = new Map(recipients.map((r) => [r.id, r]));
     for (const channel of this.channels.filter((c) => c.accepts(n))) {
       const delivered: string[] = [];

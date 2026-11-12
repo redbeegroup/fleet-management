@@ -59,7 +59,7 @@ env:
         name: {{ include "fms.secretName" . }}
         key: REDIS_URL
   {{- end }}
-  {{- range $key := list "WATCHTOWER_API_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "SMTP_URL" }}
+  {{- range $key := list "WATCHTOWER_API_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "SMTP_URL" "EXPO_ACCESS_TOKEN" }}
   - name: {{ $key }}
     valueFrom:
       secretKeyRef:

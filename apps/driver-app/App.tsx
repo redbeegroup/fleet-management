@@ -1,33 +1,36 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { DriverSession, login, restore, signOut } from './src/api';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { api, DriverSession, login, Me, restore, setSignedOutHandler, signOut, Trip } from './src/api';
+import { registerForPush } from './src/push';
+import { AlertsScreen } from './src/screens/AlertsScreen';
+import { FuelScreen, MyVehicle } from './src/screens/FuelScreen';
+import { ReportScreen } from './src/screens/ReportScreen';
+import { TripsScreen } from './src/screens/TripsScreen';
+import { Button, colors, Field, s } from './src/ui';
 
 /**
- * Driver app — Phase 1 skeleton.
- * Sprint 6: assigned trips, trip start/end with GPS + odometer, push notifications.
- * Phase 2: inspections, fuel receipts, repair requests, proof of delivery, offline queue (SQLite).
+ * FMS driver app: assigned trips (start / complete), on/off duty, fuel receipts,
+ * problem reports with photos, and notifications (push via Expo).
+ * Phase 2: inspections, proof of delivery, offline queue.
  */
 export default function App() {
   const [session, setSession] = useState<DriverSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [booting, setBooting] = useState(true);
 
   useEffect(() => {
+    setSignedOutHandler(() => setSession(null));
     restore().then((s) => {
       setSession(s);
-      setLoading(false);
+      setBooting(false);
     });
   }, []);
 
-  if (loading) return <ActivityIndicator style={styles.center} />;
+  if (booting) return <ActivityIndicator style={{ flex: 1 }} />;
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="auto" />
-      {session ? (
-        <TripsScreen session={session} onSignOut={async () => (await signOut(), setSession(null))} />
-      ) : (
-        <LoginScreen onLogin={setSession} />
-      )}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar style="dark" />
+      {session ? <Main session={session} onSignOut={async () => (await signOut(), setSession(null))} /> : <LoginScreen onLogin={setSession} />}
     </SafeAreaView>
   );
 }
@@ -36,44 +39,110 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   return (
-    <View style={styles.form}>
-      <Text style={styles.title}>FMS Driver</Text>
-      <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <Pressable
-        style={styles.button}
-        onPress={() => login(email, password).then(onLogin, (e: Error) => setError(e.message))}
-      >
-        <Text style={styles.buttonText}>Sign in</Text>
-      </Pressable>
-    </View>
+    <ScrollView contentContainerStyle={[s.screen, { marginTop: 48 }]} keyboardShouldPersistTaps="handled">
+      <Text style={s.title}>FMS Driver</Text>
+      <Field label="Email" autoCapitalize="none" keyboardType="email-address" autoComplete="email" value={email} onChangeText={setEmail} />
+      <Field label="Password" secureTextEntry autoComplete="password" value={password} onChangeText={setPassword} />
+      {error && <Text style={s.error}>{error}</Text>}
+      <Button
+        title="Sign in"
+        busy={busy}
+        onPress={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            onLogin(await login(email, password));
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </ScrollView>
   );
 }
 
-function TripsScreen({ session, onSignOut }: { session: DriverSession; onSignOut: () => void }) {
+type Tab = 'trips' | 'fuel' | 'report' | 'alerts';
+
+function Main({ session, onSignOut }: { session: DriverSession; onSignOut: () => void }) {
+  const [tab, setTab] = useState<Tab>('trips');
+  const [me, setMe] = useState<Me | null>(null);
+  const [vehicles, setVehicles] = useState<MyVehicle[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [dutyBusy, setDutyBusy] = useState(false);
+
+  const loadMe = useCallback(async () => {
+    try {
+      const [profile, trips, count] = await Promise.all([
+        api<Me>('/me/driver'),
+        api<Trip[]>('/me/trips?scope=active'),
+        api<{ count: number }>('/notifications/unread-count'),
+      ]);
+      setMe(profile);
+      setUnread(count.count);
+      const vs = new Map<string, MyVehicle>();
+      profile.driver.assignments.forEach((a) => vs.set(a.vehicle.id, a.vehicle));
+      trips.forEach((t) => t.vehicle && vs.set(t.vehicle.id, t.vehicle));
+      setVehicles([...vs.values()]);
+    } catch (e) {
+      Alert.alert('Could not load your profile', (e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMe();
+    void registerForPush();
+  }, [loadMe]);
+
+  async function toggleDuty() {
+    setDutyBusy(true);
+    try {
+      await api(me?.onDuty ? '/me/duty/end' : '/me/duty/start', { method: 'POST' });
+      await loadMe();
+    } catch (e) {
+      Alert.alert('Duty', (e as Error).message);
+    } finally {
+      setDutyBusy(false);
+    }
+  }
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'trips', label: 'Trips' },
+    { key: 'fuel', label: 'Fuel' },
+    { key: 'report', label: 'Report' },
+    { key: 'alerts', label: unread ? `Alerts (${unread})` : 'Alerts' },
+  ];
+
   return (
-    <View style={styles.form}>
-      <Text style={styles.title}>Hello, {session.user.fullName}</Text>
-      <Text style={styles.muted}>My trips will appear here once the dispatch module ships (Sprint 4–6).</Text>
-      <Pressable style={[styles.button, styles.secondary]} onPress={onSignOut}>
-        <Text style={styles.secondaryText}>Sign out</Text>
-      </Pressable>
+    <View style={{ flex: 1 }}>
+      <View style={[s.row, { padding: 16, paddingBottom: 8, justifyContent: 'space-between' }]}>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={s.h2}>{session.user.fullName}</Text>
+          <Text style={s.muted}>{me?.onDuty ? `On duty since ${new Date(me.onDuty.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : 'Off duty'}</Text>
+        </View>
+        <View style={[s.row]}>
+          <Button title={me?.onDuty ? 'Go off duty' : 'Go on duty'} kind={me?.onDuty ? 'secondary' : 'primary'} busy={dutyBusy} onPress={toggleDuty} />
+          <Pressable onPress={onSignOut} accessibilityRole="button" style={{ padding: 8 }}>
+            <Text style={{ color: colors.muted }}>Sign out</Text>
+          </Pressable>
+        </View>
+      </View>
+      <View style={{ flex: 1 }}>
+        {tab === 'trips' && <TripsScreen />}
+        {tab === 'fuel' && <FuelScreen vehicles={vehicles} />}
+        {tab === 'report' && <ReportScreen vehicles={vehicles} />}
+        {tab === 'alerts' && <AlertsScreen onRead={() => setUnread(0)} />}
+      </View>
+      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: colors.border, backgroundColor: '#fff' }}>
+        {tabs.map((t) => (
+          <Pressable key={t.key} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }} style={{ flex: 1, paddingVertical: 14, alignItems: 'center' }}>
+            <Text style={{ color: tab === t.key ? colors.primary : colors.muted, fontWeight: tab === t.key ? '700' : '500' }}>{t.label}</Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f9' },
-  center: { flex: 1 },
-  form: { padding: 24, gap: 12, marginTop: 48 },
-  title: { fontSize: 24, fontWeight: '700', color: '#1b2430' },
-  muted: { color: '#6b7686' },
-  input: { backgroundColor: '#fff', borderColor: '#e2e6ec', borderWidth: 1, borderRadius: 8, padding: 12 },
-  error: { color: '#b42318' },
-  button: { backgroundColor: '#1f5fbf', padding: 14, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  secondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#1f5fbf' },
-  secondaryText: { color: '#1f5fbf', fontWeight: '600' },
-});

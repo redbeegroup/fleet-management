@@ -322,6 +322,33 @@ async function main() {
         data: { companyId: company.id, vehicleId: vs.find((v) => v.plateNumber === 'YGN-2B-2002')!.id, description: 'Air conditioning not cooling', severity: 'MEDIUM', reportedBy: driverUser.id },
       });
     }
+
+    // 30 days of synthetic GPS history (working hours, every 2 minutes) for the
+    // vehicles with GPS devices, then the daily rollup — so the KPI dashboard has data.
+    const [{ count }] = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) FROM vehicle_positions WHERE company_id = ${company.id}::uuid`;
+    if (count < 1000n) {
+      for (let m = -2; m <= 1; m++) {
+        await tx.$executeRaw`SELECT fms_ensure_position_partition((date_trunc('month', now()) + make_interval(months => ${m}::int))::date)`;
+      }
+      await tx.$executeRaw`
+        INSERT INTO vehicle_positions (company_id, vehicle_id, recorded_at, latitude, longitude, speed_kmh, heading, ignition, source)
+        SELECT v.company_id, v.id, ts,
+               16.84 + 0.06 * sin(k / 40.0 + v.n) , 96.17 + 0.06 * cos(k / 40.0 + v.n),
+               CASE WHEN (k + v.n * 7) % 30 < 4 THEN 0 ELSE 35 + ((k * 13 + v.n * 17) % 40) END,
+               (k * 3) % 360,
+               (k + v.n * 7) % 30 <> 0,
+               'seed'
+          FROM (SELECT id, company_id, row_number() OVER (ORDER BY plate_number) AS n
+                  FROM vehicles WHERE company_id = ${company.id}::uuid AND gps_device_id IS NOT NULL) v
+          CROSS JOIN generate_series(1, 30) AS d
+          CROSS JOIN generate_series(0, 239) AS k
+          CROSS JOIN LATERAL (SELECT date_trunc('day', now() AT TIME ZONE 'Asia/Yangon') AT TIME ZONE 'Asia/Yangon'
+                                     - make_interval(days => d) + interval '8 hours' + make_interval(mins => k * 2) AS ts) t
+         -- Each vehicle rests one day a week (lower utilization, more realistic).
+         WHERE (d + v.n) % 7 <> 0
+        ON CONFLICT DO NOTHING`;
+      await tx.$queryRaw`SELECT fms_rollup_daily_stats((now() - interval '32 days')::date, now()::date)`;
+    }
   });
 
   console.log(`Seed complete. Admin login: ${adminEmail}`);

@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 / Sprint 1 scaffold delivered** (see [§8](#8-current-status)). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). Next: Phase 2. Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -186,10 +186,10 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Vehicle operating cost | P1 | 1 / S6 | ⏳ unified cost ledger (fuel, maintenance, driver, other) |
-| Cost per kilometre | P1 | 1 / S6 | ⏳ |
-| Fleet expense dashboard | P1 | 1 / S6 | ⏳ |
-| Maintenance cost analysis | P1 | 1 / S5–S6 | 🟡 cost & downtime report per vehicle; per-km in S6 |
+| Vehicle operating cost | P1 | 1 / S6 | ✅ fuel + maintenance + other expenses per vehicle |
+| Cost per kilometre | P1 | 1 / S6 | ✅ total, fuel and maintenance per km (GPS distance) |
+| Fleet expense dashboard | P1 | 1 / S6 | ✅ dashboard + reports by vehicle and branch, CSV |
+| Maintenance cost analysis | P1 | 1 / S5–S6 | ✅ parts/labour/external, per km, downtime |
 | Budget vs actual | P2 | 2 | ⏳ |
 | Total cost of ownership | P2 | 2 | ⏳ |
 | Cost per trip | P2 | 2 | ⏳ |
@@ -202,14 +202,14 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Fleet overview dashboard | P1 | 1 / S6 | 🟡 fleet size, availability, status breakdown, expiring documents |
-| Vehicle utilization | P1 | 1 / S6 | ⏳ |
-| Distance & trip analysis | P1 | 1 / S6 | ⏳ |
-| Vehicle downtime | P1 | 1 / S6 | ⏳ |
-| Fuel efficiency dashboard | P1 | 1 / S6 | ⏳ |
+| Fleet overview dashboard | P1 | 1 / S6 | ✅ KPI tiles, daily distance and cost charts, top cost/km, status, expiring documents |
+| Vehicle utilization | P1 | 1 / S6 | ✅ vehicle-days used, engine hours, idle % (daily GPS rollup) |
+| Distance & trip analysis | P1 | 1 / S6 | ✅ daily distance series, trips per vehicle-day |
+| Vehicle downtime | P1 | 1 / S6 | ✅ downtime and availability % |
+| Fuel efficiency dashboard | P1 | 1 / S6 | ✅ fleet and per-vehicle km/L |
 | Driver performance dashboard | P2 | 2 | ⏳ |
 | Delivery efficiency | P2 | 2 | ⏳ |
-| Branch fleet comparison | P2 | 3 | ⏳ |
+| Branch fleet comparison | P2 | 3 | 🟡 branch table in reports (Phase 1); benchmarking views in Phase 3 |
 | Vehicle productivity ranking | P2 | 3 | ⏳ |
 | Benchmarking (same class) | P2 | 3 | ⏳ |
 | Automated management reports | P2 | 3 | ⏳ daily/weekly/monthly PDF + email |
@@ -232,12 +232,12 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Driver mobile app | P1 | 1 / S6 | 🟡 Expo skeleton with login |
-| Trip start/end | P1 | 1 / S6 | 🟡 API ready (`/api/me/trips/:id/start|complete`); app screens in S6 |
-| Driver notifications (push) | P1 | 1 / S6 | ⏳ |
+| Driver mobile app | P1 | 1 / S6 | ✅ Expo app: trips, duty, fuel, problem reports, alerts |
+| Trip start/end | P1 | 1 / S6 | ✅ in the app, with optional odometer |
+| Driver notifications (push) | P1 | 1 / S6 | ✅ Expo push (device registration, dead-token pruning) + in-app list |
 | Vehicle inspection | P2 | 2 | ⏳ |
-| Fuel expense submission | P2 | 2 | ⏳ |
-| Repair requests | P2 | 2 | ⏳ |
+| Fuel expense submission | P2 | 2 | ✅ delivered early (S5/S6) |
+| Repair requests | P2 | 2 | ✅ delivered early (S5/S6) |
 | Proof of delivery | P2 | 2 | ⏳ |
 | Offline mode | P2 | 2 | ⏳ SQLite outbox + idempotency keys |
 | Fleet manager mobile app | P2 | 2 | ⏳ |
@@ -267,7 +267,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Multi-company & multi-branch | P1 | 1 / S1 | ✅ company/branch/department, RLS; consolidated group view in S6 |
 | Audit logs | P1 | 1 / S1 | ✅ every mutating request, sensitive fields redacted |
 | GPS device integration | P1 | 1 / S1–S3 | 🟡 `TelematicsProvider` + Watch Tower adapter |
-| Notification engine | P1 | 1 / S2–S6 | 🟡 in-app + SMTP email, role-based recipients, dedupe; push in S6 |
+| Notification engine | P1 | 1 / S2–S6 | ✅ in-app, SMTP e-mail, Expo push; role-based recipients; dedupe |
 | ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
 | DMS / TMS integration | P2 | 3 | ⏳ |
 | BI integration (Tableau, Metabase) | P2 | 3 | ⏳ read-only reporting schema / replica |
@@ -320,7 +320,9 @@ Implemented as SQL views / materialized views in `analytics`, refreshed by the w
 
 ## 8. Current status
 
-Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
+**Phase 1 is feature-complete** (all P1 items in modules 1–6, 8, 9, 10, 11 and 13 are ✅ above; module 7 logistics is scheduled for Phase 2 as an industry module). Next steps: run the UAT checklist, connect the real Watch Tower API (confirm the contract — the adapter is isolated in `WatchTowerProvider.toFix`), choose the production S3 store, then start Phase 2 (logistics & ePOD, dispatch optimisation, driver safety scoring, workflow/approvals, inspections, offline mobile).
+
+Delivered in Sprint 1:
 
 - Monorepo (pnpm + Turborepo); shared enums, permissions and zod schemas (`packages/shared`).
 - API: auth (login, refresh rotation with reuse detection, logout), RBAC, audit log, health checks, Swagger; organisation (company, branches, departments, users); **vehicles** (CRUD, status machine, assignments, documents, expiring documents); **drivers** (profiles, licences, expiring licences); **telematics** (provider interface, Watch Tower adapter, mock provider, ingest with leader election, partitioned positions, live positions, history); worker jobs (compliance alerts, partition maintenance).
@@ -364,5 +366,15 @@ Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
 - **Odometer:** devices that report an odometer keep the vehicle odometer current; fuel fills and trip completions also advance it (never backwards).
 - **Web:** fuel page (summary, per-vehicle, records, entry form), maintenance page (plans, work orders, repair requests, cost & downtime), work-order detail; navigation grouped into sections.
 - **Dev:** the web app compiles `@fms/shared` from source (Vite alias), so shared changes never hit a stale pre-bundled copy.
+
+### Sprint 6 (delivered) — Phase 1 complete
+
+- **Daily stats rollup** (`vehicle_daily_stats`, SQL function `fms_rollup_daily_stats`): distance (GPS-jump filtered), engine / moving / idle minutes and max speed per vehicle per company-local day; worker refreshes the last days every 30 minutes (`MODE=job JOB=daily-stats JOB_FROM=… JOB_TO=…` for backfills).
+- **Costs:** other operating expenses (tolls, parking, fines, insurance, allowances…) with receipts; operating cost = fuel + maintenance + other.
+- **KPIs** (`modules/analytics/kpis.ts`, pure and unit-tested): cost/km, fuel and maintenance cost/km, km/L, utilization (vehicle-days used), availability and downtime %, idle %, trips per vehicle-day, overspeed per 100 km — fleet, per vehicle and per branch, with a daily series; CSV export (formula-injection safe).
+- **Web:** KPI dashboard with charts (validated palette, hover + keyboard tooltips, table view, dark mode), reports page (vehicles, branches, expenses, CSV).
+- **Driver app:** trips start/complete, duty, fuel with receipt photo, problem reports with photo, alerts; Expo push registration. Type-checked and bundled in CI.
+- **Push:** `user_devices` + Expo push channel (warning/critical and personal notifications such as trip assignments); unregistered tokens pruned.
+- **Observability:** Prometheus `/metrics` (HTTP latency, positions ingested, telemetry events, notifications, job runs; worker/ingest on `METRICS_PORT`), JSON logs (`LOG_FORMAT=json`), Helm scrape annotations.
 
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

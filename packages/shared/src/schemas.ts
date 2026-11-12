@@ -360,3 +360,43 @@ export const maintenanceSettingsSchema = z.object({
   lowEfficiencyRatio: z.number().min(0.1).max(1).default(0.7),
 });
 export type MaintenanceSettings = z.infer<typeof maintenanceSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Costs & analytics (Sprint 6)
+// ---------------------------------------------------------------------------
+
+export const ExpenseCategory = {
+  TOLL: 'TOLL',
+  PARKING: 'PARKING',
+  FINE: 'FINE',
+  INSURANCE: 'INSURANCE',
+  ROAD_TAX: 'ROAD_TAX',
+  DRIVER_ALLOWANCE: 'DRIVER_ALLOWANCE',
+  CLEANING: 'CLEANING',
+  LEASE: 'LEASE',
+  OTHER: 'OTHER',
+} as const;
+
+export const createExpenseSchema = z.object({
+  vehicleId: z.string().uuid(),
+  tripId: z.string().uuid().optional().nullable(),
+  category: z.nativeEnum(ExpenseCategory),
+  incurredAt: z.coerce.date(),
+  amount: z.number().positive().max(1e12),
+  description: z.string().max(500).optional().nullable(),
+  receiptFileId: z.string().uuid().optional().nullable(),
+});
+export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+export const analyticsRangeSchema = z
+  .object({ from: isoDay, to: isoDay, branchId: z.string().uuid().optional() })
+  .refine((r) => r.from <= r.to, { path: ['to'], message: '`to` must not be before `from`' })
+  .refine((r) => (Date.parse(r.to) - Date.parse(r.from)) / 86_400_000 <= 366, { path: ['to'], message: 'At most one year' });
+export type AnalyticsRange = z.infer<typeof analyticsRangeSchema>;
+
+export const registerDeviceSchema = z.object({
+  pushToken: z.string().min(10).max(300),
+  platform: z.enum(['ios', 'android', 'web']),
+});
+export type RegisterDeviceInput = z.infer<typeof registerDeviceSchema>;

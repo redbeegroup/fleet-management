@@ -5,8 +5,34 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "android": { "package": "com.fms.driver", "permissions": ["ACCESS_FINE_LOCATION", "CAMERA"] },
-    "ios": { "bundleIdentifier": "com.fms.driver" },
-    "extra": { "apiUrl": "http://10.0.2.2:8080/api" }
+    "android": {
+      "package": "com.fms.driver",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.fms.driver",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take photos of fuel receipts and vehicle problems."
+      }
+    },
+    "extra": {
+      "apiUrl": "http://10.0.2.2:8080/api",
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Take photos of fuel receipts and vehicle problems."
+        }
+      ],
+      "expo-notifications",
+      "expo-asset"
+    ]
   }
 }

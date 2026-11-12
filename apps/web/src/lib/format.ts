@@ -95,3 +95,14 @@ export function monthRange(offset = 0): { from: string; to: string } {
   const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return { from: f(from), to: f(to) };
 }
+
+const pad = (n: number) => String(n).padStart(2, '0');
+export const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** Inclusive local-day range ending today. */
+export function lastDays(n: number): { from: string; to: string } {
+  const to = new Date();
+  return { from: isoDay(new Date(to.getFullYear(), to.getMonth(), to.getDate() - (n - 1))), to: isoDay(to) };
+}
+
+export const shortDay = (iso: string) => new Date(`${iso}T00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });

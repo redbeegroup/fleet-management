@@ -13,6 +13,7 @@ import { FuelPage } from './pages/FuelPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { WorkOrderPage } from './pages/WorkOrderPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
@@ -57,6 +58,7 @@ export function App() {
         <Route path="maintenance" element={<MaintenancePage />} />
         <Route path="maintenance/work-orders/:id" element={<WorkOrderPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />
