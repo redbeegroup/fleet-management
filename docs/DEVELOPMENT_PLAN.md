@@ -119,28 +119,28 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Fuel consumption recording | P1 | 1 / S5 | ⏳ |
-| Fuel expense tracking | P1 | 1 / S5 | ⏳ |
-| Fuel efficiency (km/L, L/100 km) | P1 | 1 / S5 | ⏳ |
-| Fuel refill history | P1 | 1 / S5 | ⏳ |
+| Fuel consumption recording | P1 | 1 / S5 | ✅ web + driver app API, receipt scans |
+| Fuel expense tracking | P1 | 1 / S5 | ✅ per vehicle and fleet, per period |
+| Fuel efficiency (km/L, L/100 km) | P1 | 1 / S5 | ✅ full-to-full method, recomputed on back-dated entries |
+| Fuel refill history | P1 | 1 / S5 | ✅ date, odometer, litres, price, station, driver |
 | Fuel budget | P2 | 2 | ⏳ |
 | Consumption variance | P2 | 2 | ⏳ |
-| Fuel fraud detection (rules) | P2 | 2 | ⏳ refill > tank capacity, refill far from vehicle GPS, abnormal km/L |
+| Fuel fraud detection (rules) | P2 | 2 | 🟡 rules live: odometer backwards, refill > tank, low km/L vs median; GPS-location check in Phase 2 |
 | Fuel card integration | P2 | 2 | ⏳ `FuelCardProvider` adapter |
-| Fuel sensor integration | P2 | 2 | ⏳ via Watch Tower |
+| Fuel sensor integration | P2 | 2 | ⏳ via Watch Tower (GPS odometer already used) |
 | AI fuel optimization | P3 | 4 | ⏳ |
 
 ### Module 5 — Maintenance & Repair (`maintenance`, `inventory`)
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Preventive maintenance (km / time) | P1 | 1 / S5 | ⏳ |
-| Maintenance alerts | P1 | 1 / S5 | ⏳ |
-| Repair requests | P1 | 1 / S5 | ⏳ |
-| Work orders | P1 | 1 / S5 | ⏳ |
-| Maintenance history | P1 | 1 / S5 | ⏳ |
-| Maintenance expenses | P1 | 1 / S5 | ⏳ |
-| Vehicle downtime | P1 | 1 / S5 | 🟡 derivable from UNDER_REPAIR status history |
+| Preventive maintenance (km / time) | P1 | 1 / S5 | ✅ per-vehicle plans, bulk creation, whichever-first |
+| Maintenance alerts | P1 | 1 / S5 | ✅ daily due-soon / overdue alerts, once per cycle |
+| Repair requests | P1 | 1 / S5 | ✅ staff and drivers (own vehicles), convert or reject |
+| Work orders | P1 | 1 / S5 | ✅ numbered, start/complete/cancel, cost lines |
+| Maintenance history | P1 | 1 / S5 | ✅ work orders + vehicle history timeline |
+| Maintenance expenses | P1 | 1 / S5 | ✅ parts / labour / external per vehicle |
+| Vehicle downtime | P1 | 1 / S5 | ✅ off-road work orders set UNDER_REPAIR; downtime report from status history |
 | Spare parts inventory | P2 | 3 | ⏳ |
 | Tire management | P2 | 3 | ⏳ |
 | Workshop management | P2 | 3 | ⏳ |
@@ -189,7 +189,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle operating cost | P1 | 1 / S6 | ⏳ unified cost ledger (fuel, maintenance, driver, other) |
 | Cost per kilometre | P1 | 1 / S6 | ⏳ |
 | Fleet expense dashboard | P1 | 1 / S6 | ⏳ |
-| Maintenance cost analysis | P1 | 1 / S6 | ⏳ |
+| Maintenance cost analysis | P1 | 1 / S5–S6 | 🟡 cost & downtime report per vehicle; per-km in S6 |
 | Budget vs actual | P2 | 2 | ⏳ |
 | Total cost of ownership | P2 | 2 | ⏳ |
 | Cost per trip | P2 | 2 | ⏳ |
@@ -355,5 +355,14 @@ Delivered in this repository (Phase 1 / Sprint 1, plus early S2/S3 work):
 - **Attendance:** duty sessions (one open session per driver, enforced by a partial unique index), daily report in the company timezone.
 - **Driver self-service API** (`/api/me/...`): profile, active/recent trips, start/complete own trips, duty on/off.
 - **Web:** dispatch board (double-click to plan), trips list, trip form with live availability, trip detail with lifecycle actions, attendance page.
+
+### Sprint 5 (delivered)
+
+- **Fuel:** records with receipt scans (web, and `/api/me/fuel` for drivers on their own vehicles), full-to-full efficiency (km/L, L/100 km) recomputed for the whole chain when entries are back-dated or deleted, anomaly flags (odometer backwards, more than the tank holds, km/L below 70% of the vehicle median — configurable), period summary per vehicle and fleet including fuel cost per km. Vehicles gain a tank capacity.
+- **Maintenance:** preventive plans by km and/or days (bulk-create for many vehicles, baseline = today's odometer), OK / due soon / overdue with daily alerts once per cycle; repair requests from staff or drivers (drivers only for their own vehicles; HIGH/CRITICAL alert as warnings); numbered work orders with part/labour/external lines; starting an off-road work order puts the vehicle UNDER_REPAIR (blocking dispatch) and completing it returns it to service and resets its plan; cancelling reopens linked repair requests. One open work order per plan (partial unique index).
+- **Reports:** maintenance cost (parts/labour/external) and downtime per vehicle for a period (downtime from the status history).
+- **Odometer:** devices that report an odometer keep the vehicle odometer current; fuel fills and trip completions also advance it (never backwards).
+- **Web:** fuel page (summary, per-vehicle, records, entry form), maintenance page (plans, work orders, repair requests, cost & downtime), work-order detail; navigation grouped into sections.
+- **Dev:** the web app compiles `@fms/shared` from source (Vite alias), so shared changes never hit a stale pre-bundled copy.
 
 Object storage decision: **S3 API**, so any S3-compatible service works. Recommended for on-prem: SeaweedFS or Ceph RGW; or the company's existing S3 service.

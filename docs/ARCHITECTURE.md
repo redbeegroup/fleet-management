@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `company_counters`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -117,6 +117,11 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 
 `modules/dispatch`: `TripsService` (lifecycle, availability), `DutyService` (attendance), `MeController` (driver self-service; every call resolves the driver linked to the signed-in user). Assignment validation runs inside the tenant transaction after `SELECT … FOR UPDATE` on the vehicle and driver rows, which serialises competing bookings without needing the `btree_gist` extension. Trip numbers come from `company_counters` (atomic upsert-increment).
 
+## Fuel & maintenance
+
+- `modules/fuel/efficiency.ts` (pure): full-to-full km/L and anomaly flags. `FuelService` re-runs it over a vehicle's whole chain after every insert/delete, so back-dated entries are handled.
+- `modules/maintenance/due.ts` (pure): plan due status (distance or time, whichever first) and minutes-in-status for downtime. `MaintenanceService` owns plans, repair requests and work orders; vehicle status changes go through `common/vehicle-status.ts`, which validates the transition and writes the status history that downtime reporting relies on.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -124,6 +129,7 @@ The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*
 | `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS` |
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
 | `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
+| `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).
 
