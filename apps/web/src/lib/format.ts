@@ -71,3 +71,27 @@ export function formatDateTime(d: string | Date | null): string {
 export function toLocalInput(d: Date): string {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
+
+export function money(v: number | string | null | undefined): string {
+  if (v === null || v === undefined || v === '') return '—';
+  return Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+export const FLAG_LABELS: Record<string, string> = {
+  ODOMETER_BACKWARDS: 'Odometer went backwards',
+  OVER_TANK_CAPACITY: 'More litres than the tank holds',
+  LOW_EFFICIENCY: 'Unusually low km/L',
+};
+
+export const DUE_TONE = { OK: 'ok', DUE_SOON: 'warn', OVERDUE: 'danger' } as const;
+export const WO_TONE = { OPEN: 'muted', IN_PROGRESS: 'warn', COMPLETED: 'ok', CANCELLED: 'danger' } as const;
+export const SEVERITY_TONE: Record<string, 'muted' | 'info' | 'warn' | 'danger'> = { LOW: 'muted', MEDIUM: 'info', HIGH: 'warn', CRITICAL: 'danger' };
+
+/** First day of the current month and first day of next month (local). */
+export function monthRange(offset = 0): { from: string; to: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + offset + 1, 1);
+  const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { from: f(from), to: f(to) };
+}

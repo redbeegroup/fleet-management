@@ -210,3 +210,24 @@ small.muted { font-weight: 400; }
 .board-bar.tone-ok { background: var(--ok-bg); border-color: var(--ok); }
 .pre { white-space: pre-wrap; }
 .timeline + h2 { margin-top: 18px; }
+
+/* Sprint 5 */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer; }
+.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.vehicle-picker { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.vehicle-picker legend { font-size: 13px; font-weight: 500; padding: 0 4px; }
+td.wrap { white-space: normal; min-width: 240px; }
+tr.inactive { opacity: .55; }
+td .badge + .badge { margin-left: 4px; }
+.toolbar input[type=checkbox] { min-width: 0; }
+.sidebar { overflow-y: auto; }
+.sidebar nav { gap: 0; }
+.nav-section { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
+.nav-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: rgba(201,214,234,.55); padding: 4px 12px; }
+.sidebar nav a { padding: 7px 12px; }
+.brand { margin-bottom: 16px; }
+@media (max-width: 760px) {
+  .nav-section { flex-direction: row; flex-wrap: wrap; margin: 0; }
+  .nav-title { display: none; }
+}

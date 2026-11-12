@@ -25,6 +25,7 @@ export const createVehicleSchema = z.object({
   departmentId: z.string().uuid().optional().nullable(),
   gpsDeviceId: z.string().max(64).optional().nullable(),
   speedLimitKmh: z.number().int().min(10).max(200).optional().nullable(),
+  tankCapacityL: z.number().positive().max(2000).optional().nullable(),
   acquiredAt: optionalDate,
   notes: z.string().max(2000).optional().nullable(),
 });
@@ -163,12 +164,14 @@ export const companySettingsSchema = z.object({
   telematics: telematicsSettingsSchema.default({}),
   // Declared lazily: dispatchSettingsSchema is defined further down this file.
   dispatch: z.lazy(() => dispatchSettingsSchema).default({}),
+  maintenance: z.lazy(() => maintenanceSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
 export const updateCompanySettingsSchema = z.object({
   telematics: telematicsSettingsSchema.partial().optional(),
   dispatch: z.lazy(() => dispatchSettingsSchema.partial()).optional(),
+  maintenance: z.lazy(() => maintenanceSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -258,3 +261,102 @@ export const dispatchSettingsSchema = z.object({
     .default({ TRUCK: ['C', 'D', 'E'], BUS: ['D', 'E'], TRAILER: ['E'], MOTORCYCLE: ['A'] }),
 });
 export type DispatchSettings = z.infer<typeof dispatchSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Fuel & maintenance (Sprint 5)
+// ---------------------------------------------------------------------------
+
+export const createFuelRecordSchema = z
+  .object({
+    vehicleId: z.string().uuid(),
+    driverId: z.string().uuid().optional().nullable(),
+    filledAt: z.coerce.date(),
+    odometerKm: z.number().nonnegative(),
+    litres: z.number().positive().max(2000),
+    unitPrice: z.number().nonnegative().optional().nullable(),
+    totalCost: z.number().nonnegative().optional().nullable(),
+    fuelType: z.string().max(32).optional().nullable(),
+    station: z.string().max(200).optional().nullable(),
+    fullTank: z.boolean().default(true),
+    paymentMethod: z.enum(['CASH', 'FUEL_CARD', 'CREDIT', 'OTHER']).optional().nullable(),
+    receiptFileId: z.string().uuid().optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+  })
+  .refine((r) => r.unitPrice != null || r.totalCost != null, { path: ['totalCost'], message: 'Provide unitPrice or totalCost' })
+  .refine((r) => r.filledAt.getTime() <= Date.now() + 5 * 60_000, { path: ['filledAt'], message: 'filledAt cannot be in the future' });
+export type CreateFuelRecordInput = z.infer<typeof createFuelRecordSchema>;
+
+export const maintenancePlanSchema = z
+  .object({
+    vehicleId: z.string().uuid(),
+    name: z.string().trim().min(1).max(128),
+    intervalKm: z.number().int().min(100).max(1_000_000).optional().nullable(),
+    intervalDays: z.number().int().min(1).max(3650).optional().nullable(),
+    lastDoneAt: z.coerce.date().optional().nullable(),
+    lastDoneOdometerKm: z.number().nonnegative().optional().nullable(),
+    active: z.boolean().default(true),
+  })
+  .refine((p) => p.intervalKm || p.intervalDays, { path: ['intervalKm'], message: 'Set intervalKm and/or intervalDays' });
+export type MaintenancePlanInput = z.infer<typeof maintenancePlanSchema>;
+
+/** Create the same plan for many vehicles at once (e.g. all trucks). */
+export const bulkMaintenancePlanSchema = z.object({
+  vehicleIds: z.array(z.string().uuid()).min(1).max(500),
+  name: z.string().trim().min(1).max(128),
+  intervalKm: z.number().int().min(100).max(1_000_000).optional().nullable(),
+  intervalDays: z.number().int().min(1).max(3650).optional().nullable(),
+});
+export type BulkMaintenancePlanInput = z.infer<typeof bulkMaintenancePlanSchema>;
+
+export const RepairSeverity = { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH', CRITICAL: 'CRITICAL' } as const;
+
+export const createRepairRequestSchema = z.object({
+  vehicleId: z.string().uuid(),
+  description: z.string().trim().min(5).max(2000),
+  severity: z.nativeEnum(RepairSeverity).default('MEDIUM'),
+  odometerKm: z.number().nonnegative().optional().nullable(),
+  photoFileId: z.string().uuid().optional().nullable(),
+});
+export type CreateRepairRequestInput = z.infer<typeof createRepairRequestSchema>;
+
+export const WorkOrderType = { PREVENTIVE: 'PREVENTIVE', CORRECTIVE: 'CORRECTIVE', ACCIDENT: 'ACCIDENT', INSPECTION: 'INSPECTION' } as const;
+export const WorkOrderStatus = { OPEN: 'OPEN', IN_PROGRESS: 'IN_PROGRESS', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' } as const;
+
+export const createWorkOrderSchema = z.object({
+  vehicleId: z.string().uuid(),
+  type: z.nativeEnum(WorkOrderType),
+  title: z.string().trim().min(1).max(200),
+  description: z.string().max(4000).optional().nullable(),
+  priority: z.nativeEnum(RepairSeverity).default('MEDIUM'),
+  workshop: z.string().max(200).optional().nullable(),
+  assignedTo: z.string().max(200).optional().nullable(),
+  offRoad: z.boolean().default(true),
+  odometerKm: z.number().nonnegative().optional().nullable(),
+  planId: z.string().uuid().optional().nullable(),
+  repairRequestIds: z.array(z.string().uuid()).max(50).optional(),
+});
+export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
+
+export const workOrderLineSchema = z.object({
+  kind: z.enum(['LABOUR', 'PART', 'EXTERNAL', 'OTHER']),
+  description: z.string().trim().min(1).max(300),
+  quantity: z.number().positive().max(100_000),
+  unitCost: z.number().nonnegative(),
+});
+export type WorkOrderLineInput = z.infer<typeof workOrderLineSchema>;
+
+export const completeWorkOrderSchema = z.object({
+  resolution: z.string().trim().min(3).max(4000),
+  completedAt: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional(),
+});
+export type CompleteWorkOrderInput = z.infer<typeof completeWorkOrderSchema>;
+
+export const maintenanceSettingsSchema = z.object({
+  /** A plan is "due soon" this many km / days before it is due. */
+  dueSoonKm: z.number().int().min(0).max(20_000).default(500),
+  dueSoonDays: z.number().int().min(0).max(90).default(7),
+  /** Fuel efficiency below this fraction of the vehicle median is flagged. */
+  lowEfficiencyRatio: z.number().min(0.1).max(1).default(0.7),
+});
+export type MaintenanceSettings = z.infer<typeof maintenanceSettingsSchema>;

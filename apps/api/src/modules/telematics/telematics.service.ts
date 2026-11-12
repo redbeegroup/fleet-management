@@ -41,7 +41,7 @@ export class TelematicsService {
     const { stored, latest, events } = await this.db.system(async (tx) => {
       const vehicles = await tx.vehicle.findMany({
         where: { gpsDeviceId: { in: [...new Set(fixes.map((f) => f.deviceId))] }, deletedAt: null },
-        select: { id: true, companyId: true, gpsDeviceId: true, plateNumber: true, speedLimitKmh: true },
+        select: { id: true, companyId: true, gpsDeviceId: true, plateNumber: true, speedLimitKmh: true, odometerKm: true },
       });
       const byDevice = new Map(vehicles.map((v) => [v.gpsDeviceId!, v]));
       const rows = fixes.flatMap((f) => {
@@ -88,6 +88,10 @@ export class TelematicsService {
         };
         await tx.vehicleLastPosition.upsert({ where: { vehicleId: v.id }, create: { vehicleId: v.id, ...data }, update: data });
         latest.push({ vehicleId: v.id, ...data });
+        // Devices that report an odometer keep the vehicle's odometer current (never moves backwards).
+        if (f.odometerKm != null && f.odometerKm > Number(v.odometerKm)) {
+          await tx.vehicle.update({ where: { id: v.id }, data: { odometerKm: f.odometerKm } });
+        }
       }
 
       const batches = new Map<string, { vehicle: (typeof vehicles)[number]; fixes: PositionFix[] }>();

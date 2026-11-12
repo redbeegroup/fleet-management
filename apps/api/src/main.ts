@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { env } from './common/config/env';
 import { ApiAppModule, IngestAppModule, JobAppModule, WorkerAppModule } from './app.module';
+import { MaintenanceService } from './modules/maintenance/maintenance.service';
 import { TelematicsService } from './modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 
@@ -42,6 +43,7 @@ async function runJob(name: string | undefined) {
     'compliance-alerts': () => app.get(ComplianceAlertsJob).run(),
     'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
     'gps-offline': () => app.get(TelematicsService).checkOffline(),
+    'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),
   };
   const job = name ? jobs[name] : undefined;
   if (!job) throw new Error(`Unknown JOB "${name}". Available: ${Object.keys(jobs).join(', ')}`);

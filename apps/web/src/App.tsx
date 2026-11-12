@@ -9,6 +9,9 @@ import { DriversPage } from './pages/DriversPage';
 import { AttendancePage } from './pages/AttendancePage';
 import { DispatchBoardPage } from './pages/DispatchBoardPage';
 import { EventsPage } from './pages/EventsPage';
+import { FuelPage } from './pages/FuelPage';
+import { MaintenancePage } from './pages/MaintenancePage';
+import { WorkOrderPage } from './pages/WorkOrderPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
@@ -50,6 +53,9 @@ export function App() {
         <Route path="trips/new" element={<TripFormPage />} />
         <Route path="trips/:id" element={<TripDetailPage />} />
         <Route path="attendance" element={<AttendancePage />} />
+        <Route path="fuel" element={<FuelPage />} />
+        <Route path="maintenance" element={<MaintenancePage />} />
+        <Route path="maintenance/work-orders/:id" element={<WorkOrderPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />

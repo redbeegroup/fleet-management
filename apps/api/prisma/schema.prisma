@@ -179,6 +179,8 @@ model Vehicle {
   gpsDeviceId   String?       @map("gps_device_id")
   /// Overrides the company speed limit for overspeed alerts.
   speedLimitKmh Int?          @map("speed_limit_kmh")
+  /// Fuel tank capacity (litres), used to flag implausible refills.
+  tankCapacityL Decimal?      @map("tank_capacity_l") @db.Decimal(8, 1)
   acquiredAt    DateTime?     @map("acquired_at") @db.Date
   disposedAt    DateTime?     @map("disposed_at") @db.Date
   notes         String?
@@ -186,13 +188,17 @@ model Vehicle {
   updatedAt     DateTime      @updatedAt @map("updated_at")
   deletedAt     DateTime?     @map("deleted_at")
 
-  company       Company              @relation(fields: [companyId], references: [id])
-  branch        Branch?              @relation(fields: [branchId], references: [id])
-  department    Department?          @relation(fields: [departmentId], references: [id])
-  documents     VehicleDocument[]
-  assignments   VehicleAssignment[]
-  statusHistory VehicleStatusEvent[]
-  Trip          Trip[]
+  company         Company              @relation(fields: [companyId], references: [id])
+  branch          Branch?              @relation(fields: [branchId], references: [id])
+  department      Department?          @relation(fields: [departmentId], references: [id])
+  documents       VehicleDocument[]
+  assignments     VehicleAssignment[]
+  statusHistory   VehicleStatusEvent[]
+  Trip            Trip[]
+  FuelRecord      FuelRecord[]
+  MaintenancePlan MaintenancePlan[]
+  RepairRequest   RepairRequest[]
+  WorkOrder       WorkOrder[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -276,6 +282,7 @@ model Driver {
   assignments VehicleAssignment[]
   trips       Trip[]
   duty        DutySession[]
+  fuelRecords FuelRecord[]
 
   @@unique([companyId, employeeNo])
   @@map("drivers")
@@ -527,4 +534,163 @@ model DutySession {
   @@index([driverId, startedAt])
   @@index([companyId, startedAt])
   @@map("duty_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Fuel (Sprint 5)
+// ---------------------------------------------------------------------------
+
+model FuelRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  vehicleId     String   @map("vehicle_id") @db.Uuid
+  driverId      String?  @map("driver_id") @db.Uuid
+  filledAt      DateTime @map("filled_at")
+  odometerKm    Decimal  @map("odometer_km") @db.Decimal(12, 1)
+  litres        Decimal  @db.Decimal(10, 2)
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(12, 2)
+  totalCost     Decimal  @map("total_cost") @db.Decimal(14, 2)
+  fuelType      String?  @map("fuel_type")
+  station       String?
+  fullTank      Boolean  @default(true) @map("full_tank")
+  paymentMethod String?  @map("payment_method")
+  receiptFileId String?  @map("receipt_file_id") @db.Uuid
+  notes         String?
+  source        String   @default("web")
+  /// Computed (full-to-full): distance since previous full fill and efficiency.
+  distanceKm    Decimal? @map("distance_km") @db.Decimal(10, 1)
+  kmPerLitre    Decimal? @map("km_per_litre") @db.Decimal(8, 2)
+  /// Anomaly flags, e.g. ["ODOMETER_BACKWARDS", "OVER_TANK_CAPACITY", "LOW_EFFICIENCY"]
+  flags         String[] @default([])
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  driver  Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([vehicleId, filledAt])
+  @@index([companyId, filledAt])
+  @@map("fuel_records")
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance (Sprint 5)
+// ---------------------------------------------------------------------------
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum WorkOrderType {
+  PREVENTIVE
+  CORRECTIVE
+  ACCIDENT
+  INSPECTION
+}
+
+enum RepairRequestStatus {
+  OPEN
+  CONVERTED
+  REJECTED
+}
+
+/// Preventive maintenance schedule for one vehicle (by distance and/or time).
+model MaintenancePlan {
+  id                 String    @id @default(uuid()) @db.Uuid
+  companyId          String    @map("company_id") @db.Uuid
+  vehicleId          String    @map("vehicle_id") @db.Uuid
+  name               String
+  intervalKm         Int?      @map("interval_km")
+  intervalDays       Int?      @map("interval_days")
+  lastDoneAt         DateTime? @map("last_done_at")
+  lastDoneOdometerKm Decimal?  @map("last_done_odometer_km") @db.Decimal(12, 1)
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  vehicle    Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  workOrders WorkOrder[]
+
+  @@index([companyId, active])
+  @@index([vehicleId])
+  @@map("maintenance_plans")
+}
+
+model RepairRequest {
+  id          String              @id @default(uuid()) @db.Uuid
+  companyId   String              @map("company_id") @db.Uuid
+  vehicleId   String              @map("vehicle_id") @db.Uuid
+  reportedBy  String?             @map("reported_by") @db.Uuid
+  description String
+  severity    String              @default("MEDIUM")
+  odometerKm  Decimal?            @map("odometer_km") @db.Decimal(12, 1)
+  photoFileId String?             @map("photo_file_id") @db.Uuid
+  status      RepairRequestStatus @default(OPEN)
+  resolution  String?
+  workOrderId String?             @map("work_order_id") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id])
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@index([companyId, status])
+  @@map("repair_requests")
+}
+
+model WorkOrder {
+  id          String          @id @default(uuid()) @db.Uuid
+  companyId   String          @map("company_id") @db.Uuid
+  woNo        String          @map("wo_no")
+  vehicleId   String          @map("vehicle_id") @db.Uuid
+  planId      String?         @map("plan_id") @db.Uuid
+  type        WorkOrderType
+  status      WorkOrderStatus @default(OPEN)
+  priority    String          @default("MEDIUM")
+  title       String
+  description String?
+  workshop    String?
+  assignedTo  String?         @map("assigned_to")
+  /// When true the vehicle is UNDER_REPAIR while the work order is in progress.
+  offRoad     Boolean         @default(true) @map("off_road")
+  odometerKm  Decimal?        @map("odometer_km") @db.Decimal(12, 1)
+  openedAt    DateTime        @default(now()) @map("opened_at")
+  startedAt   DateTime?       @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+  resolution  String?
+  totalCost   Decimal         @default(0) @map("total_cost") @db.Decimal(14, 2)
+  createdBy   String?         @map("created_by") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  vehicle        Vehicle          @relation(fields: [vehicleId], references: [id])
+  plan           MaintenancePlan? @relation(fields: [planId], references: [id])
+  lines          WorkOrderLine[]
+  repairRequests RepairRequest[]
+
+  @@unique([companyId, woNo])
+  @@index([companyId, status])
+  @@index([vehicleId, openedAt])
+  @@map("work_orders")
+}
+
+model WorkOrderLine {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  workOrderId String   @map("work_order_id") @db.Uuid
+  kind        String
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitCost    Decimal  @map("unit_cost") @db.Decimal(14, 2)
+  total       Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@map("work_order_lines")
 }

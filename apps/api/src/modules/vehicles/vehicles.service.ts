@@ -207,7 +207,7 @@ export class VehiclesService {
   history(user: AuthUser, id: string) {
     return this.db.tenant(user.companyId, async (tx) => {
       await this.mustExist(tx, id);
-      const [statuses, assignments, documents, trips] = await Promise.all([
+      const [statuses, assignments, documents, trips, fuel, workOrders] = await Promise.all([
         tx.vehicleStatusEvent.findMany({ where: { vehicleId: id } }),
         tx.vehicleAssignment.findMany({
           where: { vehicleId: id },
@@ -220,6 +220,8 @@ export class VehiclesService {
           orderBy: { actualEnd: 'desc' },
           take: 200,
         }),
+        tx.fuelRecord.findMany({ where: { vehicleId: id }, orderBy: { filledAt: 'desc' }, take: 200 }),
+        tx.workOrder.findMany({ where: { vehicleId: id, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take: 200 }),
       ]);
       const events = [
         ...statuses.map((e) => ({
@@ -247,6 +249,18 @@ export class VehiclesService {
             t.gpsDistanceKm ? `, ${Number(t.gpsDistanceKm)} km` : ''
           }`,
           refId: t.id,
+        })),
+        ...fuel.map((f) => ({
+          at: f.filledAt,
+          kind: 'fuel' as const,
+          summary: `${Number(f.litres)} L at ${Number(f.odometerKm).toLocaleString()} km${f.kmPerLitre ? ` (${Number(f.kmPerLitre)} km/L)` : ''}${f.flags.length ? ` ⚠ ${f.flags.join(', ')}` : ''}`,
+          refId: f.id,
+        })),
+        ...workOrders.map((w) => ({
+          at: w.completedAt!,
+          kind: 'maintenance' as const,
+          summary: `${w.woNo} ${w.title} — ${Number(w.totalCost).toLocaleString()} cost`,
+          refId: w.id,
         })),
       ];
       return events.sort((a, b) => b.at.getTime() - a.at.getTime());

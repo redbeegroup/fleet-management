@@ -15,6 +15,11 @@ export const Permission = {
   TRIP_WRITE: 'trip:write',
   FILE_UPLOAD: 'file:upload',
   GEOFENCE_WRITE: 'geofence:write',
+  FUEL_READ: 'fuel:read',
+  FUEL_WRITE: 'fuel:write',
+  MAINTENANCE_READ: 'maintenance:read',
+  MAINTENANCE_WRITE: 'maintenance:write',
+  REPAIR_REQUEST: 'repair-request:create',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -44,6 +49,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.TRIP_WRITE,
     Permission.FILE_UPLOAD,
     Permission.GEOFENCE_WRITE,
+    Permission.FUEL_WRITE,
+    Permission.MAINTENANCE_WRITE,
+    Permission.REPAIR_REQUEST,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -52,8 +60,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.TRIP_READ,
     Permission.TRIP_WRITE,
     Permission.FILE_UPLOAD,
+    Permission.FUEL_READ,
+    Permission.MAINTENANCE_READ,
+    Permission.REPAIR_REQUEST,
   ],
-  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD],
+  DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST],
   EXECUTIVE: READ_ONLY,
   VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ],
 };

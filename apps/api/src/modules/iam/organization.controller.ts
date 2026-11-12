@@ -69,6 +69,7 @@ export class OrganizationController {
         ...current,
         telematics: { ...current.telematics, ...body.telematics },
         dispatch: { ...current.dispatch, ...body.dispatch },
+        maintenance: { ...current.maintenance, ...body.maintenance },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

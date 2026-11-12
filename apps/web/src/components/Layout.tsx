@@ -3,17 +3,34 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { logout, session } from '../lib/api';
 import { NotificationBell } from './NotificationBell';
 
-const nav = [
-  { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
-  { to: '/map', label: 'Live map', perm: Permission.TRACKING_READ },
-  { to: '/events', label: 'Events', perm: Permission.TRACKING_READ },
-  { to: '/dispatch', label: 'Dispatch board', perm: Permission.TRIP_WRITE },
-  { to: '/trips', label: 'Trips', perm: Permission.TRIP_WRITE },
-  { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
-  { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
-  { to: '/attendance', label: 'Attendance', perm: Permission.DRIVER_READ },
-  { to: '/geofences', label: 'Geofences', perm: Permission.TRACKING_READ },
-  { to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ },
+const sections: { title: string; items: { to: string; label: string; perm: string; end?: boolean }[] }[] = [
+  {
+    title: 'Overview',
+    items: [
+      { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
+      { to: '/map', label: 'Live map', perm: Permission.TRACKING_READ },
+      { to: '/events', label: 'Events', perm: Permission.TRACKING_READ },
+    ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { to: '/dispatch', label: 'Dispatch board', perm: Permission.TRIP_WRITE },
+      { to: '/trips', label: 'Trips', perm: Permission.TRIP_WRITE },
+      { to: '/attendance', label: 'Attendance', perm: Permission.DRIVER_READ },
+    ],
+  },
+  {
+    title: 'Fleet',
+    items: [
+      { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
+      { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
+      { to: '/fuel', label: 'Fuel', perm: Permission.FUEL_READ },
+      { to: '/maintenance', label: 'Maintenance', perm: Permission.MAINTENANCE_READ },
+      { to: '/geofences', label: 'Geofences', perm: Permission.TRACKING_READ },
+    ],
+  },
+  { title: 'Admin', items: [{ to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ }] },
 ];
 
 export function Layout() {
@@ -27,13 +44,20 @@ export function Layout() {
           <span>Fleet Management</span>
         </div>
         <nav>
-          {nav
-            .filter((n) => session.can(n.perm))
-            .map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end}>
-                {n.label}
-              </NavLink>
-            ))}
+          {sections.map((sec) => {
+            const items = sec.items.filter((n) => session.can(n.perm));
+            if (!items.length) return null;
+            return (
+              <div key={sec.title} className="nav-section">
+                <span className="nav-title">{sec.title}</span>
+                {items.map((n) => (
+                  <NavLink key={n.to} to={n.to} end={n.end}>
+                    {n.label}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
           <NotificationBell />
         </nav>
         <div className="sidebar-foot">

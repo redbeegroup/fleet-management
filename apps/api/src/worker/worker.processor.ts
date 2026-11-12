@@ -1,6 +1,7 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
+import { MaintenanceService } from '../modules/maintenance/maintenance.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
 
@@ -15,6 +16,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     @InjectQueue(MAINTENANCE_QUEUE) private readonly queue: Queue,
     private readonly compliance: ComplianceAlertsJob,
     private readonly telematics: TelematicsService,
+    private readonly maintenance: MaintenanceService,
   ) {
     super();
   }
@@ -27,6 +29,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('position-partitions', { pattern: '0 0 2 * * *' }, {
       name: 'position-partitions',
     });
+    await this.queue.upsertJobScheduler('maintenance-due', { pattern: '0 0 2 * * *', tz: 'Asia/Yangon' }, { name: 'maintenance-due' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
     this.logger.log('Job schedulers registered');
   }
@@ -37,6 +40,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
         return this.compliance.run();
       case 'position-partitions':
         return this.telematics.maintainPartitions();
+      case 'maintenance-due':
+        return this.maintenance.dueAlerts();
       case 'gps-offline':
         return this.telematics.checkOffline();
       default:

@@ -61,6 +61,7 @@ export function VehicleFormPage() {
       branchId: str('branchId'),
       gpsDeviceId: str('gpsDeviceId'),
       speedLimitKmh: num('speedLimitKmh'),
+      tankCapacityL: num('tankCapacityL'),
       acquiredAt: str('acquiredAt'),
       notes: str('notes'),
     });
@@ -150,6 +151,10 @@ export function VehicleFormPage() {
         <label>
           Speed limit override (km/h)
           <input name="speedLimitKmh" type="number" min={10} max={200} placeholder="Company default" defaultValue={v?.speedLimitKmh ?? ''} />
+        </label>
+        <label>
+          Fuel tank capacity (L)
+          <input name="tankCapacityL" type="number" min={1} step="any" defaultValue={v?.tankCapacityL ?? ''} />
         </label>
         <label className="span-2">
           Notes

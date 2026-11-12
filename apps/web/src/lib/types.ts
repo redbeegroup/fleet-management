@@ -26,6 +26,7 @@ export interface Vehicle {
   status: VehicleStatus;
   gpsDeviceId: string | null;
   speedLimitKmh?: number | null;
+  tankCapacityL?: string | null;
   branch: Branch | null;
 }
 
@@ -204,4 +205,102 @@ export interface Attendance {
     dutyMinutes: number;
     completedTrips: number;
   }[];
+}
+
+export interface FuelRecord {
+  id: string;
+  vehicleId: string;
+  filledAt: string;
+  odometerKm: string;
+  litres: string;
+  unitPrice: string;
+  totalCost: string;
+  station: string | null;
+  fullTank: boolean;
+  paymentMethod: string | null;
+  receiptFileId: string | null;
+  source: string;
+  distanceKm: string | null;
+  kmPerLitre: string | null;
+  flags: string[];
+  vehicle: { id: string; plateNumber: string };
+  driver: { id: string; fullName: string } | null;
+}
+
+export interface FuelSummaryRow {
+  fills: number;
+  litres: number;
+  cost: number;
+  distanceKm: number;
+  kmPerLitre: number | null;
+  litresPer100Km: number | null;
+  costPerKm: number | null;
+  flagged: number;
+}
+
+export interface FuelSummary {
+  fleet: FuelSummaryRow;
+  vehicles: (FuelSummaryRow & { id: string; plateNumber: string; vehicleClass: string })[];
+}
+
+export interface DueInfo {
+  status: 'OK' | 'DUE_SOON' | 'OVERDUE';
+  nextDueKm: number | null;
+  nextDueAt: string | null;
+  remainingKm: number | null;
+  remainingDays: number | null;
+}
+
+export interface MaintenancePlan {
+  id: string;
+  name: string;
+  intervalKm: number | null;
+  intervalDays: number | null;
+  lastDoneAt: string | null;
+  lastDoneOdometerKm: string | null;
+  active: boolean;
+  vehicle: { id: string; plateNumber: string; odometerKm: string; status: string };
+  openWorkOrder: { id: string; woNo: string; status: string } | null;
+  due: DueInfo | null;
+}
+
+export interface WorkOrder {
+  id: string;
+  woNo: string;
+  type: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  priority: string;
+  title: string;
+  description: string | null;
+  workshop: string | null;
+  assignedTo: string | null;
+  offRoad: boolean;
+  odometerKm: string | null;
+  openedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  resolution: string | null;
+  totalCost: string;
+  vehicle: { id: string; plateNumber: string; status: string };
+  plan: { id: string; name: string } | null;
+  lines?: { id: string; kind: string; description: string; quantity: string; unitCost: string; total: string }[];
+  repairRequests?: RepairRequest[];
+}
+
+export interface RepairRequest {
+  id: string;
+  vehicleId: string;
+  description: string;
+  severity: string;
+  status: 'OPEN' | 'CONVERTED' | 'REJECTED';
+  resolution: string | null;
+  photoFileId: string | null;
+  createdAt: string;
+  vehicle?: { id: string; plateNumber: string };
+  workOrder?: { id: string; woNo: string; status: string } | null;
+}
+
+export interface MaintenanceReport {
+  totals: { cost: number; workOrders: number; downtimeMinutes: number };
+  vehicles: { id: string; plateNumber: string; vehicleClass: string; status: string; downtimeMinutes: number; downtimePct: number; workOrders: number; cost: number; labour: number; parts: number; external: number }[];
 }

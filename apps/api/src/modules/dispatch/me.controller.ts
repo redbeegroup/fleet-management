@@ -1,6 +1,17 @@
 import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { CompleteTripInput, completeTripSchema, Permission, StartTripInput, startTripSchema } from '@fms/shared';
+import {
+  CompleteTripInput,
+  completeTripSchema,
+  createFuelRecordSchema,
+  CreateRepairRequestInput,
+  createRepairRequestSchema,
+  Permission,
+  StartTripInput,
+  startTripSchema,
+} from '@fms/shared';
+import { FuelService } from '../fuel/fuel.service';
+import { MaintenanceService } from '../maintenance/maintenance.service';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -23,7 +34,20 @@ export class MeController {
     private readonly db: PrismaService,
     private readonly trips: TripsService,
     private readonly duty: DutyService,
+    private readonly maintenance: MaintenanceService,
+    private readonly fuel: FuelService,
   ) {}
+
+  /** Vehicles the driver may report on / refuel: standing assignment or an active trip. */
+  private async myVehicleIds(user: AuthUser, driverId: string): Promise<string[]> {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const [a, t] = await Promise.all([
+        tx.vehicleAssignment.findMany({ where: { driverId, endAt: null }, select: { vehicleId: true } }),
+        tx.trip.findMany({ where: { driverId, status: { in: ['ASSIGNED', 'ONGOING'] }, vehicleId: { not: null } }, select: { vehicleId: true } }),
+      ]);
+      return [...new Set([...a.map((x) => x.vehicleId), ...t.map((x) => x.vehicleId!)])];
+    });
+  }
 
   private async driverId(user: AuthUser): Promise<string> {
     const d = await this.db.tenant(user.companyId, (tx) => tx.driver.findFirst({ where: { userId: user.userId, active: true }, select: { id: true } }));
@@ -89,5 +113,30 @@ export class MeController {
   @RequirePermissions(Permission.TRIP_READ)
   async dutyEnd(@CurrentUser() user: AuthUser) {
     return this.duty.end(user, await this.driverId(user));
+  }
+
+  @Get('repair-requests')
+  @RequirePermissions(Permission.REPAIR_REQUEST)
+  async myRequests(@CurrentUser() user: AuthUser) {
+    await this.driverId(user);
+    return this.maintenance.repairRequests(user, undefined, user.userId);
+  }
+
+  @Post('repair-requests')
+  @RequirePermissions(Permission.REPAIR_REQUEST)
+  async report(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createRepairRequestSchema)) body: CreateRepairRequestInput) {
+    const driverId = await this.driverId(user);
+    return this.maintenance.createRepairRequest(user, body, await this.myVehicleIds(user, driverId));
+  }
+
+  /** Fuel receipt from the driver app; driverId is forced to the signed-in driver. */
+  @Post('fuel')
+  @RequirePermissions(Permission.TRIP_READ)
+  async addFuel(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createFuelRecordSchema)) body: z.infer<typeof createFuelRecordSchema>) {
+    const driverId = await this.driverId(user);
+    if (!(await this.myVehicleIds(user, driverId)).includes(body.vehicleId)) {
+      throw new ForbiddenException('You can only record fuel for a vehicle assigned to you');
+    }
+    return this.fuel.create(user, { ...body, driverId }, 'app');
   }
 }

@@ -233,6 +233,95 @@ async function main() {
         create: { companyId: company.id, key: `trip:${new Date().getUTCFullYear()}`, value: demo.length },
       });
     }
+
+    // Demo fuel history (60 days), PM plans, a completed work order and an open repair request.
+    if (!(await tx.fuelRecord.count({ where: { companyId: company.id } }))) {
+      const DAY = 86_400_000;
+      const vs = await tx.vehicle.findMany({ where: { companyId: company.id, plateNumber: { in: ['YGN-1A-1001', 'YGN-2B-2002', 'YGN-3C-3003', 'MDY-4D-4004'] } } });
+      const profile: Record<string, { kmpl: number; daily: number; tank: number }> = {
+        'YGN-1A-1001': { kmpl: 6.5, daily: 160, tank: 100 },
+        'YGN-2B-2002': { kmpl: 9.5, daily: 120, tank: 70 },
+        'YGN-3C-3003': { kmpl: 10.5, daily: 90, tank: 80 },
+        'MDY-4D-4004': { kmpl: 5.8, daily: 180, tank: 120 },
+      };
+      for (const v of vs) {
+        const p = profile[v.plateNumber];
+        await tx.vehicle.update({ where: { id: v.id }, data: { tankCapacityL: p.tank, fuelType: 'Diesel' } });
+        let odo = Number(v.odometerKm) - p.daily * 60;
+        const fills: { filledAt: Date; odometerKm: number; litres: number; unitPrice: number; totalCost: number }[] = [];
+        for (let d = 60; d > 0; d -= 4) {
+          const km = p.daily * 4;
+          odo += km;
+          // ±8% noise; one thirsty tank for the first truck to show the anomaly flag
+          const thirsty = v.plateNumber === 'YGN-1A-1001' && d === 20;
+          const litres = Math.round((km / (p.kmpl * (thirsty ? 0.55 : 0.92 + ((d * 7) % 16) / 100))) * 10) / 10;
+          fills.push({ filledAt: new Date(Date.now() - d * DAY), odometerKm: odo, litres, unitPrice: 2600, totalCost: Math.round(litres * 2600) });
+        }
+        // Full-to-full efficiency, computed the same way as the API does.
+        let prevOdo: number | null = null;
+        for (const f of fills) {
+          const kmPerLitre = prevOdo === null ? null : Math.round(((f.odometerKm - prevOdo) / f.litres) * 100) / 100;
+          await tx.fuelRecord.create({
+            data: {
+              companyId: company.id,
+              vehicleId: v.id,
+              ...f,
+              fuelType: 'Diesel',
+              station: 'Max Energy',
+              paymentMethod: 'FUEL_CARD',
+              distanceKm: prevOdo === null ? null : f.odometerKm - prevOdo,
+              kmPerLitre,
+              flags: kmPerLitre !== null && kmPerLitre < p.kmpl * 0.7 ? ['LOW_EFFICIENCY'] : [],
+            },
+          });
+          prevOdo = f.odometerKm;
+        }
+        await tx.maintenancePlan.createMany({
+          data: [
+            { companyId: company.id, vehicleId: v.id, name: 'Engine oil & filter', intervalKm: 5000, lastDoneAt: new Date(Date.now() - 40 * DAY), lastDoneOdometerKm: Number(v.odometerKm) - (v.plateNumber === 'MDY-4D-4004' ? 5200 : 3000) },
+            { companyId: company.id, vehicleId: v.id, name: 'Annual inspection', intervalDays: 365, lastDoneAt: new Date(Date.now() - (v.plateNumber === 'YGN-2B-2002' ? 360 : 120) * DAY) },
+          ],
+        });
+      }
+      const truck = vs.find((v) => v.plateNumber === 'YGN-3C-3003')!;
+      const year = new Date().getUTCFullYear();
+      await tx.workOrder.create({
+        data: {
+          companyId: company.id,
+          woNo: `WO-${year}-000001`,
+          vehicleId: truck.id,
+          type: 'CORRECTIVE',
+          status: 'COMPLETED',
+          title: 'Replace front brake pads',
+          workshop: 'Internal workshop',
+          openedAt: new Date(Date.now() - 12 * DAY),
+          startedAt: new Date(Date.now() - 12 * DAY),
+          completedAt: new Date(Date.now() - 11 * DAY),
+          resolution: 'Pads and discs replaced',
+          totalCost: 185_000,
+          lines: {
+            create: [
+              { companyId: company.id, kind: 'PART', description: 'Brake pad set', quantity: 1, unitCost: 125_000, total: 125_000 },
+              { companyId: company.id, kind: 'LABOUR', description: 'Mechanic (h)', quantity: 4, unitCost: 15_000, total: 60_000 },
+            ],
+          },
+        },
+      });
+      await tx.vehicleStatusEvent.createMany({
+        data: [
+          { companyId: company.id, vehicleId: truck.id, fromStatus: 'AVAILABLE', toStatus: 'UNDER_REPAIR', reason: `WO-${year}-000001`, createdAt: new Date(Date.now() - 12 * DAY) },
+          { companyId: company.id, vehicleId: truck.id, fromStatus: 'UNDER_REPAIR', toStatus: 'AVAILABLE', reason: `WO-${year}-000001 completed`, createdAt: new Date(Date.now() - 11 * DAY) },
+        ],
+      });
+      await tx.companyCounter.upsert({
+        where: { companyId_key: { companyId: company.id, key: `wo:${year}` } },
+        update: {},
+        create: { companyId: company.id, key: `wo:${year}`, value: 1 },
+      });
+      await tx.repairRequest.create({
+        data: { companyId: company.id, vehicleId: vs.find((v) => v.plateNumber === 'YGN-2B-2002')!.id, description: 'Air conditioning not cooling', severity: 'MEDIUM', reportedBy: driverUser.id },
+      });
+    }
   });
 
   console.log(`Seed complete. Admin login: ${adminEmail}`);
