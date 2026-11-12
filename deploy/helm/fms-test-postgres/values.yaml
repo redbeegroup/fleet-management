@@ -1,0 +1,11 @@
+image: postgis/postgis:16-3.4
+storageClass: ""        # e.g. synology-iscsi
+size: 10Gi
+database: fms
+# Passwords: set at install (--set). The owner role runs migrations; fms_app is the RLS-bound app role.
+ownerUser: fms_owner
+ownerPassword: ""
+appPassword: ""
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { memory: 1Gi }

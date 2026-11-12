@@ -128,6 +128,7 @@ migrations:
   backoffLimit: 1
   activeDeadlineSeconds: 600
   seed: false                 # demo data — never enable in production
+  # With seed=true: admin password comes from the secret key SEED_ADMIN_PASSWORD (optional).
 
 # Minimal in-cluster Redis for staging/dev. Use a managed/HA Redis in production
 # (set secrets REDIS_URL and keep this disabled).
@@ -155,6 +156,12 @@ ingress:
 
 networkPolicy:
   enabled: true
+  # Peers allowed to reach the web/api pods (your ingress controller).
+  ingressFrom:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
   # CIDRs of the external PostgreSQL cluster (egress on 5432).
   databaseCidrs: []           # e.g. [10.10.20.0/24]
   # Additional egress, e.g. Watch Tower API, SMTP. Empty list = allow all HTTPS egress.

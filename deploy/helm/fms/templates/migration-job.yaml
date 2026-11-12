@@ -64,6 +64,14 @@ spec:
             - name: DATABASE_MIGRATION_URL
               valueFrom:
                 secretKeyRef: { name: {{ include "fms.secretName" . }}, key: DATABASE_MIGRATION_URL }
+            {{- if .Values.migrations.seed }}
+            # Demo seed in a NODE_ENV=production image must be allowed explicitly.
+            - name: SEED_ALLOW
+              value: "true"
+            - name: SEED_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "fms.secretName" . }}, key: SEED_ADMIN_PASSWORD, optional: true }
+            {{- end }}
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 512Mi }

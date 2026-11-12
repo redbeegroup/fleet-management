@@ -1,0 +1,36 @@
+# Test deployment on the CorexLab Talos cluster (Portainer environment talos-corexlab-portainer).
+# Database: fms-test-postgres release in the same namespace. Files: CorexLab SeaweedFS.
+# Ingress is configured manually by the cluster admin (Traefik) → service <release>-fms-web:80.
+image:
+  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "", pullPolicy: IfNotPresent }
+  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "", pullPolicy: IfNotPresent }
+database:
+  externalService: { enabled: false }
+secrets:
+  existingSecret: fms-secrets
+config:
+  SWAGGER_ENABLED: "true"
+  CORS_ORIGINS: https://fms.corexlab.net
+  APP_URL: https://fms.corexlab.net
+  TELEMATICS_PROVIDER: mock          # until the Watch Tower API is connected
+  S3_ENDPOINT: https://s3.corexlab.net
+  S3_BUCKET: cannopy-fms
+  PUSH_ENABLED: "false"
+api:
+  replicas: 2
+  autoscaling: { enabled: false }
+  pdb: { minAvailable: 1 }
+ingest: { replicas: 1 }
+web:
+  replicas: 2
+redis:
+  internal: { enabled: true }
+migrations:
+  enabled: true
+  seed: true                         # demo data for testing
+ingress: { enabled: false }
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels: { kubernetes.io/metadata.name: traefik }
