@@ -303,3 +303,7 @@ p.small { font-size: 12px; margin: 10px 0 0; }
 fieldset.chips { border: 1px solid var(--border); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 12px; }
 .matrix td, .matrix th { text-align: center; }
 .matrix td:first-child, .matrix th:first-child { text-align: left; }
+
+/* Integrations */
+.secret-once { border-color: var(--warn); background: var(--warn-bg); margin-bottom: 12px; }
+.secret-once code { display: block; padding: 8px 10px; background: var(--card, #fff); border-radius: 6px; word-break: break-all; margin: 6px 0 10px; }

@@ -4,7 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { permissionsForRoles } from '@fms/shared';
 import type { Request } from 'express';
 import type { AccessTokenPayload, AuthUser } from './auth-user';
-import { IS_PUBLIC, PERMISSIONS } from './decorators';
+import { ApiClient, ApiKeyVerifier } from './api-key';
+import { API_KEY_SCOPE, IS_PUBLIC, PERMISSIONS } from './decorators';
 
 /**
  * Global guard: validates the bearer JWT, attaches `req.user`, then enforces
@@ -15,13 +16,23 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly reflector: Reflector,
+    private readonly apiKeys: ApiKeyVerifier,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const targets = [ctx.getHandler(), ctx.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
 
-    const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser }>();
+    const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser; client?: ApiClient }>();
+    const scope = this.reflector.getAllAndOverride<string>(API_KEY_SCOPE, targets);
+    if (scope) {
+      const client = await this.apiKeys.verify(req.header('x-api-key'));
+      if (!client.scopes.includes(scope)) throw new ForbiddenException(`API key lacks scope ${scope}`);
+      req.client = client;
+      return true;
+    }
+    if (req.header('x-api-key')) throw new UnauthorizedException('API keys are only accepted on /api/integrations/v1 endpoints');
+
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Missing bearer token');
 

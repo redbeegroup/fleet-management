@@ -1,6 +1,7 @@
+import { WebhooksService } from '../integrations/webhooks.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { Role } from '@fms/shared';
+import { Role, WebhookEvent } from '@fms/shared';
 import { Tx } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -20,6 +21,14 @@ export interface PersistedEvent extends EventDraft {
   plateNumber: string;
   driverId?: string | null;
 }
+
+/** Telemetry events that are also pushed to webhook subscribers. */
+const WEBHOOK_FOR: Partial<Record<string, WebhookEvent>> = {
+  OVERSPEED: WebhookEvent.VEHICLE_OVERSPEED,
+  GEOFENCE_ENTER: WebhookEvent.VEHICLE_GEOFENCE_ENTER,
+  GEOFENCE_EXIT: WebhookEvent.VEHICLE_GEOFENCE_EXIT,
+  GPS_OFFLINE: WebhookEvent.VEHICLE_GPS_OFFLINE,
+};
 
 const ALERT_ROLES = [Role.SUPER_ADMIN, Role.COMPANY_ADMIN, Role.FLEET_MANAGER, Role.DISPATCHER];
 
@@ -44,7 +53,10 @@ function toState(row: Prisma.VehicleTelemetryStateGetPayload<object> | undefined
 export class TelemetryRulesService {
   private readonly logger = new Logger(TelemetryRulesService.name);
 
-  constructor(private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly notifications: NotificationsService,
+    private readonly webhooks: WebhooksService,
+  ) {}
 
   /** Must run inside a system (RLS-bypass) transaction. */
   async apply(tx: Tx, batches: { vehicle: VehicleRef; fixes: PositionFix[] }[]): Promise<PersistedEvent[]> {
@@ -208,6 +220,22 @@ export class TelemetryRulesService {
           data: (e.data ?? undefined) as Prisma.InputJsonValue | undefined,
         })),
       });
+      for (const e of events) {
+        const hook = WEBHOOK_FOR[e.type];
+        if (!hook) continue;
+        await this.webhooks.emit(tx, e.companyId, hook, {
+          eventId: e.id,
+          type: e.type,
+          vehicle: { id: e.vehicleId, plateNumber: e.plateNumber },
+          driverId: e.driverId ?? null,
+          occurredAt: e.occurredAt,
+          latitude: e.latitude ?? null,
+          longitude: e.longitude ?? null,
+          speedKmh: e.speedKmh ?? null,
+          geofenceId: e.geofenceId ?? null,
+          data: e.data ?? null,
+        });
+      }
     }
     for (const c of closes) {
       const existing = await tx.telemetryEvent.findUnique({ where: { id: c.id }, select: { data: true } });

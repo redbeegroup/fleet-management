@@ -7,6 +7,7 @@ import { MaintenanceService } from '../modules/maintenance/maintenance.service';
 import { SafetyService } from '../modules/safety/safety.service';
 import { TrainingService } from '../modules/training/training.service';
 import { IncentivesService } from '../modules/incentives/incentives.service';
+import { WebhooksService } from '../modules/integrations/webhooks.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
 
@@ -26,6 +27,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly safety: SafetyService,
     private readonly training: TrainingService,
     private readonly incentives: IncentivesService,
+    private readonly webhooks: WebhooksService,
   ) {
     super();
   }
@@ -42,6 +44,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
+    await this.queue.upsertJobScheduler('webhook-dispatch', { every: 15_000 }, { name: 'webhook-dispatch' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
     this.logger.log('Job schedulers registered');
   }
@@ -66,6 +69,15 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
       case 'compliance-alerts': {
         const r = await this.compliance.run();
         return { ...r, training: await this.training.expiryAlerts() };
+      }
+      case 'webhook-dispatch': {
+        let total = { sent: 0, failed: 0 };
+        for (let i = 0; i < 20; i++) {
+          const r = await this.webhooks.dispatchDue(50);
+          total = { sent: total.sent + r.sent, failed: total.failed + r.failed };
+          if (r.sent + r.failed < 50) break;
+        }
+        return total;
       }
       case 'incentives-monthly':
         return this.incentives.proposeMonthly();

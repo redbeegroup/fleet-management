@@ -560,30 +560,32 @@ model DutySession {
 // ---------------------------------------------------------------------------
 
 model FuelRecord {
-  id            String   @id @default(uuid()) @db.Uuid
-  companyId     String   @map("company_id") @db.Uuid
-  vehicleId     String   @map("vehicle_id") @db.Uuid
-  driverId      String?  @map("driver_id") @db.Uuid
-  filledAt      DateTime @map("filled_at")
-  odometerKm    Decimal  @map("odometer_km") @db.Decimal(12, 1)
-  litres        Decimal  @db.Decimal(10, 2)
-  unitPrice     Decimal  @map("unit_price") @db.Decimal(12, 2)
-  totalCost     Decimal  @map("total_cost") @db.Decimal(14, 2)
-  fuelType      String?  @map("fuel_type")
-  station       String?
-  fullTank      Boolean  @default(true) @map("full_tank")
-  paymentMethod String?  @map("payment_method")
-  receiptFileId String?  @map("receipt_file_id") @db.Uuid
-  notes         String?
-  source        String   @default("web")
+  id             String        @id @default(uuid()) @db.Uuid
+  companyId      String        @map("company_id") @db.Uuid
+  vehicleId      String        @map("vehicle_id") @db.Uuid
+  driverId       String?       @map("driver_id") @db.Uuid
+  filledAt       DateTime      @map("filled_at")
+  odometerKm     Decimal       @map("odometer_km") @db.Decimal(12, 1)
+  litres         Decimal       @db.Decimal(10, 2)
+  unitPrice      Decimal       @map("unit_price") @db.Decimal(12, 2)
+  totalCost      Decimal       @map("total_cost") @db.Decimal(14, 2)
+  fuelType       String?       @map("fuel_type")
+  station        String?
+  fullTank       Boolean       @default(true) @map("full_tank")
+  paymentMethod  String?       @map("payment_method")
+  receiptFileId  String?       @map("receipt_file_id") @db.Uuid
+  notes          String?
+  source         String        @default("web")
   /// Computed (full-to-full): distance since previous full fill and efficiency.
-  distanceKm    Decimal? @map("distance_km") @db.Decimal(10, 1)
-  kmPerLitre    Decimal? @map("km_per_litre") @db.Decimal(8, 2)
+  distanceKm     Decimal?      @map("distance_km") @db.Decimal(10, 1)
+  kmPerLitre     Decimal?      @map("km_per_litre") @db.Decimal(8, 2)
   /// Anomaly flags, e.g. ["ODOMETER_BACKWARDS", "OVER_TANK_CAPACITY", "LOW_EFFICIENCY"]
-  flags         String[] @default([])
-  createdBy     String?  @map("created_by") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  flags          String[]      @default([])
+  /// APPROVED unless the cost needed approval (settings.approvals.fuelAbove).
+  approvalStatus EntryApproval @default(APPROVED) @map("approval_status")
+  createdBy      String?       @map("created_by") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
   driver  Driver? @relation(fields: [driverId], references: [id])
@@ -598,6 +600,7 @@ model FuelRecord {
 // ---------------------------------------------------------------------------
 
 enum WorkOrderStatus {
+  AWAITING_APPROVAL
   OPEN
   IN_PROGRESS
   COMPLETED
@@ -662,29 +665,31 @@ model RepairRequest {
 }
 
 model WorkOrder {
-  id          String          @id @default(uuid()) @db.Uuid
-  companyId   String          @map("company_id") @db.Uuid
-  woNo        String          @map("wo_no")
-  vehicleId   String          @map("vehicle_id") @db.Uuid
-  planId      String?         @map("plan_id") @db.Uuid
-  type        WorkOrderType
-  status      WorkOrderStatus @default(OPEN)
-  priority    String          @default("MEDIUM")
-  title       String
-  description String?
-  workshop    String?
-  assignedTo  String?         @map("assigned_to")
+  id            String          @id @default(uuid()) @db.Uuid
+  companyId     String          @map("company_id") @db.Uuid
+  woNo          String          @map("wo_no")
+  vehicleId     String          @map("vehicle_id") @db.Uuid
+  planId        String?         @map("plan_id") @db.Uuid
+  type          WorkOrderType
+  status        WorkOrderStatus @default(OPEN)
+  priority      String          @default("MEDIUM")
+  title         String
+  description   String?
+  workshop      String?
+  assignedTo    String?         @map("assigned_to")
   /// When true the vehicle is UNDER_REPAIR while the work order is in progress.
-  offRoad     Boolean         @default(true) @map("off_road")
-  odometerKm  Decimal?        @map("odometer_km") @db.Decimal(12, 1)
-  openedAt    DateTime        @default(now()) @map("opened_at")
-  startedAt   DateTime?       @map("started_at")
-  completedAt DateTime?       @map("completed_at")
-  resolution  String?
-  totalCost   Decimal         @default(0) @map("total_cost") @db.Decimal(14, 2)
-  createdBy   String?         @map("created_by") @db.Uuid
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  offRoad       Boolean         @default(true) @map("off_road")
+  odometerKm    Decimal?        @map("odometer_km") @db.Decimal(12, 1)
+  openedAt      DateTime        @default(now()) @map("opened_at")
+  startedAt     DateTime?       @map("started_at")
+  completedAt   DateTime?       @map("completed_at")
+  resolution    String?
+  totalCost     Decimal         @default(0) @map("total_cost") @db.Decimal(14, 2)
+  /// Planned cost; above settings.approvals.workOrderAbove the WO needs approval before it starts.
+  estimatedCost Decimal?        @map("estimated_cost") @db.Decimal(14, 2)
+  createdBy     String?         @map("created_by") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
   vehicle        Vehicle          @relation(fields: [vehicleId], references: [id])
   plan           MaintenancePlan? @relation(fields: [planId], references: [id])
@@ -720,17 +725,19 @@ model WorkOrderLine {
 
 /// Operating expenses other than fuel and maintenance (tolls, parking, fines…).
 model VehicleExpense {
-  id            String   @id @default(uuid()) @db.Uuid
-  companyId     String   @map("company_id") @db.Uuid
-  vehicleId     String   @map("vehicle_id") @db.Uuid
-  tripId        String?  @map("trip_id") @db.Uuid
-  category      String
-  incurredAt    DateTime @map("incurred_at")
-  amount        Decimal  @db.Decimal(14, 2)
-  description   String?
-  receiptFileId String?  @map("receipt_file_id") @db.Uuid
-  createdBy     String?  @map("created_by") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             String        @id @default(uuid()) @db.Uuid
+  companyId      String        @map("company_id") @db.Uuid
+  vehicleId      String        @map("vehicle_id") @db.Uuid
+  tripId         String?       @map("trip_id") @db.Uuid
+  category       String
+  incurredAt     DateTime      @map("incurred_at")
+  amount         Decimal       @db.Decimal(14, 2)
+  description    String?
+  receiptFileId  String?       @map("receipt_file_id") @db.Uuid
+  createdBy      String?       @map("created_by") @db.Uuid
+  /// APPROVED unless the amount needed approval (settings.approvals.expenseAbove).
+  approvalStatus EntryApproval @default(APPROVED) @map("approval_status")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
@@ -794,6 +801,7 @@ enum IncidentStatus {
 }
 
 enum ClaimStatus {
+  PENDING_APPROVAL
   SUBMITTED
   APPROVED
   REJECTED
@@ -1015,4 +1023,260 @@ model DriverAdjustment {
   @@index([companyId, period])
   @@index([driverId, period])
   @@map("driver_adjustments")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 / S9: integration platform & approvals
+// ---------------------------------------------------------------------------
+
+enum EntryApproval {
+  APPROVED
+  PENDING
+  REJECTED
+}
+
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  name       String
+  /// Public part of the key (fms_<prefix>_<secret>), used for lookup.
+  prefix     String    @unique
+  /// SHA-256 of the full key; the key itself is never stored.
+  keyHash    String    @map("key_hash")
+  scopes     String[]
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdBy  String?   @map("created_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@map("api_keys")
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  /// Customer / outlet code from the DMS.
+  code      String
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  township  String?
+  city      String?
+  latitude  Float?
+  longitude Float?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orders DeliveryOrder[]
+
+  @@unique([companyId, code])
+  @@map("customers")
+}
+
+enum DeliveryOrderStatus {
+  RECEIVED
+  PLANNED
+  DISPATCHED
+  DELIVERED
+  PARTIAL
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+model DeliveryOrder {
+  id            String              @id @default(uuid()) @db.Uuid
+  companyId     String              @map("company_id") @db.Uuid
+  /// Sending system, e.g. "dms".
+  source        String              @default("dms")
+  /// Order number in the sending system.
+  externalRef   String              @map("external_ref")
+  customerId    String              @map("customer_id") @db.Uuid
+  status        DeliveryOrderStatus @default(RECEIVED)
+  priority      String              @default("NORMAL")
+  orderDate     DateTime?           @map("order_date")
+  windowStart   DateTime?           @map("window_start")
+  windowEnd     DateTime?           @map("window_end")
+  /// Delivery address when different from the customer's.
+  address       String?
+  latitude      Float?
+  longitude     Float?
+  contactName   String?             @map("contact_name")
+  contactPhone  String?             @map("contact_phone")
+  totalWeightKg Decimal?            @map("total_weight_kg") @db.Decimal(12, 2)
+  totalVolumeM3 Decimal?            @map("total_volume_m3") @db.Decimal(12, 3)
+  codAmount     Decimal?            @map("cod_amount") @db.Decimal(14, 2)
+  notes         String?
+  /// Hash of the last accepted payload: an identical PUT is a no-op.
+  payloadHash   String              @map("payload_hash")
+  version       Int                 @default(1)
+  cancelledAt   DateTime?           @map("cancelled_at")
+  cancelReason  String?             @map("cancel_reason")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  customer Customer            @relation(fields: [customerId], references: [id])
+  lines    DeliveryOrderLine[]
+
+  @@unique([companyId, source, externalRef])
+  @@index([companyId, updatedAt])
+  @@index([companyId, status])
+  @@map("delivery_orders")
+}
+
+model DeliveryOrderLine {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  lineNo      Int      @map("line_no")
+  sku         String
+  description String?
+  quantity    Decimal  @db.Decimal(14, 3)
+  uom         String   @default("EA")
+  weightKg    Decimal? @map("weight_kg") @db.Decimal(12, 2)
+  volumeM3    Decimal? @map("volume_m3") @db.Decimal(12, 3)
+
+  order DeliveryOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, lineNo])
+  @@map("delivery_order_lines")
+}
+
+model WebhookEndpoint {
+  id                  String   @id @default(uuid()) @db.Uuid
+  companyId           String   @map("company_id") @db.Uuid
+  url                 String
+  description         String?
+  /// HMAC-SHA256 signing secret (shown to the admin; needed to sign, so stored).
+  secret              String
+  events              String[]
+  active              Boolean  @default(true)
+  consecutiveFailures Int      @default(0) @map("consecutive_failures")
+  disabledReason      String?  @map("disabled_reason")
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  deliveries WebhookDelivery[]
+
+  @@index([companyId])
+  @@map("webhook_endpoints")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model WebhookDelivery {
+  id             String                @id @default(uuid()) @db.Uuid
+  companyId      String                @map("company_id") @db.Uuid
+  endpointId     String                @map("endpoint_id") @db.Uuid
+  event          String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  nextAttemptAt  DateTime              @default(now()) @map("next_attempt_at")
+  lastAttemptAt  DateTime?             @map("last_attempt_at")
+  responseStatus Int?                  @map("response_status")
+  lastError      String?               @map("last_error")
+  deliveredAt    DateTime?             @map("delivered_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+enum ApprovalKind {
+  WORK_ORDER
+  EXPENSE
+  FUEL
+  VEHICLE_REQUEST
+  CLAIM
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model ApprovalRequest {
+  id                String         @id @default(uuid()) @db.Uuid
+  companyId         String         @map("company_id") @db.Uuid
+  kind              ApprovalKind
+  entityId          String         @map("entity_id") @db.Uuid
+  title             String
+  amount            Decimal?       @db.Decimal(14, 2)
+  requestedBy       String?        @map("requested_by") @db.Uuid
+  status            ApprovalStatus @default(PENDING)
+  requiredApprovals Int            @default(1) @map("required_approvals")
+  decidedAt         DateTime?      @map("decided_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  decisions ApprovalDecision[]
+
+  @@index([companyId, status])
+  @@index([entityId])
+  @@map("approval_requests")
+}
+
+model ApprovalDecision {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  requestId  String   @map("request_id") @db.Uuid
+  approverId String   @map("approver_id") @db.Uuid
+  decision   String
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, approverId])
+  @@map("approval_decisions")
+}
+
+enum VehicleRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SCHEDULED
+  CANCELLED
+}
+
+model VehicleRequest {
+  id               String               @id @default(uuid()) @db.Uuid
+  companyId        String               @map("company_id") @db.Uuid
+  requestNo        String               @map("request_no")
+  requestedBy      String               @map("requested_by") @db.Uuid
+  purpose          String
+  originName       String               @map("origin_name")
+  destinationName  String               @map("destination_name")
+  plannedStart     DateTime             @map("planned_start")
+  plannedEnd       DateTime             @map("planned_end")
+  passengers       Int?
+  cargoDescription String?              @map("cargo_description")
+  preferredClass   String?              @map("preferred_class")
+  notes            String?
+  status           VehicleRequestStatus @default(PENDING)
+  tripId           String?              @map("trip_id") @db.Uuid
+  rejectionReason  String?              @map("rejection_reason")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@unique([companyId, requestNo])
+  @@index([companyId, status])
+  @@index([requestedBy])
+  @@map("vehicle_requests")
 }

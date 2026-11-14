@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ApprovalsService } from '../approvals/approvals.service';
 import { Prisma } from '@prisma/client';
 import { CreateFuelRecordInput } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
@@ -20,8 +21,18 @@ const n = (v: Prisma.Decimal | number | null | undefined) => (v == null ? 0 : Nu
 const round = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
 
 @Injectable()
-export class FuelService {
-  constructor(private readonly db: PrismaService) {}
+export class FuelService implements OnModuleInit {
+  constructor(
+    private readonly db: PrismaService,
+    private readonly approvals: ApprovalsService,
+  ) {}
+
+  onModuleInit() {
+    this.approvals.register('FUEL', async (tx, id, outcome) => {
+      if (outcome === 'CANCELLED') return;
+      await tx.fuelRecord.updateMany({ where: { id, approvalStatus: 'PENDING' }, data: { approvalStatus: outcome === 'APPROVED' ? 'APPROVED' : 'REJECTED' } });
+    });
+  }
 
   list(user: AuthUser, q: FuelListQuery) {
     const where: Prisma.FuelRecordWhereInput = {
@@ -44,8 +55,8 @@ export class FuelService {
     });
   }
 
-  create(user: AuthUser, input: CreateFuelRecordInput, source = 'web') {
-    return this.db.tenant(user.companyId, async (tx) => {
+  async create(user: AuthUser, input: CreateFuelRecordInput, source = 'web') {
+    const { record, req } = await this.db.tenant(user.companyId, async (tx) => {
       const vehicle = await tx.vehicle.findFirst({ where: { id: input.vehicleId, deletedAt: null } });
       if (!vehicle) throw new BadRequestException('Vehicle not found');
       if (input.driverId && !(await tx.driver.findFirst({ where: { id: input.driverId }, select: { id: true } }))) {
@@ -54,11 +65,13 @@ export class FuelService {
       await FilesService.assertOwned(tx, input.receiptFileId);
       const unitPrice = input.unitPrice ?? round(input.totalCost! / input.litres, 2);
       const totalCost = input.totalCost ?? round(input.unitPrice! * input.litres, 2);
+      const needsApproval = (await this.approvals.need(tx, 'FUEL', totalCost)).needed;
       const rec = await tx.fuelRecord.create({
         data: {
           ...input,
           unitPrice,
           totalCost,
+          approvalStatus: needsApproval ? 'PENDING' : 'APPROVED',
           fuelType: input.fuelType ?? vehicle.fuelType,
           companyId: user.companyId,
           source,
@@ -69,14 +82,26 @@ export class FuelService {
         await tx.vehicle.update({ where: { id: vehicle.id }, data: { odometerKm: input.odometerKm } });
       }
       await this.recompute(tx, user.companyId, vehicle.id);
-      return tx.fuelRecord.findUniqueOrThrow({ where: { id: rec.id }, include: { vehicle: { select: { id: true, plateNumber: true } } } });
+      const req = needsApproval
+        ? await this.approvals.request(tx, user.companyId, user.userId, {
+            kind: 'FUEL',
+            entityId: rec.id,
+            title: `Fuel ${round(input.litres, 1)} L — ${vehicle.plateNumber}`,
+            amount: totalCost,
+          })
+        : null;
+      const record = await tx.fuelRecord.findUniqueOrThrow({ where: { id: rec.id }, include: { vehicle: { select: { id: true, plateNumber: true } } } });
+      return { record, req };
     });
+    await this.approvals.announce(req);
+    return record;
   }
 
   remove(user: AuthUser, id: string) {
     return this.db.tenant(user.companyId, async (tx) => {
       const rec = await tx.fuelRecord.findFirst({ where: { id } });
       if (!rec) throw new NotFoundException('Fuel record not found');
+      await this.approvals.cancelFor(tx, 'FUEL', id);
       await tx.fuelRecord.delete({ where: { id } });
       await this.recompute(tx, user.companyId, rec.vehicleId);
     });

@@ -13,6 +13,8 @@ import { TrainingService } from './modules/training/training.service';
 import { IncentivesService } from './modules/incentives/incentives.service';
 import { TelematicsService } from './modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { WebhooksService } from './modules/integrations/webhooks.service';
 
 function logger() {
   const cfg = env();
@@ -38,6 +40,19 @@ async function bootstrapApi() {
         .build(),
     );
     SwaggerModule.setup('api/docs', app, doc);
+    // Separate contract for integrators (DMS etc.): only the X-API-Key endpoints.
+    const integrationDoc = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder()
+        .setTitle('FMS Integration API v1')
+        .setDescription('Authenticated with X-API-Key. See docs/INTEGRATION_API.md for payloads, the status model and webhook signatures.')
+        .setVersion('1.0.0')
+        .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, 'apiKey')
+        .build(),
+      { include: [IntegrationsModule] },
+    );
+    integrationDoc.paths = Object.fromEntries(Object.entries(integrationDoc.paths).filter(([p]) => p.startsWith('/api/integrations/v1/')));
+    SwaggerModule.setup('api/integrations/docs', app, integrationDoc);
   }
   await app.listen(cfg.PORT, '0.0.0.0');
   Logger.log(`API listening on :${cfg.PORT}`, 'Bootstrap');
@@ -59,6 +74,7 @@ async function runJob(name: string | undefined) {
   const jobs: Record<string, () => Promise<unknown>> = {
     'compliance-alerts': async () => ({ ...(await app.get(ComplianceAlertsJob).run()), training: await app.get(TrainingService).expiryAlerts() }),
     'incentives-monthly': () => app.get(IncentivesService).proposeMonthly(),
+    'webhook-dispatch': () => app.get(WebhooksService).dispatchDue(500),
     'position-partitions': () => app.get(TelematicsService).maintainPartitions(),
     'gps-offline': () => app.get(TelematicsService).checkOffline(),
     'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),

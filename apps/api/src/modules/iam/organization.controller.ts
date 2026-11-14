@@ -73,6 +73,7 @@ export class OrganizationController {
         safety: { ...current.safety, ...body.safety, weights: { ...current.safety.weights, ...body.safety?.weights } },
         inspections: { ...current.inspections, ...body.inspections },
         incentives: { ...current.incentives, ...body.incentives },
+        approvals: { ...current.approvals, ...body.approvals },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

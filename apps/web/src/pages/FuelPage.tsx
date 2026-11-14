@@ -18,13 +18,25 @@ export function FuelPage() {
   const [error, setError] = useState<string | null>(null);
   const iso = (d: string) => new Date(`${d}T00:00`).toISOString();
 
-  const vehicles = useQuery({ queryKey: ['vehicles', 'all'], queryFn: () => api<Paginated<Vehicle>>('/vehicles?pageSize=200') });
-  const drivers = useQuery({ queryKey: ['drivers', 'active'], queryFn: () => api<Paginated<Driver>>('/drivers?active=true&pageSize=200'), enabled: canWrite });
+  const vehicles = useQuery({
+    queryKey: ['vehicles', 'all'],
+    queryFn: () => api<Paginated<Vehicle>>('/vehicles?pageSize=200'),
+  });
+  const drivers = useQuery({
+    queryKey: ['drivers', 'active'],
+    queryFn: () => api<Paginated<Driver>>('/drivers?active=true&pageSize=200'),
+    enabled: canWrite,
+  });
   const summary = useQuery({
     queryKey: ['fuel', 'summary', range],
     queryFn: () => api<FuelSummary>(`/fuel/summary?from=${iso(range.from)}&to=${iso(range.to)}`),
   });
-  const params = new URLSearchParams({ page: String(page), pageSize: '25', from: iso(range.from), to: iso(range.to) });
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: '25',
+    from: iso(range.from),
+    to: iso(range.to),
+  });
   if (vehicleId) params.set('vehicleId', vehicleId);
   if (flagged) params.set('flagged', 'true');
   const records = useQuery({
@@ -37,16 +49,27 @@ export function FuelPage() {
   const create = useMutation({
     mutationFn: async ({ body, file }: { body: Record<string, unknown>; file: File | null }) => {
       const receiptFileId = file ? (await uploadFile(file)).id : null;
-      return api<FuelRecord>('/fuel/records', { method: 'POST', body: JSON.stringify({ ...body, receiptFileId }) });
+      return api<FuelRecord>('/fuel/records', {
+        method: 'POST',
+        body: JSON.stringify({ ...body, receiptFileId }),
+      });
     },
     onSuccess: () => {
       setShowForm(false);
       setError(null);
       refresh();
     },
-    onError: (e) => setError(e instanceof ApiError && e.body.errors ? e.body.errors.map((x) => `${x.path}: ${x.message}`).join('; ') : e.message),
+    onError: (e) =>
+      setError(
+        e instanceof ApiError && e.body.errors
+          ? e.body.errors.map((x) => `${x.path}: ${x.message}`).join('; ')
+          : e.message,
+      ),
   });
-  const remove = useMutation({ mutationFn: (id: string) => api(`/fuel/records/${id}`, { method: 'DELETE' }), onSuccess: refresh });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/fuel/records/${id}`, { method: 'DELETE' }),
+    onSuccess: refresh,
+  });
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,7 +95,9 @@ export function FuelPage() {
   }
 
   const s = summary.data?.fleet;
-  const pages = records.data ? Math.max(1, Math.ceil(records.data.total / records.data.pageSize)) : 1;
+  const pages = records.data
+    ? Math.max(1, Math.ceil(records.data.total / records.data.pageSize))
+    : 1;
 
   return (
     <>
@@ -81,11 +106,23 @@ export function FuelPage() {
         <div className="actions">
           <label className="mini">
             From
-            <input type="date" value={range.from} onChange={(e) => e.target.value && (setRange({ ...range, from: e.target.value }), setPage(1))} />
+            <input
+              type="date"
+              value={range.from}
+              onChange={(e) =>
+                e.target.value && (setRange({ ...range, from: e.target.value }), setPage(1))
+              }
+            />
           </label>
           <label className="mini">
             To
-            <input type="date" value={range.to} onChange={(e) => e.target.value && (setRange({ ...range, to: e.target.value }), setPage(1))} />
+            <input
+              type="date"
+              value={range.to}
+              onChange={(e) =>
+                e.target.value && (setRange({ ...range, to: e.target.value }), setPage(1))
+              }
+            />
           </label>
           {canWrite && (
             <button className="btn btn-primary" onClick={() => setShowForm((x) => !x)}>
@@ -123,7 +160,12 @@ export function FuelPage() {
           </label>
           <label>
             Date & time *
-            <input name="filledAt" type="datetime-local" required defaultValue={toLocalInput(new Date())} />
+            <input
+              name="filledAt"
+              type="datetime-local"
+              required
+              defaultValue={toLocalInput(new Date())}
+            />
           </label>
           <label>
             Odometer (km) *
@@ -139,7 +181,13 @@ export function FuelPage() {
           </label>
           <label>
             Total cost
-            <input name="totalCost" type="number" min={0} step="any" placeholder="or price × litres" />
+            <input
+              name="totalCost"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="or price × litres"
+            />
           </label>
           <label>
             Station
@@ -159,7 +207,8 @@ export function FuelPage() {
             <input name="receipt" type="file" accept="application/pdf,image/*" />
           </label>
           <label className="check span-2">
-            <input type="checkbox" name="fullTank" defaultChecked /> Filled to full (needed for km/L)
+            <input type="checkbox" name="fullTank" defaultChecked /> Filled to full (needed for
+            km/L)
           </label>
           {error && <p className="error span-2">{error}</p>}
           <div className="span-2 actions">
@@ -221,7 +270,9 @@ export function FuelPage() {
                 <td className="num">{money(v.distanceKm)}</td>
                 <td className="num">{v.kmPerLitre ?? '—'}</td>
                 <td className="num">{v.litresPer100Km ?? '—'}</td>
-                <td className="num">{v.flagged ? <span className="badge badge-warn">{v.flagged}</span> : 0}</td>
+                <td className="num">
+                  {v.flagged ? <span className="badge badge-warn">{v.flagged}</span> : 0}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -229,7 +280,11 @@ export function FuelPage() {
       </section>
 
       <div className="toolbar">
-        <select value={vehicleId} onChange={(e) => (setVehicleId(e.target.value), setPage(1))} aria-label="Vehicle">
+        <select
+          value={vehicleId}
+          onChange={(e) => (setVehicleId(e.target.value), setPage(1))}
+          aria-label="Vehicle"
+        >
           <option value="">All vehicles</option>
           {vehicles.data?.items.map((v) => (
             <option key={v.id} value={v.id}>
@@ -238,7 +293,12 @@ export function FuelPage() {
           ))}
         </select>
         <label className="check">
-          <input type="checkbox" checked={flagged} onChange={(e) => (setFlagged(e.target.checked), setPage(1))} /> Flagged only
+          <input
+            type="checkbox"
+            checked={flagged}
+            onChange={(e) => (setFlagged(e.target.checked), setPage(1))}
+          />{' '}
+          Flagged only
         </label>
       </div>
       <div className="card table-card">
@@ -269,7 +329,17 @@ export function FuelPage() {
                   {Number(r.litres)}
                   {!r.fullTank && <span className="muted"> (partial)</span>}
                 </td>
-                <td className="num">{money(r.totalCost)}</td>
+                <td className="num">
+                  {money(r.totalCost)}
+                  {r.approvalStatus !== 'APPROVED' && (
+                    <span
+                      className={`badge badge-${r.approvalStatus === 'PENDING' ? 'warn' : 'danger'}`}
+                    >
+                      {' '}
+                      {r.approvalStatus === 'PENDING' ? 'awaiting approval' : 'rejected'}
+                    </span>
+                  )}
+                </td>
                 <td className="num">{r.kmPerLitre ? Number(r.kmPerLitre) : '—'}</td>
                 <td>
                   {r.station ?? '—'}
@@ -283,10 +353,21 @@ export function FuelPage() {
                     </span>
                   ))}
                 </td>
-                <td>{r.receiptFileId ? <FileLink file={{ id: r.receiptFileId, filename: 'receipt', contentType: 'image' }} /> : '—'}</td>
+                <td>
+                  {r.receiptFileId ? (
+                    <FileLink
+                      file={{ id: r.receiptFileId, filename: 'receipt', contentType: 'image' }}
+                    />
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="num">
                   {canWrite && (
-                    <button className="link danger" onClick={() => confirm('Delete this fuel record?') && remove.mutate(r.id)}>
+                    <button
+                      className="link danger"
+                      onClick={() => confirm('Delete this fuel record?') && remove.mutate(r.id)}
+                    >
                       Delete
                     </button>
                   )}

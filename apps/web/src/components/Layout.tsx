@@ -3,7 +3,10 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { logout, session } from '../lib/api';
 import { NotificationBell } from './NotificationBell';
 
-const sections: { title: string; items: { to: string; label: string; perm: string; end?: boolean }[] }[] = [
+const sections: {
+  title: string;
+  items: { to: string; label: string; perm: string; end?: boolean }[];
+}[] = [
   {
     title: 'Overview',
     items: [
@@ -19,6 +22,13 @@ const sections: { title: string; items: { to: string; label: string; perm: strin
       { to: '/dispatch', label: 'Dispatch board', perm: Permission.TRIP_WRITE },
       { to: '/trips', label: 'Trips', perm: Permission.TRIP_WRITE },
       { to: '/attendance', label: 'Attendance', perm: Permission.DRIVER_READ },
+      { to: '/orders', label: 'Delivery orders', perm: Permission.ORDER_READ },
+      {
+        to: '/vehicle-requests',
+        label: 'Booking requests',
+        perm: Permission.VEHICLE_REQUEST_CREATE,
+      },
+      { to: '/approvals', label: 'Approvals', perm: '' },
     ],
   },
   {
@@ -36,7 +46,13 @@ const sections: { title: string; items: { to: string; label: string; perm: strin
       { to: '/geofences', label: 'Geofences', perm: Permission.TRACKING_READ },
     ],
   },
-  { title: 'Admin', items: [{ to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ }] },
+  {
+    title: 'Admin',
+    items: [
+      { to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ },
+      { to: '/integrations', label: 'Integrations', perm: Permission.INTEGRATION_MANAGE },
+    ],
+  },
 ];
 
 export function Layout() {
@@ -51,7 +67,7 @@ export function Layout() {
         </div>
         <nav>
           {sections.map((sec) => {
-            const items = sec.items.filter((n) => session.can(n.perm));
+            const items = sec.items.filter((n) => !n.perm || session.can(n.perm));
             if (!items.length) return null;
             return (
               <div key={sec.title} className="nav-section">

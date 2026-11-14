@@ -119,6 +119,13 @@ export class MaintenanceController {
     return this.svc.startWorkOrder(user, id);
   }
 
+  @Post('work-orders/:id/request-approval')
+  @HttpCode(200)
+  @RequirePermissions(Permission.MAINTENANCE_WRITE)
+  requestApproval(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.requestWorkOrderApproval(user, id);
+  }
+
   @Post('work-orders/:id/lines')
   @RequirePermissions(Permission.MAINTENANCE_WRITE)
   addLine(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(workOrderLineSchema)) body: WorkOrderLineInput) {

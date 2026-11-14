@@ -47,6 +47,16 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
   EXPO_PUSH_URL: z.string().default('https://exp.host/--/api/v2/push/send'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
+  /** Webhooks: allow http:// URLs (testing only). */
+  WEBHOOK_ALLOW_INSECURE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Webhooks: allow private / loopback targets (testing or on-prem DMS only). */
+  WEBHOOK_ALLOW_PRIVATE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 
   // Observability
   LOG_FORMAT: z.enum(['text', 'json']).default('text'),

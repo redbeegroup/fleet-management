@@ -72,6 +72,11 @@ export function SettingsPage() {
     const n = (k: string) => Number(f.get(k));
     savePolicy.mutate({
       safety: { alertBelow: n('alertBelow'), minDistanceKm: n('minDistanceKm') },
+      approvals: Object.fromEntries(
+        ['workOrderAbove', 'expenseAbove', 'fuelAbove', 'claimAbove', 'secondApproverAbove'].map(
+          (k) => [k, f.get(k) ? Number(f.get(k)) : null],
+        ),
+      ),
       inspections: {
         requirePreTrip: f.get('requirePreTrip') === 'on',
         preTripValidHours: n('preTripValidHours'),
@@ -238,6 +243,33 @@ export function SettingsPage() {
             disabled={!canWrite}
           />
         </label>
+        <h3 className="span-2">Approval limits</h3>
+        <p className="span-2 muted">
+          Amounts above a limit need approval by a fleet manager or admin (never the person who
+          entered them). Leave empty for no approval.
+        </p>
+        {(
+          [
+            ['workOrderAbove', 'Work orders above'],
+            ['expenseAbove', 'Expenses above'],
+            ['fuelAbove', 'Fuel records above'],
+            ['claimAbove', 'Insurance claims above'],
+            ['secondApproverAbove', 'Two approvers from'],
+          ] as const
+        ).map(([k, label]) => (
+          <label key={k}>
+            {label}
+            <input
+              name={k}
+              type="number"
+              min={0}
+              step="any"
+              defaultValue={data.approvals[k] ?? ''}
+              disabled={!canWrite}
+              placeholder="no limit"
+            />
+          </label>
+        ))}
         {policyMsg && (
           <p className={`span-2 ${policyMsg.ok ? 'success' : 'error'}`}>{policyMsg.text}</p>
         )}

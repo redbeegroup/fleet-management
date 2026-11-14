@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `inspection_templates`, `inspections`, `training_courses`, `driver_trainings`, `driver_adjustments`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `inspection_templates`, `inspections`, `training_courses`, `driver_trainings`, `driver_adjustments`, `api_keys`, `customers`, `delivery_orders`, `delivery_order_lines`, `webhook_endpoints`, `webhook_deliveries`, `approval_requests`, `approval_decisions`, `vehicle_requests`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -139,6 +139,16 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - Training status is derived (never stored) from the record with the latest expiry per driver and course.
 - Incentive approval is segregated: `incentive:write` (fleet managers) proposes, `incentive:approve` (company admins) decides, and the service refuses a decision by the proposer.
 
+## Integrations
+
+- **Machine authentication** is separate from users: the global `AuthGuard` checks `X-API-Key` only on routes with `@ApiKeyAuth(scope)` and puts an `ApiClient` (company, key id, scopes) on the request, not an `AuthUser`. Any other route rejects API keys. Audit rows record the key id.
+- **Order intake** (`OrdersService`): upsert by `(company, source, external_ref)`, customer upsert by code, line replacement, `payload_hash` for no-op detection, `version` for change ordering.
+- **Webhooks** use a transactional outbox: `WebhooksService.emit(tx, …)` inserts `webhook_deliveries` rows inside the domain transaction. The worker claims due rows with `FOR UPDATE SKIP LOCKED` and a 2-minute lease, then sends them outside the transaction.
+
+## Approvals
+
+`ApprovalsService` (global) opens requests inside the owning transaction, notifies deciders after commit (`announce`), and on the final decision calls the handler the owning module registered (`register(kind, handler)`) inside the deciding transaction, so the decision and its effect commit together. Rules (limits, two approvers, no self-approval, no repeat approver) are pure and unit-tested.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -149,6 +159,7 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
 | `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |
+| `webhook-dispatch` | every 15 s | send due webhook deliveries (retries with backoff) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).

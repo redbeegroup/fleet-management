@@ -190,6 +190,7 @@ export const companySettingsSchema = z.object({
   safety: z.lazy(() => safetySettingsSchema).default({}),
   inspections: z.lazy(() => inspectionSettingsSchema).default({}),
   incentives: z.lazy(() => incentiveSettingsSchema).default({}),
+  approvals: z.lazy(() => approvalSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -200,6 +201,7 @@ export const updateCompanySettingsSchema = z.object({
   safety: z.lazy(() => safetySettingsSchema.partial()).optional(),
   inspections: z.lazy(() => inspectionSettingsSchema.partial()).optional(),
   incentives: z.lazy(() => incentiveSettingsSchema.partial()).optional(),
+  approvals: z.lazy(() => approvalSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -362,6 +364,8 @@ export const createWorkOrderSchema = z.object({
   odometerKm: z.number().nonnegative().optional().nullable(),
   planId: z.string().uuid().optional().nullable(),
   repairRequestIds: z.array(z.string().uuid()).max(50).optional(),
+  /** Planned cost; above settings.approvals.workOrderAbove the work order needs approval. */
+  estimatedCost: z.number().nonnegative().optional().nullable(),
 });
 export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
 
@@ -633,3 +637,133 @@ export type CreateAdjustmentInput = z.infer<typeof createAdjustmentSchema>;
 export const updateAdjustmentSchema = createAdjustmentSchema.omit({ driverId: true }).partial();
 export type UpdateAdjustmentInput = z.infer<typeof updateAdjustmentSchema>;
 export const decideAdjustmentSchema = z.object({ note: z.string().trim().max(1000).optional().nullable() });
+
+// ---------------------------------------------------------------------------
+// Integrations & approvals (Phase 2 / S9)
+// ---------------------------------------------------------------------------
+
+/** Amounts above which an approval is required; null = never. */
+const limit = z.number().nonnegative().nullable().default(null);
+export const approvalSettingsSchema = z.object({
+  workOrderAbove: limit,
+  expenseAbove: limit,
+  fuelAbove: limit,
+  claimAbove: limit,
+  /** At or above this amount two different approvers are needed. */
+  secondApproverAbove: limit,
+});
+export type ApprovalSettings = z.infer<typeof approvalSettingsSchema>;
+
+export const decisionSchema = z.object({ note: z.string().trim().max(1000).optional().nullable() });
+export type DecisionInput = z.infer<typeof decisionSchema>;
+
+export const ApiScope = {
+  ORDERS_WRITE: 'orders:write',
+  ORDERS_READ: 'orders:read',
+  TRIPS_READ: 'trips:read',
+  VEHICLES_READ: 'vehicles:read',
+  TRACKING_READ: 'tracking:read',
+} as const;
+export type ApiScope = (typeof ApiScope)[keyof typeof ApiScope];
+
+export const createApiKeySchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  scopes: z.array(z.nativeEnum(ApiScope)).min(1),
+  expiresAt: z.coerce.date().optional().nullable(),
+});
+export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>;
+
+export const WebhookEvent = {
+  ORDER_RECEIVED: 'order.received',
+  ORDER_UPDATED: 'order.updated',
+  ORDER_CANCELLED: 'order.cancelled',
+  TRIP_ASSIGNED: 'trip.assigned',
+  TRIP_STARTED: 'trip.started',
+  TRIP_COMPLETED: 'trip.completed',
+  TRIP_CANCELLED: 'trip.cancelled',
+  VEHICLE_OVERSPEED: 'vehicle.overspeed',
+  VEHICLE_GEOFENCE_ENTER: 'vehicle.geofence_enter',
+  VEHICLE_GEOFENCE_EXIT: 'vehicle.geofence_exit',
+  VEHICLE_GPS_OFFLINE: 'vehicle.gps_offline',
+  INSPECTION_FAILED: 'inspection.failed',
+  APPROVAL_REQUESTED: 'approval.requested',
+  APPROVAL_APPROVED: 'approval.approved',
+  APPROVAL_REJECTED: 'approval.rejected',
+} as const;
+export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
+
+export const webhookEndpointSchema = z.object({
+  url: z.string().trim().url().max(2000),
+  description: z.string().max(300).optional().nullable(),
+  events: z.array(z.nativeEnum(WebhookEvent)).min(1),
+  active: z.boolean().default(true),
+});
+export type WebhookEndpointInput = z.infer<typeof webhookEndpointSchema>;
+export const updateWebhookEndpointSchema = webhookEndpointSchema.partial();
+export type UpdateWebhookEndpointInput = z.infer<typeof updateWebhookEndpointSchema>;
+
+const ref = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9._\-/]+$/, 'letters, digits and . _ - / only');
+export const orderCustomerSchema = z.object({
+  code: ref,
+  name: z.string().trim().min(1).max(200),
+  phone: z.string().max(50).optional().nullable(),
+  email: z.string().email().max(200).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  township: z.string().max(100).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+});
+export const orderLineSchema = z.object({
+  sku: z.string().trim().min(1).max(64),
+  description: z.string().max(300).optional().nullable(),
+  quantity: z.number().positive().max(10_000_000),
+  uom: z.string().trim().min(1).max(16).default('EA'),
+  /** Total weight of the line. */
+  weightKg: z.number().nonnegative().optional().nullable(),
+  /** Total volume of the line. */
+  volumeM3: z.number().nonnegative().optional().nullable(),
+});
+export const OrderPriority = { LOW: 'LOW', NORMAL: 'NORMAL', HIGH: 'HIGH', URGENT: 'URGENT' } as const;
+export const upsertOrderSchema = z
+  .object({
+    customer: orderCustomerSchema,
+    orderDate: z.coerce.date().optional().nullable(),
+    priority: z.nativeEnum(OrderPriority).default('NORMAL'),
+    deliveryWindow: z.object({ start: z.coerce.date(), end: z.coerce.date() }).optional().nullable(),
+    address: z.string().max(500).optional().nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
+    contactName: z.string().max(200).optional().nullable(),
+    contactPhone: z.string().max(50).optional().nullable(),
+    codAmount: z.number().nonnegative().optional().nullable(),
+    notes: z.string().max(2000).optional().nullable(),
+    lines: z.array(orderLineSchema).min(1).max(500),
+  })
+  .refine((o) => !o.deliveryWindow || o.deliveryWindow.start < o.deliveryWindow.end, { path: ['deliveryWindow', 'end'], message: 'end must be after start' })
+  .refine((o) => (o.latitude == null) === (o.longitude == null), { path: ['longitude'], message: 'latitude and longitude go together' });
+export type UpsertOrderInput = z.infer<typeof upsertOrderSchema>;
+export const orderRefSchema = ref;
+export const batchOrdersSchema = z.object({
+  orders: z
+    .array(z.object({ externalRef: ref, order: z.unknown() }))
+    .min(1)
+    .max(200),
+});
+export const cancelOrderSchema = z.object({ reason: z.string().trim().max(500).optional().nullable() });
+
+export const createVehicleRequestSchema = z
+  .object({
+    purpose: z.string().trim().min(3).max(300),
+    originName: z.string().trim().min(1).max(200),
+    destinationName: z.string().trim().min(1).max(200),
+    plannedStart: z.coerce.date(),
+    plannedEnd: z.coerce.date(),
+    passengers: z.number().int().min(0).max(100).optional().nullable(),
+    cargoDescription: z.string().max(500).optional().nullable(),
+    preferredClass: z.string().trim().toUpperCase().max(20).optional().nullable(),
+    notes: z.string().max(2000).optional().nullable(),
+  })
+  .refine((r) => r.plannedEnd > r.plannedStart, { path: ['plannedEnd'], message: 'must be after plannedStart' });
+export type CreateVehicleRequestInput = z.infer<typeof createVehicleRequestSchema>;
+export const scheduleVehicleRequestSchema = z.object({ vehicleId: z.string().uuid(), driverId: z.string().uuid() });

@@ -14,3 +14,15 @@ export const RequirePermissions = (...perms: Permission[]) => SetMetadata(PERMIS
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): AuthUser => {
   return ctx.switchToHttp().getRequest().user;
 });
+
+export const API_KEY_SCOPE = 'apiKeyScope';
+
+/**
+ * Route is for machine clients: authenticated ONLY by `X-API-Key` with the given scope.
+ * User JWTs are not accepted here, and API keys are not accepted anywhere else.
+ */
+export const ApiKeyAuth = (scope: string) => SetMetadata(API_KEY_SCOPE, scope);
+
+export const CurrentClient = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
+  return ctx.switchToHttp().getRequest().client;
+});

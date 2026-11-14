@@ -163,6 +163,7 @@ export interface CompanySettings {
   safety: { minDistanceKm: number; alertBelow: number; weights: Record<string, number> };
   inspections: { requirePreTrip: boolean; preTripValidHours: number };
   incentives: { safetyBonusEnabled: boolean; safetyBonusMinScore: number; safetyBonusAmount: number; trainingAlertDays: number };
+  approvals: { workOrderAbove: number | null; expenseAbove: number | null; fuelAbove: number | null; claimAbove: number | null; secondApproverAbove: number | null };
 }
 
 export interface Trip {
@@ -227,6 +228,7 @@ export interface FuelRecord {
   distanceKm: string | null;
   kmPerLitre: string | null;
   flags: string[];
+  approvalStatus: 'APPROVED' | 'PENDING' | 'REJECTED';
   vehicle: { id: string; plateNumber: string };
   driver: { id: string; fullName: string } | null;
 }
@@ -272,8 +274,9 @@ export interface WorkOrder {
   id: string;
   woNo: string;
   type: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'AWAITING_APPROVAL' | 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   priority: string;
+  estimatedCost: string | null;
   title: string;
   description: string | null;
   workshop: string | null;
@@ -361,6 +364,7 @@ export interface Overview {
   vehicles: VehicleKpis[];
   branches: (FleetKpis & { branchId: string | null; branchName: string })[];
   expenseByCategory: Record<string, number>;
+  pendingApproval: { fuelCost: number; fuelRecords: number; otherCost: number; expenses: number };
   series: { day: string; distanceKm: number; fuelCost: number; maintenanceCost: number; otherCost: number; totalCost: number; activeVehicles: number }[];
 }
 
@@ -370,6 +374,7 @@ export interface Expense {
   incurredAt: string;
   amount: string;
   description: string | null;
+  approvalStatus: 'APPROVED' | 'PENDING' | 'REJECTED';
   vehicle: { id: string; plateNumber: string };
 }
 
@@ -413,7 +418,7 @@ export interface InsuranceClaim {
   insurer: string | null;
   policyNo: string | null;
   externalRef: string | null;
-  status: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SETTLED';
+  status: 'PENDING_APPROVAL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SETTLED';
   submittedAt: string;
   amountClaimed: string;
   amountApproved: string | null;
@@ -537,4 +542,91 @@ export interface AdjustmentSummary {
   currency: string;
   drivers: { id: string; fullName: string; employeeNo: string; incentives: number; penalties: number; net: number; pending: number }[];
   totals: { incentives: number; penalties: number; net: number; pending: number };
+}
+
+export interface ApprovalRequest {
+  id: string;
+  kind: 'WORK_ORDER' | 'EXPENSE' | 'FUEL' | 'VEHICLE_REQUEST' | 'CLAIM';
+  entityId: string;
+  title: string;
+  amount: string | null;
+  requestedBy: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  requiredApprovals: number;
+  createdAt: string;
+  decidedAt: string | null;
+  decisions: { id: string; approverId: string; decision: string; note: string | null; createdAt: string }[];
+}
+
+export interface VehicleRequest {
+  id: string;
+  requestNo: string;
+  requestedBy: string;
+  requesterName: string | null;
+  purpose: string;
+  originName: string;
+  destinationName: string;
+  plannedStart: string;
+  plannedEnd: string;
+  passengers: number | null;
+  cargoDescription: string | null;
+  preferredClass: string | null;
+  notes: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SCHEDULED' | 'CANCELLED';
+  rejectionReason: string | null;
+  trip: { id: string; tripNo: string; status: string; vehicle: { plateNumber: string } | null; driver: { fullName: string } | null } | null;
+}
+
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  key?: string;
+}
+
+export interface WebhookEndpointRow {
+  id: string;
+  url: string;
+  description: string | null;
+  events: string[];
+  active: boolean;
+  consecutiveFailures: number;
+  disabledReason: string | null;
+  createdAt: string;
+  secret?: string;
+}
+
+export interface WebhookDeliveryRow {
+  id: string;
+  endpointId: string;
+  event: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+  attempts: number;
+  nextAttemptAt: string;
+  lastAttemptAt: string | null;
+  responseStatus: number | null;
+  lastError: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface ApiOrder {
+  externalRef: string;
+  fmsId: string;
+  status: string;
+  version: number;
+  priority: string;
+  deliveryWindow: { start: string; end: string } | null;
+  customer: { code: string; name: string; township: string | null; city: string | null };
+  totalWeightKg: number | null;
+  totalVolumeM3: number | null;
+  codAmount: number | null;
+  lines: { lineNo: number; sku: string; quantity: number; uom: string }[];
+  createdAt: string;
+  updatedAt: string;
 }

@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ApprovalsService } from '../approvals/approvals.service';
 import { Prisma } from '@prisma/client';
 import { CreateClaimInput, CreateIncidentInput, Role, UpdateClaimInput, UpdateIncidentInput } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
@@ -14,16 +15,31 @@ const include = {
 } satisfies Prisma.IncidentInclude;
 
 const INCIDENT_FLOW: Record<string, string[]> = { REPORTED: ['INVESTIGATING', 'CLOSED'], INVESTIGATING: ['CLOSED'], CLOSED: ['INVESTIGATING'] };
-const CLAIM_FLOW: Record<string, string[]> = { SUBMITTED: ['APPROVED', 'REJECTED'], APPROVED: ['SETTLED'], REJECTED: ['SUBMITTED'], SETTLED: [] };
+const CLAIM_FLOW: Record<string, string[]> = { PENDING_APPROVAL: [], SUBMITTED: ['APPROVED', 'REJECTED'], APPROVED: ['SETTLED'], REJECTED: ['SUBMITTED'], SETTLED: [] };
 
 @Injectable()
-export class IncidentsService {
+export class IncidentsService implements OnModuleInit {
   private readonly logger = new Logger(IncidentsService.name);
 
   constructor(
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly approvals: ApprovalsService,
   ) {}
+
+  onModuleInit() {
+    this.approvals.register('CLAIM', async (tx, id, outcome, ctx) => {
+      const c = await tx.insuranceClaim.findUnique({ where: { id } });
+      if (!c || c.status !== 'PENDING_APPROVAL' || outcome === 'CANCELLED') return;
+      await tx.insuranceClaim.update({
+        where: { id },
+        data:
+          outcome === 'APPROVED'
+            ? { status: 'SUBMITTED', submittedAt: new Date() }
+            : { status: 'REJECTED', decidedAt: new Date(), notes: `${c.notes ? `${c.notes}\n` : ''}Internal approval rejected: ${ctx.note ?? ''}`.trim() },
+      });
+    });
+  }
 
   list(user: AuthUser, q: { status?: string; vehicleId?: string; driverId?: string; reportedBy?: string; page: number; pageSize: number }) {
     const where: Prisma.IncidentWhereInput = {
@@ -112,8 +128,8 @@ export class IncidentsService {
     });
   }
 
-  createClaim(user: AuthUser, incidentId: string, input: CreateClaimInput) {
-    return this.db.tenant(user.companyId, async (tx) => {
+  async createClaim(user: AuthUser, incidentId: string, input: CreateClaimInput) {
+    const { claim, req } = await this.db.tenant(user.companyId, async (tx) => {
       const inc = await tx.incident.findFirst({ where: { id: incidentId } });
       if (!inc) throw new NotFoundException('Incident not found');
       // Defaults from the vehicle's latest insurance document.
@@ -122,7 +138,8 @@ export class IncidentsService {
         : null;
       const year = new Date().getUTCFullYear();
       const claimNo = `CLM-${year}-${String(await nextNumber(tx, user.companyId, `clm:${year}`)).padStart(6, '0')}`;
-      return tx.insuranceClaim.create({
+      const needsApproval = (await this.approvals.need(tx, 'CLAIM', input.amountClaimed)).needed;
+      const claim = await tx.insuranceClaim.create({
         data: {
           ...input,
           insurer: input.insurer ?? policy?.issuer ?? null,
@@ -130,9 +147,16 @@ export class IncidentsService {
           claimNo,
           incidentId,
           companyId: user.companyId,
+          status: needsApproval ? 'PENDING_APPROVAL' : 'SUBMITTED',
         },
       });
+      const req = needsApproval
+        ? await this.approvals.request(tx, user.companyId, user.userId, { kind: 'CLAIM', entityId: claim.id, title: `${claimNo} for ${inc.incidentNo}`, amount: input.amountClaimed })
+        : null;
+      return { claim, req };
     });
+    await this.approvals.announce(req);
+    return claim;
   }
 
   updateClaim(user: AuthUser, id: string, input: UpdateClaimInput) {

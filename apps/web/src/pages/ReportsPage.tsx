@@ -19,7 +19,11 @@ export function ReportsPage() {
     queryKey: ['analytics', 'overview', range],
     queryFn: () => api<Overview>(`/analytics/overview?from=${range.from}&to=${range.to}`),
   });
-  const vehicles = useQuery({ queryKey: ['vehicles', 'all'], queryFn: () => api<Paginated<Vehicle>>('/vehicles?pageSize=200'), enabled: canWrite });
+  const vehicles = useQuery({
+    queryKey: ['vehicles', 'all'],
+    queryFn: () => api<Paginated<Vehicle>>('/vehicles?pageSize=200'),
+    enabled: canWrite,
+  });
   const fromIso = new Date(`${range.from}T00:00`).toISOString();
   const toIso = new Date(new Date(`${range.to}T00:00`).getTime() + 86_400_000).toISOString();
   const expenses = useQuery({
@@ -37,7 +41,12 @@ export function ReportsPage() {
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['analytics'] });
     },
-    onError: (e) => setError(e instanceof ApiError && e.body.errors ? e.body.errors.map((x) => `${x.path}: ${x.message}`).join('; ') : e.message),
+    onError: (e) =>
+      setError(
+        e instanceof ApiError && e.body.errors
+          ? e.body.errors.map((x) => `${x.path}: ${x.message}`).join('; ')
+          : e.message,
+      ),
   });
   const removeExpense = useMutation({
     mutationFn: (id: string) => api(`/expenses/${id}`, { method: 'DELETE' }),
@@ -48,7 +57,9 @@ export function ReportsPage() {
   });
 
   async function downloadCsv() {
-    const res = await fetch(`/api/analytics/vehicles.csv?from=${range.from}&to=${range.to}`, { headers: { Authorization: `Bearer ${accessToken()}` } });
+    const res = await fetch(`/api/analytics/vehicles.csv?from=${range.from}&to=${range.to}`, {
+      headers: { Authorization: `Bearer ${accessToken()}` },
+    });
     if (!res.ok) return setError(`Export failed (${res.status})`);
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
@@ -82,6 +93,13 @@ export function ReportsPage() {
         <RangePicker value={range} onChange={setRange} />
       </header>
       {error && <p className="error">{error}</p>}
+      {data && (data.pendingApproval.fuelRecords > 0 || data.pendingApproval.expenses > 0) && (
+        <p className="muted">
+          Not included below, awaiting approval: fuel {money(data.pendingApproval.fuelCost)} (
+          {data.pendingApproval.fuelRecords}), other {money(data.pendingApproval.otherCost)} (
+          {data.pendingApproval.expenses}). <Link to="/approvals">Approvals</Link>
+        </p>
+      )}
 
       <section className="card table-card">
         <div className="card-head">
@@ -129,7 +147,9 @@ export function ReportsPage() {
                   <strong>{money(v.totalCost)}</strong>
                 </td>
                 <td className="num">{v.costPerKm != null ? money(v.costPerKm) : '—'}</td>
-                <td className="num">{v.downtimeMinutes ? formatDuration(v.downtimeMinutes) : '—'}</td>
+                <td className="num">
+                  {v.downtimeMinutes ? formatDuration(v.downtimeMinutes) : '—'}
+                </td>
                 <td className="num">{pct(v.idlePct)}</td>
                 <td className="num">{v.overspeedEvents}</td>
               </tr>
@@ -208,7 +228,12 @@ export function ReportsPage() {
             </label>
             <label>
               Date *
-              <input name="incurredAt" type="datetime-local" required defaultValue={toLocalInput(new Date())} />
+              <input
+                name="incurredAt"
+                type="datetime-local"
+                required
+                defaultValue={toLocalInput(new Date())}
+              />
             </label>
             <label>
               Amount *
@@ -261,10 +286,23 @@ export function ReportsPage() {
                 <td>{x.vehicle.plateNumber}</td>
                 <td>{humanize(x.category)}</td>
                 <td>{x.description ?? '—'}</td>
-                <td className="num">{money(x.amount)}</td>
+                <td className="num">
+                  {money(x.amount)}
+                  {x.approvalStatus !== 'APPROVED' && (
+                    <span
+                      className={`badge badge-${x.approvalStatus === 'PENDING' ? 'warn' : 'danger'}`}
+                    >
+                      {' '}
+                      {x.approvalStatus === 'PENDING' ? 'awaiting approval' : 'rejected'}
+                    </span>
+                  )}
+                </td>
                 <td className="num">
                   {canWrite && (
-                    <button className="link danger" onClick={() => confirm('Delete expense?') && removeExpense.mutate(x.id)}>
+                    <button
+                      className="link danger"
+                      onClick={() => confirm('Delete expense?') && removeExpense.mutate(x.id)}
+                    >
                       Delete
                     </button>
                   )}

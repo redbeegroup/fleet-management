@@ -1,11 +1,12 @@
 import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Observable, tap } from 'rxjs';
+import type { ApiClient } from '../auth/api-key';
 import type { AuthUser } from '../auth/auth-user';
 import { PrismaService } from '../db/prisma.service';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const REDACT = new Set(['password', 'passwordHash', 'refreshToken', 'token']);
+const REDACT = new Set(['password', 'passwordHash', 'refreshToken', 'token', 'secret', 'key']);
 
 function redact(body: unknown): unknown {
   if (!body || typeof body !== 'object') return body;
@@ -22,13 +23,14 @@ export class AuditInterceptor implements NestInterceptor {
   constructor(private readonly db: PrismaService) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser }>();
+    const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser; client?: ApiClient }>();
     if (!MUTATING.has(req.method)) return next.handle();
 
     return next.handle().pipe(
       tap((result) => {
         const res = ctx.switchToHttp().getResponse<Response>();
         const user = req.user;
+        const client = req.client;
         const entity = ctx.getClass().name.replace(/Controller$/, '');
         const entityId =
           (req.params?.id as string | undefined) ??
@@ -37,7 +39,7 @@ export class AuditInterceptor implements NestInterceptor {
           .system((tx) =>
             tx.auditLog.create({
               data: {
-                companyId: user?.companyId ?? null,
+                companyId: user?.companyId ?? client?.companyId ?? null,
                 userId: user?.userId ?? null,
                 action: `${ctx.getClass().name}.${ctx.getHandler().name}`,
                 entity,
@@ -46,7 +48,7 @@ export class AuditInterceptor implements NestInterceptor {
                 path: req.originalUrl,
                 statusCode: res.statusCode,
                 ip: req.ip,
-                payload: redact(req.body) as object,
+                payload: (client ? { apiKeyId: client.apiKeyId, body: redact(req.body) } : redact(req.body)) as object,
               },
             }),
           )

@@ -58,7 +58,7 @@ docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.
 
 **Files** (documents, photos, receipts) go to the bundled **SeaweedFS** S3 service (`seaweedfs`, data in the `s3data` volume). Everything is set in `.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (and `S3_ENDPOINT` to use another S3 service instead). `STORAGE_DRIVER=local` stores files on the `files` volume as a fallback. The bucket is created automatically on first upload.
 
-**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `incentives-monthly`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
+**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `incentives-monthly`, `webhook-dispatch`, `gps-offline`, `position-partitions`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env run --rm -e MODE=job -e JOB=compliance-alerts api
@@ -153,7 +153,12 @@ Migrations are forward-only. Ship schema changes as expand → migrate → contr
 - Metrics: Prometheus format at `/metrics` — the API on its HTTP port (outside `/api`, so not exposed by the ingress), worker and ingest on `METRICS_PORT` (9100). Pods carry `prometheus.io/*` annotations; the NetworkPolicy admits pods labelled `app.kubernetes.io/name: prometheus`. Key series: `fms_http_request_duration_seconds`, `fms_positions_ingested_total`, `fms_telemetry_events_total{type}`, `fms_notifications_total{channel,result}`, `fms_job_runs_total{job,result}`.
 - Suggested alerts: ingest stalled (`rate(fms_positions_ingested_total[15m]) == 0` during working hours), job failures, API p95 latency, readiness failures.
 
-### 2.6 Mobile push
+### 2.6 Integrations (DMS)
+
+- The DMS calls `https://<host>/api/integrations/v1/...` with an API key created in the console (Integrations). Contract: `docs/INTEGRATION_API.md`, OpenAPI at `/api/integrations/docs` (with `SWAGGER_ENABLED`).
+- Webhooks are sent by the **worker** over HTTPS, so its egress must reach the receivers (the chart's NetworkPolicy allows HTTPS egress). Private, loopback and link-local targets are refused; set `WEBHOOK_ALLOW_PRIVATE=true` only if the DMS receiver is on an internal network, and `WEBHOOK_ALLOW_INSECURE=true` only for plain-http test receivers.
+
+### 2.7 Mobile push
 
 Set `PUSH_ENABLED=true` (chart default) and, if your Expo project requires it, the `EXPO_ACCESS_TOKEN` secret key. The API needs egress to `exp.host:443`. The driver app registers its token after sign-in (`apps/driver-app/README.md`).
 

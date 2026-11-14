@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety) and S8 (inspections, training, incentives) delivered**; next S9 (API keys, DMS order API, webhooks, approvals). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) and S9 (integration platform & approvals) delivered**; next S10 (logistics core: delivery planning, loading, multi-stop trips). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -269,11 +269,11 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | GPS device integration | P1 | 1 / S1–S3 | 🟡 `TelematicsProvider` + Watch Tower adapter |
 | Notification engine | P1 | 1 / S2–S6 | ✅ in-app, SMTP e-mail, Expo push; role-based recipients; dedupe |
 | ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
-| DMS / TMS integration | P2 | 3 | ⏳ |
+| DMS / TMS integration | P2 | 2 / S9 → 3 | 🟡 DMS order intake API + status webhooks (S9); delivery planning/ePOD statuses S10–S11 |
 | BI integration (Tableau, Metabase) | P2 | 3 | ⏳ read-only reporting schema / replica |
-| REST APIs & webhooks | P2 | 2 | 🟡 REST + OpenAPI done; API keys + webhooks in Phase 2 |
+| REST APIs & webhooks | P2 | 2 / S9 | ✅ scoped API keys, integration API v1 (separate OpenAPI), signed webhooks with retries ([INTEGRATION_API.md](INTEGRATION_API.md)) |
 | SSO (Entra ID / OIDC) | P2 | 3 | ⏳ |
-| Workflow & approval engine | P2 | 2 | ⏳ |
+| Workflow & approval engine | P2 | 2 / S9 | ✅ work orders, expenses, fuel and claims above configurable limits, vehicle booking requests; two approvers above a second limit; no self-approval |
 | Multi-tenant SaaS architecture | P2 | 2 | 🟡 tenant isolation done; onboarding/billing in Phase 2 |
 
 ## 5. KPIs
@@ -400,4 +400,12 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Training** (`modules/training`): `training_courses` (validity months, mandatory) and `driver_trainings` (expiry defaults to completion + validity). `status.ts` (pure) → VALID / EXPIRING / EXPIRED / MISSING. Compliance matrix at `/api/training/matrix`; expiry alerts run with the daily `compliance-alerts` job (managers + the driver, once per bucket).
 - **Incentives & penalties** (`modules/incentives`): `driver_adjustments` per payroll month. Fleet managers propose; company admins approve or reject (with a reason) and nobody decides their own proposal. `incentives-monthly` job (1st of the month, 08:00 Asia/Yangon) proposes the safety bonus from last month's scores when enabled (idempotent via `dedupe_key`). Summary and payroll CSV per month.
 - Driver app: **Check** tab (inspection with defect photos), training status and incentive/deduction items on the Safety tab. Web: Inspections (list, record, checklist editor), Training (matrix, courses, driver records), Incentives (month view, approvals, CSV), new Settings section.
+
+### Phase 2 — Sprint 9 (integration platform & approvals) delivered
+
+- **API keys** (`common/auth/api-key.ts`): `fms_<prefix>_<secret>`, only the SHA-256 is stored, shown once, scopes, expiry, revocation, last-used. Accepted **only** on routes marked `@ApiKeyAuth(scope)` (`/api/integrations/v1`), never on user routes; rate-limited per key.
+- **DMS order API** (`modules/integrations`): idempotent `PUT /orders/{externalRef}` (payload hash → `unchanged`), batch, cancel, changes feed with cursor, `Idempotency-Key` (Redis, 24 h). Minimal `customers`, `delivery_orders`, `delivery_order_lines` that S10 extends. Contract: [INTEGRATION_API.md](INTEGRATION_API.md) and `/api/integrations/docs`.
+- **Webhooks**: outbox rows written in the same transaction as the change; `webhook-dispatch` worker job (15 s) with lease + `SKIP LOCKED`, HMAC-SHA256 signatures, 8 attempts over ~22 h, auto-disable after 20 failures, redelivery, test ping. SSRF guard: https only and no private/loopback/link-local targets unless `WEBHOOK_ALLOW_INSECURE` / `WEBHOOK_ALLOW_PRIVATE`.
+- **Approvals** (`modules/approvals`): generic requests + decisions, pure rules (`rules.ts`), owning modules register outcome handlers. Work orders (`AWAITING_APPROVAL`, start/complete blocked until the cost is approved, `request-approval` when lines exceed the limit), expenses and fuel (`approval_status`; analytics count approved costs only and report pending separately), insurance claims (`PENDING_APPROVAL` → `SUBMITTED`), vehicle booking requests (new `REQUESTER` role; approved requests are scheduled into trips by dispatchers). Limits are off until set in Settings.
+- Web: Integrations (keys, webhooks, delivery log), Delivery orders, Approvals inbox, Booking requests, approval states on work orders/fuel/expenses/claims, approval limits in Settings.
 

@@ -35,6 +35,14 @@ export const Permission = {
   INCENTIVE_WRITE: 'incentive:write',
   /** Approve or reject proposals (never one's own). */
   INCENTIVE_APPROVE: 'incentive:approve',
+  /** API keys and webhooks. */
+  INTEGRATION_MANAGE: 'integration:manage',
+  ORDER_READ: 'order:read',
+  /** Decide approval requests (never one's own). */
+  APPROVAL_DECIDE: 'approval:decide',
+  VEHICLE_REQUEST_READ: 'vehicle-request:read',
+  /** Ask for a vehicle (booking request). */
+  VEHICLE_REQUEST_CREATE: 'vehicle-request:create',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -47,6 +55,8 @@ export const Role = {
   DRIVER: 'DRIVER',
   EXECUTIVE: 'EXECUTIVE',
   VIEWER: 'VIEWER',
+  /** General staff: may only request vehicles and follow their requests. */
+  REQUESTER: 'REQUESTER',
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
@@ -73,6 +83,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.INSPECTION_WRITE,
     Permission.INSPECTION_PERFORM,
     Permission.INCENTIVE_WRITE,
+    Permission.APPROVAL_DECIDE,
+    Permission.VEHICLE_REQUEST_CREATE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -88,10 +100,14 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.INCIDENT_REPORT,
     Permission.INSPECTION_READ,
     Permission.INSPECTION_PERFORM,
+    Permission.ORDER_READ,
+    Permission.VEHICLE_REQUEST_READ,
+    Permission.VEHICLE_REQUEST_CREATE,
   ],
   DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST, Permission.INCIDENT_REPORT, Permission.INSPECTION_PERFORM],
-  EXECUTIVE: READ_ONLY,
-  VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ],
+  EXECUTIVE: [...READ_ONLY, Permission.VEHICLE_REQUEST_CREATE],
+  VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ, Permission.VEHICLE_REQUEST_CREATE],
+  REQUESTER: [Permission.VEHICLE_REQUEST_CREATE],
 };
 
 export function permissionsForRoles(roles: readonly string[]): Permission[] {

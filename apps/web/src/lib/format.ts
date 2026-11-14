@@ -91,7 +91,7 @@ export const FLAG_LABELS: Record<string, string> = {
 };
 
 export const DUE_TONE = { OK: 'ok', DUE_SOON: 'warn', OVERDUE: 'danger' } as const;
-export const WO_TONE = { OPEN: 'muted', IN_PROGRESS: 'warn', COMPLETED: 'ok', CANCELLED: 'danger' } as const;
+export const WO_TONE = { AWAITING_APPROVAL: 'info', OPEN: 'muted', IN_PROGRESS: 'warn', COMPLETED: 'ok', CANCELLED: 'danger' } as const;
 export const SEVERITY_TONE: Record<string, 'muted' | 'info' | 'warn' | 'danger'> = { LOW: 'muted', MEDIUM: 'info', HIGH: 'warn', CRITICAL: 'danger' };
 
 /** First day of the current month and first day of next month (local). */
@@ -116,8 +116,10 @@ export const shortDay = (iso: string) => new Date(`${iso}T00:00`).toLocaleDateSt
 
 export const BAND_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { GOOD: 'ok', FAIR: 'warn', POOR: 'danger', INSUFFICIENT_DATA: 'muted' };
 export const INCIDENT_TONE: Record<string, 'warn' | 'info' | 'ok'> = { REPORTED: 'warn', INVESTIGATING: 'info', CLOSED: 'ok' };
-export const CLAIM_TONE: Record<string, 'info' | 'ok' | 'danger' | 'muted'> = { SUBMITTED: 'info', APPROVED: 'ok', REJECTED: 'danger', SETTLED: 'muted' };
+export const CLAIM_TONE: Record<string, 'info' | 'ok' | 'danger' | 'muted' | 'warn'> = { PENDING_APPROVAL: 'warn', SUBMITTED: 'info', APPROVED: 'ok', REJECTED: 'danger', SETTLED: 'muted' };
 export const RESULT_TONE: Record<string, 'ok' | 'warn' | 'danger'> = { PASS: 'ok', DEFECTS: 'warn', FAIL: 'danger' };
 export const TRAINING_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'muted'> = { VALID: 'ok', EXPIRING: 'warn', EXPIRED: 'danger', MISSING: 'muted' };
 export const ADJ_TONE: Record<string, 'info' | 'ok' | 'danger'> = { PROPOSED: 'info', APPROVED: 'ok', REJECTED: 'danger' };
 export const KIND_LABEL: Record<string, string> = { PRE_TRIP: 'Pre-trip', POST_TRIP: 'Post-trip', PERIODIC: 'Periodic' };
+export const APPROVAL_TONE: Record<string, 'warn' | 'ok' | 'danger' | 'muted'> = { PENDING: 'warn', APPROVED: 'ok', REJECTED: 'danger', CANCELLED: 'muted' };
+export const VR_TONE: Record<string, 'warn' | 'ok' | 'danger' | 'muted' | 'info'> = { PENDING: 'warn', APPROVED: 'info', REJECTED: 'danger', SCHEDULED: 'ok', CANCELLED: 'muted' };

@@ -48,7 +48,8 @@ export class AnalyticsService {
       const [stats, fuel, workOrders, expenses, trips, overspeed, statusEvents] = await Promise.all([
         tx.vehicleDailyStat.findMany({ where: { day: { gte: new Date(q.from), lte: new Date(q.to) }, vehicleId: { in: ids } } }),
         tx.fuelRecord.findMany({
-          where: { filledAt: { gte: start, lt: end }, vehicle: vehicleWhere },
+          // Costs awaiting approval (or rejected) are not counted; see `pendingApproval`.
+          where: { filledAt: { gte: start, lt: end }, vehicle: vehicleWhere, approvalStatus: 'APPROVED' },
           select: { vehicleId: true, filledAt: true, litres: true, totalCost: true, distanceKm: true, kmPerLitre: true },
         }),
         tx.workOrder.findMany({
@@ -56,7 +57,7 @@ export class AnalyticsService {
           select: { vehicleId: true, completedAt: true, totalCost: true },
         }),
         tx.vehicleExpense.findMany({
-          where: { incurredAt: { gte: start, lt: end }, vehicle: vehicleWhere },
+          where: { incurredAt: { gte: start, lt: end }, vehicle: vehicleWhere, approvalStatus: 'APPROVED' },
           select: { vehicleId: true, incurredAt: true, amount: true, category: true },
         }),
         tx.trip.groupBy({ by: ['vehicleId'], where: { status: 'COMPLETED', actualEnd: { gte: start, lt: end }, vehicleId: { in: ids } }, _count: { _all: true } }),
@@ -138,6 +139,10 @@ export class AnalyticsService {
       }
       const expenseByCategory: Record<string, number> = {};
       for (const e of expenses) expenseByCategory[e.category] = (expenseByCategory[e.category] ?? 0) + n(e.amount);
+      const [pendingFuel, pendingExpenses] = await Promise.all([
+        tx.fuelRecord.aggregate({ where: { filledAt: { gte: start, lt: end }, vehicle: vehicleWhere, approvalStatus: 'PENDING' }, _sum: { totalCost: true }, _count: { _all: true } }),
+        tx.vehicleExpense.aggregate({ where: { incurredAt: { gte: start, lt: end }, vehicle: vehicleWhere, approvalStatus: 'PENDING' }, _sum: { amount: true }, _count: { _all: true } }),
+      ]);
 
       return {
         range: { from: q.from, to: q.to, days, timezone: tz, currency: company.currency },
@@ -149,6 +154,13 @@ export class AnalyticsService {
           ...fleetKpis(rows, days),
         })),
         expenseByCategory,
+        /** Costs waiting for approval: not included in the totals above. */
+        pendingApproval: {
+          fuelCost: n(pendingFuel._sum.totalCost),
+          fuelRecords: pendingFuel._count._all,
+          otherCost: n(pendingExpenses._sum.amount),
+          expenses: pendingExpenses._count._all,
+        },
         series: [...series.values()].map((d) => ({
           ...d,
           distanceKm: Math.round(d.distanceKm * 10) / 10,

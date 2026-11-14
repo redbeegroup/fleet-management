@@ -2,7 +2,9 @@ import { BullModule } from '@nestjs/bullmq';
 import { DynamicModule, Module, Type } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ApiKeyVerifier } from './common/auth/api-key';
+import { FmsThrottlerGuard } from './common/auth/throttler.guard';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { AuthGuard } from './common/auth/auth.guard';
 import { env } from './common/config/env';
@@ -23,6 +25,8 @@ import { SafetyModule } from './modules/safety/safety.module';
 import { InspectionsModule } from './modules/inspections/inspections.module';
 import { TrainingModule } from './modules/training/training.module';
 import { IncentivesModule } from './modules/incentives/incentives.module';
+import { IntegrationsModule, WebhooksModule } from './modules/integrations/integrations.module';
+import { ApprovalsApiModule, ApprovalsModule } from './modules/approvals/approvals.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
@@ -31,7 +35,7 @@ import { ComplianceAlertsJob } from './worker/compliance-alerts.job';
 import { IngestRunner } from './worker/ingest.runner';
 import { MAINTENANCE_QUEUE, WorkerProcessor } from './worker/worker.processor';
 
-const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsModule];
+const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsModule, WebhooksModule, ApprovalsModule];
 
 /** HTTP API process. */
 @Module({
@@ -60,11 +64,14 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     InspectionsModule,
     TrainingModule,
     IncentivesModule,
+    IntegrationsModule,
+    ApprovalsApiModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    ApiKeyVerifier,
+    { provide: APP_GUARD, useClass: FmsThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_FILTER, useClass: PrismaExceptionFilter },

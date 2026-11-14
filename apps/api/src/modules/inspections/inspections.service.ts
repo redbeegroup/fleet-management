@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { ChecklistItem, CreateInspectionInput, CreateInspectionTemplateInput, Role, UpdateInspectionTemplateInput } from '@fms/shared';
+import { ChecklistItem, CreateInspectionInput, CreateInspectionTemplateInput, Role, UpdateInspectionTemplateInput, WebhookEvent } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService, Tx } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
@@ -8,6 +8,7 @@ import { nextNumber } from '../../common/vehicle-status';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DEFAULT_TEMPLATES, evaluateInspection, preTripBlock } from './evaluate';
+import { WebhooksService } from '../integrations/webhooks.service';
 
 const include = {
   vehicle: { select: { id: true, plateNumber: true } },
@@ -34,6 +35,7 @@ export class InspectionsService {
   constructor(
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly webhooks: WebhooksService,
   ) {}
 
   // ------------------------------------------------------------- templates
@@ -162,6 +164,19 @@ export class InspectionsService {
         },
         include,
       });
+      if (created.result === 'FAIL') {
+        await this.webhooks.emit(tx, user.companyId, WebhookEvent.INSPECTION_FAILED, {
+          id: created.id,
+          inspectionNo: created.inspectionNo,
+          kind: created.kind,
+          performedAt: created.performedAt,
+          vehicle: { id: created.vehicle.id, plateNumber: created.vehicle.plateNumber },
+          driver: created.driver,
+          defects: created.defects,
+          criticalDefects: created.criticalDefects,
+          failedItems: ev.items.filter((i) => !i.ok).map((i) => ({ key: i.key, label: i.label, critical: i.critical, note: i.note })),
+        });
+      }
       return created;
     });
     if (res.defects) {

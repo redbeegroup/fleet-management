@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma, WorkOrderStatus } from '@prisma/client';
 import {
   BulkMaintenancePlanInput,
@@ -16,6 +16,7 @@ import { changeVehicleStatus, nextNumber, restingStatus } from '../../common/veh
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { minutesInStatus, planDue } from './due';
+import { ApprovalsService } from '../approvals/approvals.service';
 
 const woInclude = {
   vehicle: { select: { id: true, plateNumber: true, status: true } },
@@ -25,13 +26,60 @@ const woInclude = {
 const MANAGERS = [Role.SUPER_ADMIN, Role.COMPANY_ADMIN, Role.FLEET_MANAGER];
 
 @Injectable()
-export class MaintenanceService {
+export class MaintenanceService implements OnModuleInit {
   private readonly logger = new Logger(MaintenanceService.name);
 
   constructor(
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly approvals: ApprovalsService,
   ) {}
+
+  onModuleInit() {
+    this.approvals.register('WORK_ORDER', async (tx, id, outcome, ctx) => {
+      const wo = await tx.workOrder.findUnique({ where: { id } });
+      if (!wo || wo.status !== 'AWAITING_APPROVAL') return;
+      if (outcome === 'APPROVED') await tx.workOrder.update({ where: { id }, data: { status: 'OPEN' } });
+      else if (outcome === 'REJECTED') {
+        await tx.repairRequest.updateMany({ where: { workOrderId: id }, data: { status: 'OPEN', workOrderId: null } });
+        await tx.workOrder.update({ where: { id }, data: { status: 'CANCELLED', resolution: `Approval rejected: ${ctx.note ?? ''}`.trim() } });
+      }
+    });
+  }
+
+  /** Planned or booked cost, whichever is higher. */
+  private woCost(wo: { totalCost: Prisma.Decimal; estimatedCost: Prisma.Decimal | null }) {
+    return Math.max(Number(wo.totalCost), Number(wo.estimatedCost ?? 0));
+  }
+
+  /** Throws unless the cost is within the limit or covered by an approved request. */
+  private async assertCostApproved(tx: Tx, wo: { id: string; totalCost: Prisma.Decimal; estimatedCost: Prisma.Decimal | null }) {
+    const cost = this.woCost(wo);
+    if (!(await this.approvals.need(tx, 'WORK_ORDER', cost)).needed) return;
+    const latest = await this.approvals.latestFor(tx, 'WORK_ORDER', wo.id);
+    if (latest?.status === 'PENDING') throw new ConflictException('This work order is waiting for approval');
+    if (!(latest?.status === 'APPROVED' && Number(latest.amount) >= cost)) {
+      throw new ConflictException(`Cost ${cost.toLocaleString('en-US')} is above the approval limit; request approval first`);
+    }
+  }
+
+  /** Ask for approval of the current cost (estimate or lines). */
+  async requestWorkOrderApproval(user: AuthUser, id: string) {
+    const { wo, req } = await this.db.tenant(user.companyId, async (tx) => {
+      const wo = await this.lock(tx, id);
+      if (wo.status !== 'OPEN' && wo.status !== 'IN_PROGRESS') throw new BadRequestException(`Cannot request approval for a ${wo.status.toLowerCase()} work order`);
+      const cost = this.woCost(wo);
+      if (!(await this.approvals.need(tx, 'WORK_ORDER', cost)).needed) throw new BadRequestException('This cost does not need approval');
+      const latest = await this.approvals.latestFor(tx, 'WORK_ORDER', wo.id);
+      if (latest?.status === 'PENDING') throw new ConflictException('An approval request is already pending');
+      if (latest?.status === 'APPROVED' && Number(latest.amount) >= cost) throw new BadRequestException('This cost is already approved');
+      const req = await this.approvals.request(tx, user.companyId, user.userId, { kind: 'WORK_ORDER', entityId: wo.id, title: `${wo.woNo}: ${wo.title}`, amount: cost });
+      const updated = wo.status === 'OPEN' ? await tx.workOrder.update({ where: { id }, data: { status: 'AWAITING_APPROVAL' }, include: woInclude }) : await tx.workOrder.findUniqueOrThrow({ where: { id }, include: woInclude });
+      return { wo: updated, req };
+    });
+    await this.approvals.announce(req);
+    return wo;
+  }
 
   // ---------------------------------------------------------------- plans
 
@@ -190,8 +238,8 @@ export class MaintenanceService {
     });
   }
 
-  createWorkOrder(user: AuthUser, input: CreateWorkOrderInput) {
-    return this.db.tenant(user.companyId, async (tx) => {
+  async createWorkOrder(user: AuthUser, input: CreateWorkOrderInput) {
+    const res = await this.db.tenant(user.companyId, async (tx) => {
       const v = await tx.vehicle.findFirst({ where: { id: input.vehicleId, deletedAt: null } });
       if (!v) throw new BadRequestException('Vehicle not found');
       if (input.planId) {
@@ -219,15 +267,24 @@ export class MaintenanceService {
         });
         if (count !== repairRequestIds.length) throw new BadRequestException('Some repair requests are not open or belong to another vehicle');
       }
-      return tx.workOrder.findUniqueOrThrow({ where: { id: wo.id }, include: woInclude });
+      let req = null;
+      if (input.estimatedCost != null && (await this.approvals.need(tx, 'WORK_ORDER', input.estimatedCost)).needed) {
+        await tx.workOrder.update({ where: { id: wo.id }, data: { status: 'AWAITING_APPROVAL' } });
+        req = await this.approvals.request(tx, user.companyId, user.userId, { kind: 'WORK_ORDER', entityId: wo.id, title: `${woNo}: ${input.title}`, amount: input.estimatedCost });
+      }
+      return { wo: await tx.workOrder.findUniqueOrThrow({ where: { id: wo.id }, include: woInclude }), req };
     });
+    await this.approvals.announce(res.req);
+    return res.wo;
   }
 
   /** Begin work; an off-road work order takes the vehicle UNDER_REPAIR (downtime starts). */
   startWorkOrder(user: AuthUser, id: string) {
     return this.db.tenant(user.companyId, async (tx) => {
       const wo = await this.lock(tx, id);
+      if (wo.status === 'AWAITING_APPROVAL') throw new ConflictException('This work order is waiting for approval');
       if (wo.status !== 'OPEN') throw new BadRequestException(`Cannot start a ${wo.status.toLowerCase()} work order`);
+      await this.assertCostApproved(tx, wo);
       if (wo.offRoad) {
         const onTrip = await tx.trip.findFirst({ where: { vehicleId: wo.vehicleId, status: 'ONGOING' }, select: { tripNo: true } });
         if (onTrip) throw new ConflictException(`Vehicle is on trip ${onTrip.tripNo}; complete it first`);
@@ -262,6 +319,7 @@ export class MaintenanceService {
     return this.db.tenant(user.companyId, async (tx) => {
       const wo = await this.lock(tx, id);
       if (wo.status !== 'OPEN' && wo.status !== 'IN_PROGRESS') throw new BadRequestException(`Cannot complete a ${wo.status.toLowerCase()} work order`);
+      await this.assertCostApproved(tx, wo);
       const completedAt = input.completedAt ?? new Date();
       const vehicle = await tx.vehicle.findUniqueOrThrow({ where: { id: wo.vehicleId } });
       const odo = input.odometerKm ?? Number(vehicle.odometerKm);
@@ -282,7 +340,8 @@ export class MaintenanceService {
   cancelWorkOrder(user: AuthUser, id: string, reason: string) {
     return this.db.tenant(user.companyId, async (tx) => {
       const wo = await this.lock(tx, id);
-      if (wo.status !== 'OPEN' && wo.status !== 'IN_PROGRESS') throw new BadRequestException(`Cannot cancel a ${wo.status.toLowerCase()} work order`);
+      if (wo.status !== 'OPEN' && wo.status !== 'IN_PROGRESS' && wo.status !== 'AWAITING_APPROVAL') throw new BadRequestException(`Cannot cancel a ${wo.status.toLowerCase()} work order`);
+      await this.approvals.cancelFor(tx, 'WORK_ORDER', id);
       await tx.repairRequest.updateMany({ where: { workOrderId: id }, data: { status: 'OPEN', workOrderId: null } });
       const updated = await tx.workOrder.update({ where: { id }, data: { status: 'CANCELLED', resolution: reason }, include: woInclude });
       await this.releaseVehicle(tx, user, wo.vehicleId, id, `${wo.woNo} cancelled`);

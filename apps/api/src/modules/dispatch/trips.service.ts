@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, TripStatus } from '@prisma/client';
 import { InspectionsService } from '../inspections/inspections.service';
+import { WebhooksService } from '../integrations/webhooks.service';
+import { WebhookEvent } from '@fms/shared';
 import {
   AssignTripInput,
   AvailabilityQuery,
@@ -44,7 +46,30 @@ export class TripsService {
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly inspections: InspectionsService,
+    private readonly webhooks: WebhooksService,
   ) {}
+
+  /** Queue a trip webhook in the same transaction, then return the trip unchanged. */
+  private async hook<T extends Prisma.TripGetPayload<{ include: typeof tripInclude }>>(tx: Tx, companyId: string, event: WebhookEvent, t: T): Promise<T> {
+    await this.webhooks.emit(tx, companyId, event, {
+      id: t.id,
+      tripNo: t.tripNo,
+      status: t.status,
+      originName: t.originName,
+      destinationName: t.destinationName,
+      plannedStart: t.plannedStart,
+      plannedEnd: t.plannedEnd,
+      actualStart: t.actualStart,
+      actualEnd: t.actualEnd,
+      startOdometerKm: t.startOdometerKm,
+      endOdometerKm: t.endOdometerKm,
+      gpsDistanceKm: t.gpsDistanceKm,
+      cancelReason: t.cancelReason,
+      vehicle: t.vehicle ? { plateNumber: t.vehicle.plateNumber, vehicleClass: t.vehicle.vehicleClass } : null,
+      driver: t.driver ? { fullName: t.driver.fullName, employeeNo: t.driver.employeeNo } : null,
+    });
+    return t;
+  }
 
   list(user: AuthUser, q: TripListQuery) {
     const where: Prisma.TripWhereInput = {
@@ -149,11 +174,12 @@ export class TripsService {
       await this.inspections.assertPreTrip(tx, vehicle.id, at);
       await this.event(tx, user, id, trip.status, 'ONGOING', 'Started');
       await this.setVehicleStatus(tx, user, vehicle.id, vehicle.status, 'OPERATING', `Trip ${trip.tripNo} started`);
-      return tx.trip.update({
+      const started = await tx.trip.update({
         where: { id },
         data: { status: 'ONGOING', actualStart: at, startOdometerKm: input.odometerKm ?? vehicle.odometerKm },
         include: tripInclude,
       });
+      return this.hook(tx, user.companyId, WebhookEvent.TRIP_STARTED, started);
     });
   }
 
@@ -185,7 +211,7 @@ export class TripsService {
         await this.setVehicleStatus(tx, user, vehicle.id, 'OPERATING', held ? 'ASSIGNED' : 'AVAILABLE', `Trip ${trip.tripNo} completed`);
       }
       await this.event(tx, user, id, trip.status, 'COMPLETED', input.notes ?? 'Completed');
-      return tx.trip.update({
+      const done = await tx.trip.update({
         where: { id },
         data: {
           status: 'COMPLETED',
@@ -196,6 +222,7 @@ export class TripsService {
         },
         include: tripInclude,
       });
+      return this.hook(tx, user.companyId, WebhookEvent.TRIP_COMPLETED, done);
     });
   }
 
@@ -204,7 +231,8 @@ export class TripsService {
       const trip = await this.lockTrip(tx, id);
       this.assertTransition(trip.status, 'CANCELLED');
       await this.event(tx, user, id, trip.status, 'CANCELLED', input.reason);
-      return tx.trip.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: input.reason }, include: tripInclude });
+      const cancelled = await tx.trip.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: input.reason }, include: tripInclude });
+      return this.hook(tx, user.companyId, WebhookEvent.TRIP_CANCELLED, cancelled);
     });
   }
 
@@ -266,7 +294,8 @@ export class TripsService {
     const trip = await tx.trip.findUniqueOrThrow({ where: { id } });
     await this.assertAssignable(tx, user.companyId, input.vehicleId, input.driverId, trip.plannedStart, trip.plannedEnd, id);
     if (trip.status !== 'ASSIGNED') await this.event(tx, user, id, trip.status, 'ASSIGNED', 'Assigned');
-    return tx.trip.update({ where: { id }, data: { ...input, status: 'ASSIGNED' }, include: tripInclude });
+    const assigned = await tx.trip.update({ where: { id }, data: { ...input, status: 'ASSIGNED' }, include: tripInclude });
+    return this.hook(tx, user.companyId, WebhookEvent.TRIP_ASSIGNED, assigned);
   }
 
   /** Serialises concurrent bookings by locking the vehicle and driver rows first. */
