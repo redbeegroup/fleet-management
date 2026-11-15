@@ -29,6 +29,7 @@ import { PlanningPage } from './pages/PlanningPage';
 import { LoadPage } from './pages/LoadPage';
 import { ManifestPage } from './pages/ManifestPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { DeliveryKpisPage } from './pages/DeliveryKpisPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
@@ -89,6 +90,7 @@ export function App() {
         <Route path="loads/:id" element={<LoadPage />} />
         <Route path="loads/:id/manifest" element={<ManifestPage />} />
         <Route path="customers" element={<CustomersPage />} />
+        <Route path="delivery-kpis" element={<DeliveryKpisPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />

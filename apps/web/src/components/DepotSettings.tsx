@@ -34,6 +34,26 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
     onError: (e) => setMsg({ ok: false, text: errorText(e) }),
   });
   const l = settings.logistics;
+  const p = settings.pod;
+  const savePod = useMutation({
+    mutationFn: (pod: Record<string, unknown>) =>
+      api<CompanySettings>('/company/settings', { method: 'PATCH', body: JSON.stringify({ pod }) }),
+    onSuccess: (d) => {
+      qc.setQueryData(['settings'], d);
+      setMsg({ ok: true, text: 'Proof-of-delivery rules saved.' });
+    },
+    onError: (e) => setMsg({ ok: false, text: errorText(e) }),
+  });
+  function submitPod(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    savePod.mutate({
+      requirePhoto: f.get('requirePhoto') === 'on',
+      requireSignature: f.get('requireSignature') === 'on',
+      requireCodEntry: f.get('requireCodEntry') === 'on',
+      maxDistanceM: Number(f.get('maxDistanceM')),
+    });
+  }
 
   function submitBranch(e: FormEvent<HTMLFormElement>, id: string) {
     e.preventDefault();
@@ -57,6 +77,7 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
       departureTime: f.get('departureTime'),
       serviceMinutesPerStop: Number(f.get('serviceMinutesPerStop')),
       avgSpeedKmh: Number(f.get('avgSpeedKmh')),
+      driverCostPerDay: f.get('driverCostPerDay') ? Number(f.get('driverCostPerDay')) : null,
       failureReasons: String(f.get('failureReasons'))
         .split('\n')
         .map((x) => x.trim())
@@ -186,6 +207,18 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
             disabled={!canSettings}
           />
         </label>
+        <label>
+          Driver cost per trip day (for cost per drop)
+          <input
+            name="driverCostPerDay"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={l.driverCostPerDay ?? ''}
+            placeholder="not included"
+            disabled={!canSettings}
+          />
+        </label>
         <label className="span-all">
           Failed-delivery reasons (one per line, shown in the driver app)
           <textarea
@@ -199,6 +232,54 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
           <div>
             <button className="btn btn-primary" disabled={saveSettings.isPending}>
               Save planning defaults
+            </button>
+          </div>
+        )}
+      </form>
+      <h3>Proof of delivery</h3>
+      <form className="form-grid" onSubmit={submitPod}>
+        <label className="check">
+          <input
+            name="requirePhoto"
+            type="checkbox"
+            defaultChecked={p.requirePhoto}
+            disabled={!canSettings}
+          />{' '}
+          Photo required for every delivery
+        </label>
+        <label className="check">
+          <input
+            name="requireSignature"
+            type="checkbox"
+            defaultChecked={p.requireSignature}
+            disabled={!canSettings}
+          />{' '}
+          Recipient signature required
+        </label>
+        <label className="check">
+          <input
+            name="requireCodEntry"
+            type="checkbox"
+            defaultChecked={p.requireCodEntry}
+            disabled={!canSettings}
+          />{' '}
+          Driver must enter the cash collected (COD)
+        </label>
+        <label>
+          Flag deliveries farther than (m) from the customer
+          <input
+            name="maxDistanceM"
+            type="number"
+            min={25}
+            max={50000}
+            defaultValue={p.maxDistanceM}
+            disabled={!canSettings}
+          />
+        </label>
+        {canSettings && (
+          <div>
+            <button className="btn btn-primary" disabled={savePod.isPending}>
+              Save proof-of-delivery rules
             </button>
           </div>
         )}

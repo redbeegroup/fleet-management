@@ -171,7 +171,8 @@ export interface CompanySettings {
   inspections: { requirePreTrip: boolean; preTripValidHours: number };
   incentives: { safetyBonusEnabled: boolean; safetyBonusMinScore: number; safetyBonusAmount: number; trainingAlertDays: number };
   approvals: { workOrderAbove: number | null; expenseAbove: number | null; fuelAbove: number | null; claimAbove: number | null; secondApproverAbove: number | null };
-  logistics: { defaultBranchId: string | null; defaultMaxStops: number | null; failureReasons: string[]; departureTime: string; serviceMinutesPerStop: number; avgSpeedKmh: number };
+  logistics: { defaultBranchId: string | null; defaultMaxStops: number | null; failureReasons: string[]; departureTime: string; serviceMinutesPerStop: number; avgSpeedKmh: number; driverCostPerDay: number | null };
+  pod: { requirePhoto: boolean; requireSignature: boolean; maxDistanceM: number; requireCodEntry: boolean };
 }
 
 export interface Trip {
@@ -717,6 +718,13 @@ export interface LoadDetail {
   check: LoadCheck | null;
   cod: number;
   routeKm: number;
+  plannedKm: number | null;
+  plannedMinutes: number | null;
+  routeGeometry: string | null;
+  routingSource: 'osrm' | 'straight-line' | null;
+  gpsDistanceKm: number | null;
+  checkedInAt: string | null;
+  checkIn: CheckInResult | null;
   failureReasons: string[];
   stops: {
     id: string;
@@ -732,6 +740,20 @@ export interface LoadDetail {
     completedAt: string | null;
     failureReason: string | null;
     notes: string | null;
+    plannedArrival: string | null;
+    pod: {
+      photoFileIds: string[];
+      signature: { name: string; strokes: [number, number][][] } | null;
+      signedBy: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      accuracyM: number | null;
+      distanceM: number | null;
+      codExpected: number | null;
+      codCollected: number | null;
+      flags: string[];
+    };
+    returns: { id: string; orderId: string | null; sku: string; description: string | null; quantity: number; uom: string; reason: string; photoFileId: string | null }[];
     orders: (Omit<PlanOrder, 'item'> & { lines: { lineNo: number; sku: string; description: string | null; quantity: number; uom: string; cases: number | null; pallets: number | null; weightKg: number | null; deliveredQty: number | null }[] })[];
   }[];
 }
@@ -758,4 +780,95 @@ export interface CustomerRow {
   latitude: number | null;
   longitude: number | null;
   _count: { orders: number };
+}
+
+export interface ExpectedReturnLine {
+  key: string;
+  kind: 'UNDELIVERED' | 'CUSTOMER_RETURN';
+  ref: string;
+  sku: string;
+  description: string | null;
+  uom: string;
+  expectedQty: number;
+}
+export interface CheckInResult {
+  lines: (ExpectedReturnLine & { receivedQty: number; diff: number })[];
+  shortages: number;
+  overages: number;
+  cashExpected: number;
+  cashReceived: number | null;
+  cashDiff: number | null;
+  ok: boolean;
+  notes: string | null;
+}
+export interface CheckInView {
+  tripId: string;
+  tripNo: string;
+  status: string;
+  checkedInAt: string | null;
+  checkIn: CheckInResult | null;
+  expected: ExpectedReturnLine[];
+  cashExpected: number;
+}
+export interface OrderKpis {
+  attempted: number;
+  delivered: number;
+  partial: number;
+  failed: number;
+  successRatePct: number | null;
+  inFullRatePct: number | null;
+  onTimeRatePct: number | null;
+  otif: number;
+  otifPct: number | null;
+  failureReasons: Record<string, number>;
+}
+export interface DeliveryKpis {
+  range: { from: string; to: string; currency: string };
+  method: { cost: string; otif: string };
+  totals: OrderKpis & {
+    trips: number;
+    drops: number;
+    cost: number;
+    costPerDrop: number | null;
+    costPerOrder: number | null;
+    costPerKg: number | null;
+    fillPct: number | null;
+    sequencePct: number | null;
+    avgDwellMin: number | null;
+    avgEtaErrorMin: number | null;
+    plannedKm: number;
+    actualKm: number;
+  };
+  series: (OrderKpis & { day: string })[];
+  drivers: (OrderKpis & { id: string; name: string; trips: number; fillPct: number | null; sequencePct: number | null; avgEtaErrorMin: number | null; cost: number; costPerDrop: number | null })[];
+  vehicles: (OrderKpis & { id: string; name: string; trips: number; fillPct: number | null; sequencePct: number | null; avgEtaErrorMin: number | null; cost: number; costPerDrop: number | null })[];
+  trips: {
+    tripId: string;
+    tripNo: string;
+    date: string | null;
+    vehicle: string | null;
+    driver: string | null;
+    orders: number;
+    drops: number;
+    otifPct: number | null;
+    successRatePct: number | null;
+    fillPct: number | null;
+    plannedKm: number | null;
+    actualKm: number | null;
+    sequencePct: number | null;
+    avgEtaErrorMin: number | null;
+    cost: number;
+    costPerDrop: number | null;
+  }[];
+}
+export interface PodException {
+  id: string;
+  name: string;
+  status: string;
+  completedAt: string | null;
+  podFlags: string[];
+  podDistanceM: number | null;
+  codExpected: number | null;
+  codCollected: number | null;
+  trip: { id: string; tripNo: string; driver: { fullName: string } | null; vehicle: { plateNumber: string } | null };
 }

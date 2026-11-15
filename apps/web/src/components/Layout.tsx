@@ -25,6 +25,7 @@ const sections: {
       { to: '/planning', label: 'Delivery planning', perm: Permission.LOGISTICS_READ },
       { to: '/orders', label: 'Delivery orders', perm: Permission.ORDER_READ },
       { to: '/customers', label: 'Customers', perm: Permission.LOGISTICS_READ },
+      { to: '/delivery-kpis', label: 'Delivery KPIs', perm: Permission.LOGISTICS_READ },
       {
         to: '/vehicle-requests',
         label: 'Booking requests',

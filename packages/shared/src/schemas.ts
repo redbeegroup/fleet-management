@@ -197,6 +197,7 @@ export const companySettingsSchema = z.object({
   incentives: z.lazy(() => incentiveSettingsSchema).default({}),
   approvals: z.lazy(() => approvalSettingsSchema).default({}),
   logistics: z.lazy(() => logisticsSettingsSchema).default({}),
+  pod: z.lazy(() => podSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -209,6 +210,7 @@ export const updateCompanySettingsSchema = z.object({
   incentives: z.lazy(() => incentiveSettingsSchema.partial()).optional(),
   approvals: z.lazy(() => approvalSettingsSchema.partial()).optional(),
   logistics: z.lazy(() => logisticsSettingsSchema.partial()).optional(),
+  pod: z.lazy(() => podSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -701,6 +703,8 @@ export const WebhookEvent = {
   ORDER_DELIVERED: 'order.delivered',
   ORDER_PARTIALLY_DELIVERED: 'order.partially_delivered',
   ORDER_FAILED: 'order.failed',
+  RETURN_COLLECTED: 'return.collected',
+  LOAD_CHECKED_IN: 'load.checked_in',
 } as const;
 export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
 
@@ -805,6 +809,8 @@ export const logisticsSettingsSchema = z.object({
   /** Used to estimate a load's planned end. */
   serviceMinutesPerStop: z.number().int().min(1).max(240).default(15),
   avgSpeedKmh: z.number().min(5).max(120).default(25),
+  /** Driver cost per trip day, added to delivery cost KPIs (optional). */
+  driverCostPerDay: z.number().nonnegative().nullable().default(null),
 });
 export type LogisticsSettings = z.infer<typeof logisticsSettingsSchema>;
 
@@ -835,6 +841,24 @@ export const stopOutcomeSchema = z
     outcome: z.enum(['DELIVERED', 'PARTIAL', 'FAILED']),
     reason: z.string().trim().max(200).optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
+    /** Proof of delivery photos (files uploaded first). */
+    photoFileIds: z.array(z.string().uuid()).max(10).default([]),
+    /** Recipient signature as strokes of [x, y] points (0–1 normalised to the pad). */
+    signature: z
+      .object({
+        name: z.string().trim().min(1).max(120),
+        strokes: z
+          .array(z.array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)])).min(1).max(2000))
+          .min(1)
+          .max(100),
+      })
+      .optional()
+      .nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
+    accuracyM: z.number().nonnegative().max(100_000).optional().nullable(),
+    /** Cash actually collected at the stop. */
+    codCollected: z.number().nonnegative().optional().nullable(),
     /** PARTIAL: delivered quantity per order line (lines not listed count as fully delivered). */
     deliveredLines: z
       .array(z.object({ orderId: z.string().uuid(), lineNo: z.number().int().min(1), quantity: z.number().nonnegative() }))
@@ -855,3 +879,42 @@ export const updateCustomerSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;
+
+// ---------------------------------------------------------------------------
+// Proof of delivery, returns, check-in, delivery KPIs (Phase 2 / S11)
+// ---------------------------------------------------------------------------
+
+export const podSettingsSchema = z.object({
+  requirePhoto: z.boolean().default(true),
+  requireSignature: z.boolean().default(false),
+  /** Deliveries completed farther than this from the customer are flagged. */
+  maxDistanceM: z.number().int().min(25).max(50_000).default(300),
+  /** Drivers must enter the cash collected when the stop has COD. */
+  requireCodEntry: z.boolean().default(true),
+});
+export type PodSettings = z.infer<typeof podSettingsSchema>;
+
+export const createReturnSchema = z.object({
+  orderId: z.string().uuid().optional().nullable(),
+  sku: z.string().trim().min(1).max(64),
+  description: z.string().max(300).optional().nullable(),
+  quantity: z.number().positive().max(1_000_000),
+  uom: z.string().trim().min(1).max(16).default('EA'),
+  reason: z.string().trim().min(2).max(200),
+  photoFileId: z.string().uuid().optional().nullable(),
+});
+export type CreateReturnInput = z.infer<typeof createReturnSchema>;
+
+export const checkInSchema = z.object({
+  /** key from the expected list (order line or return) → quantity physically received. */
+  lines: z.array(z.object({ key: z.string().min(1).max(100), receivedQty: z.number().nonnegative() })).max(2000),
+  cashReceived: z.number().nonnegative().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type CheckInInput = z.infer<typeof checkInSchema>;
+
+export const deliveryKpiQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  branchId: z.string().uuid().optional(),
+});

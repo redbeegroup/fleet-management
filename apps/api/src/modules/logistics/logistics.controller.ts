@@ -1,7 +1,13 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { DeliveryKpiService } from './delivery-kpi.service';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   autofillSchema,
+  CheckInInput,
+  checkInSchema,
+  CreateReturnInput,
+  createReturnSchema,
+  deliveryKpiQuerySchema,
   CreateLoadInput,
   createLoadSchema,
   paginationSchema,
@@ -29,7 +35,48 @@ const dispatchStopSchema = z.union([z.object({ status: z.literal('ARRIVED') }), 
 @ApiBearerAuth()
 @Controller()
 export class LogisticsController {
-  constructor(private readonly svc: LogisticsService) {}
+  constructor(
+    private readonly svc: LogisticsService,
+    private readonly kpi: DeliveryKpiService,
+  ) {}
+
+  @Post('logistics/stops/:id/returns')
+  @RequirePermissions(Permission.LOGISTICS_WRITE)
+  addReturn(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(createReturnSchema)) body: CreateReturnInput) {
+    return this.svc.addReturn(user, id, body);
+  }
+
+  @Get('logistics/loads/:tripId/check-in')
+  @RequirePermissions(Permission.LOGISTICS_READ)
+  checkInExpected(@CurrentUser() user: AuthUser, @Param('tripId', ParseUUIDPipe) id: string) {
+    return this.svc.checkInExpected(user, id);
+  }
+
+  @Post('logistics/loads/:tripId/check-in')
+  @HttpCode(200)
+  @RequirePermissions(Permission.WAREHOUSE_CHECKIN)
+  checkIn(@CurrentUser() user: AuthUser, @Param('tripId', ParseUUIDPipe) id: string, @Body(new ZodPipe(checkInSchema)) body: CheckInInput) {
+    return this.svc.checkIn(user, id, body);
+  }
+
+  @Get('logistics/pod-exceptions')
+  @RequirePermissions(Permission.LOGISTICS_READ)
+  podExceptions(@CurrentUser() user: AuthUser, @Query(new ZodPipe(deliveryKpiQuerySchema)) q: { from: string; to: string }) {
+    return this.svc.podExceptions(user, q);
+  }
+
+  @Get('analytics/delivery')
+  @RequirePermissions(Permission.LOGISTICS_READ)
+  deliveryKpis(@CurrentUser() user: AuthUser, @Query(new ZodPipe(deliveryKpiQuerySchema)) q: z.infer<typeof deliveryKpiQuerySchema>) {
+    return this.kpi.overview(user, q);
+  }
+
+  @Get('analytics/delivery.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @RequirePermissions(Permission.LOGISTICS_READ)
+  deliveryCsv(@CurrentUser() user: AuthUser, @Query(new ZodPipe(deliveryKpiQuerySchema)) q: z.infer<typeof deliveryKpiQuerySchema>) {
+    return this.kpi.csv(user, q);
+  }
 
   @Get('logistics/planning')
   @RequirePermissions(Permission.LOGISTICS_READ)
@@ -119,7 +166,7 @@ export class MyStopsController {
   async list(@CurrentUser() user: AuthUser, @Param('tripId', ParseUUIDPipe) tripId: string) {
     await this.driverFor(user, tripId);
     const l = await this.svc.load(user, tripId);
-    return { tripNo: l.tripNo, status: l.status, depot: l.depot, cod: l.cod, totals: l.totals, stops: l.stops, failureReasons: l.failureReasons };
+    return { tripNo: l.tripNo, status: l.status, depot: l.depot, cod: l.cod, totals: l.totals, stops: l.stops, failureReasons: l.failureReasons, podSettings: l.podSettings };
   }
 
   @Post(':stopId/arrive')
@@ -127,6 +174,17 @@ export class MyStopsController {
   @RequirePermissions(Permission.TRIP_READ)
   async arrive(@CurrentUser() user: AuthUser, @Param('tripId', ParseUUIDPipe) tripId: string, @Param('stopId', ParseUUIDPipe) stopId: string) {
     return this.svc.arrive(user, stopId, await this.driverFor(user, tripId));
+  }
+
+  @Post(':stopId/returns')
+  @RequirePermissions(Permission.TRIP_READ)
+  async addReturn(
+    @CurrentUser() user: AuthUser,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('stopId', ParseUUIDPipe) stopId: string,
+    @Body(new ZodPipe(createReturnSchema)) body: CreateReturnInput,
+  ) {
+    return this.svc.addReturn(user, stopId, body, await this.driverFor(user, tripId));
   }
 
   @Post(':stopId/complete')

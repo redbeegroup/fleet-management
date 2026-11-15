@@ -29,6 +29,11 @@ export function PlanningPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const branches = useQuery({ queryKey: ['branches'], queryFn: () => api<Branch[]>('/branches') });
+  const routing = useQuery({
+    queryKey: ['routing-status'],
+    queryFn: () => api<{ source: string; configured: boolean }>('/routing/status'),
+    staleTime: 60_000,
+  });
   const settings = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<CompanySettings>('/company/settings'),
@@ -99,6 +104,15 @@ export function PlanningPage() {
           <p className="muted">
             Choose orders, pick a vehicle and driver, create the load. Auto-fill suggests loads by
             area within each vehicle's capacity.
+          </p>
+          <p className="small">
+            <span className={`badge badge-${routing.data?.source === 'osrm' ? 'ok' : 'muted'}`}>
+              {routing.data?.source === 'osrm'
+                ? 'Road routing (OSRM/VROOM) on'
+                : routing.data?.configured
+                  ? 'Road routing unreachable — straight-line estimates'
+                  : 'Straight-line estimates (no routing engine)'}
+            </span>
           </p>
         </div>
         <div className="actions">

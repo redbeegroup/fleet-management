@@ -500,6 +500,16 @@ model Trip {
   kind             TripKind   @default(GENERAL)
   /// Delivery date (company-local) of a delivery load.
   plannedDate      DateTime?  @map("planned_date") @db.Date
+  /// Planned route (S11): road km/minutes from OSRM, or straight-line estimates.
+  plannedKm        Decimal?   @map("planned_km") @db.Decimal(10, 1)
+  plannedMinutes   Int?       @map("planned_minutes")
+  /// Encoded polyline (precision 5) of the planned route.
+  routeGeometry    String?    @map("route_geometry")
+  routingSource    String?    @map("routing_source")
+  /// Warehouse check-in after a delivery trip.
+  checkedInAt      DateTime?  @map("checked_in_at")
+  checkedInBy      String?    @map("checked_in_by") @db.Uuid
+  checkIn          Json?      @map("check_in")
   purpose          String?
   originName       String     @map("origin_name")
   originLat        Float?     @map("origin_lat")
@@ -1327,29 +1337,67 @@ enum StopStatus {
 }
 
 model TripStop {
-  id            String     @id @default(uuid()) @db.Uuid
-  companyId     String     @map("company_id") @db.Uuid
-  tripId        String     @map("trip_id") @db.Uuid
-  seq           Int
-  customerId    String     @map("customer_id") @db.Uuid
-  name          String
-  address       String?
-  latitude      Float?
-  longitude     Float?
-  contactName   String?    @map("contact_name")
-  contactPhone  String?    @map("contact_phone")
-  status        StopStatus @default(PENDING)
-  arrivedAt     DateTime?  @map("arrived_at")
-  completedAt   DateTime?  @map("completed_at")
-  failureReason String?    @map("failure_reason")
-  notes         String?
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  id              String     @id @default(uuid()) @db.Uuid
+  companyId       String     @map("company_id") @db.Uuid
+  tripId          String     @map("trip_id") @db.Uuid
+  seq             Int
+  customerId      String     @map("customer_id") @db.Uuid
+  name            String
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  contactName     String?    @map("contact_name")
+  contactPhone    String?    @map("contact_phone")
+  status          StopStatus @default(PENDING)
+  arrivedAt       DateTime?  @map("arrived_at")
+  completedAt     DateTime?  @map("completed_at")
+  failureReason   String?    @map("failure_reason")
+  notes           String?
+  plannedArrival  DateTime?  @map("planned_arrival")
+  /// Proof of delivery
+  podPhotoFileIds String[]   @default([]) @map("pod_photo_file_ids")
+  podSignature    Json?      @map("pod_signature")
+  podSignedBy     String?    @map("pod_signed_by")
+  podLat          Float?     @map("pod_lat")
+  podLng          Float?     @map("pod_lng")
+  podAccuracyM    Float?     @map("pod_accuracy_m")
+  podDistanceM    Int?       @map("pod_distance_m")
+  codExpected     Decimal?   @map("cod_expected") @db.Decimal(14, 2)
+  codCollected    Decimal?   @map("cod_collected") @db.Decimal(14, 2)
+  /// FAR_FROM_CUSTOMER, NO_GPS, COD_SHORT, COD_OVER
+  podFlags        String[]   @default([]) @map("pod_flags")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  trip     Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  customer Customer        @relation(fields: [customerId], references: [id])
+  returns  DeliveryReturn[]
+  trip     Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  customer Customer         @relation(fields: [customerId], references: [id])
   orders   DeliveryOrder[]
 
   @@index([tripId, seq])
   @@map("trip_stops")
+}
+
+/// Goods a customer hands back at a stop (damaged, expired, wrong item…).
+model DeliveryReturn {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  tripId      String   @map("trip_id") @db.Uuid
+  stopId      String   @map("stop_id") @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  orderId     String?  @map("order_id") @db.Uuid
+  sku         String
+  description String?
+  quantity    Decimal  @db.Decimal(14, 3)
+  uom         String   @default("EA")
+  reason      String
+  photoFileId String?  @map("photo_file_id") @db.Uuid
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  stop TripStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([companyId, createdAt])
+  @@map("delivery_returns")
 }

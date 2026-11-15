@@ -1,12 +1,23 @@
 import { Permission } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { SignatureView } from '../components/SignatureView';
+import { CheckInPanel } from '../components/CheckInPanel';
 import { Link, useParams } from 'react-router-dom';
 import { CapBars } from '../components/CapBars';
-import { api, session } from '../lib/api';
+import { api, openFile, session } from '../lib/api';
 import { formatDateTime, humanize, money, TRIP_TONE } from '../lib/format';
 import type { LoadDetail } from '../lib/types';
 import { errorText } from './IncidentsPage';
+
+const RouteMap = lazy(() => import('../components/RouteMap'));
+const FLAG_LABEL: Record<string, string> = {
+  FAR_FROM_CUSTOMER: 'far from customer',
+  NO_GPS: 'no GPS',
+  COD_SHORT: 'cash short',
+  COD_OVER: 'cash over',
+  RECORDED_BY_DISPATCH: 'entered by dispatch',
+};
 
 export const STOP_TONE: Record<string, string> = {
   PENDING: 'muted',
@@ -70,8 +81,20 @@ export function LoadPage() {
           </h1>
           <p className="muted">
             {l.plannedDate} · {l.depot.name} · {l.vehicle?.plateNumber ?? 'no vehicle'} ·{' '}
-            {l.driver?.fullName ?? 'no driver'} · departs {formatDateTime(l.plannedStart)} · ~
-            {l.routeKm} km straight-line · {done}/{l.stops.length} stops done
+            {l.driver?.fullName ?? 'no driver'} · departs {formatDateTime(l.plannedStart)} · {done}/
+            {l.stops.length} stops done
+          </p>
+          <p className="muted">
+            Planned route {l.plannedKm ?? l.routeKm} km
+            {l.plannedMinutes != null &&
+              ` · ${Math.floor(l.plannedMinutes / 60)} h ${l.plannedMinutes % 60} min incl. stops`}{' '}
+            <span
+              className={`badge badge-${l.routingSource === 'osrm' ? 'ok' : 'muted'}`}
+              title="osrm = road network (OSRM/VROOM); straight-line = estimate"
+            >
+              {l.routingSource === 'osrm' ? 'road routing' : 'straight-line estimate'}
+            </span>
+            {l.gpsDistanceKm != null && ` · actual ${l.gpsDistanceKm} km (GPS)`}
           </p>
         </div>
         <div className="actions">
@@ -104,6 +127,12 @@ export function LoadPage() {
           <CapBars vehicle={l.vehicle} totals={l.totals} defaultMaxStops={null} />
         </section>
       )}
+      <section className="card">
+        <Suspense fallback={<p className="muted">Loading map…</p>}>
+          <RouteMap depot={l.depot} stops={l.stops} geometry={l.routeGeometry} />
+        </Suspense>
+      </section>
+      {(l.status === 'COMPLETED' || l.checkedInAt) && <CheckInPanel tripId={l.tripId} />}
       <section className="card">
         <h2>Stops</h2>
         <ol className="stop-list">
@@ -153,12 +182,54 @@ export function LoadPage() {
                 </span>
               </div>
               <span className="muted">
+                {s.plannedArrival && `ETA ${formatDateTime(s.plannedArrival)} · `}
                 {s.address ?? 'No address'}
                 {s.contactPhone && ` · ${s.contactName ?? ''} ${s.contactPhone}`}
                 {s.latitude == null && ' · no coordinates'}
                 {s.completedAt && ` · ${formatDateTime(s.completedAt)}`}
                 {s.failureReason && ` · ${s.failureReason}`}
               </span>
+              {(s.pod.photoFileIds.length > 0 ||
+                s.pod.signature ||
+                s.pod.codCollected != null ||
+                s.pod.flags.length > 0) && (
+                <div className="pod">
+                  {s.pod.photoFileIds.map((f, n) => (
+                    <button
+                      key={f}
+                      className="btn"
+                      onClick={() => openFile(f).catch((e: Error) => setError(e.message))}
+                    >
+                      Photo {n + 1}
+                    </button>
+                  ))}
+                  {s.pod.signature && (
+                    <SignatureView strokes={s.pod.signature.strokes} name={s.pod.signedBy} />
+                  )}
+                  <span className="muted">
+                    {s.pod.codExpected
+                      ? `COD ${money(s.pod.codCollected ?? 0)} of ${money(s.pod.codExpected)}`
+                      : ''}
+                    {s.pod.distanceM != null && ` · ${s.pod.distanceM} m from customer`}
+                  </span>
+                  {s.pod.flags.map((f) => (
+                    <span
+                      key={f}
+                      className={`badge badge-${f === 'RECORDED_BY_DISPATCH' || f === 'NO_GPS' ? 'muted' : 'danger'}`}
+                    >
+                      {FLAG_LABEL[f] ?? f}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {s.returns.length > 0 && (
+                <p className="muted">
+                  Customer returns:{' '}
+                  {s.returns
+                    .map((r) => `${r.sku} ×${r.quantity} ${r.uom} (${r.reason})`)
+                    .join('; ')}
+                </p>
+              )}
               <table>
                 <tbody>
                   {s.orders.map((o) => (

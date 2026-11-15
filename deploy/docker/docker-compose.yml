@@ -32,6 +32,9 @@ x-api-env: &api-env
   APP_URL: http://localhost:${WEB_PORT:-8080}
   LOG_FORMAT: ${LOG_FORMAT:-text}
   PUSH_ENABLED: ${PUSH_ENABLED:-false}
+  # Road routing (profile "routing"); when those services are not running FMS uses straight lines.
+  OSRM_URL: ${OSRM_URL:-http://osrm:5000}
+  VROOM_URL: ${VROOM_URL:-http://vroom:3000/}
 
 x-api-image: &api-image
   image: fms/api:${IMAGE_TAG:-local}
@@ -167,8 +170,61 @@ services:
       - api
     restart: unless-stopped
 
+  # --- Road routing (optional): docker compose --profile routing up -d ---------------
+  osrm-download:
+    image: curlimages/curl:8.11.1
+    profiles: [routing]
+    user: "0"
+    environment:
+      OSM_URL: ${OSM_URL:-https://download.geofabrik.de/asia/myanmar-latest.osm.pbf}
+      REFRESH: ${ROUTING_REFRESH:-false}
+    volumes:
+      - osrmdata:/data
+      - ../routing/download.sh:/download.sh:ro
+    entrypoint: ["/bin/sh", "/download.sh"]
+    restart: "no"
+
+  osrm-prepare:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    profiles: [routing]
+    environment:
+      REFRESH: ${ROUTING_REFRESH:-false}
+    volumes:
+      - osrmdata:/data
+      - ../routing/prepare.sh:/prepare.sh:ro
+    entrypoint: ["/bin/sh", "/prepare.sh"]
+    depends_on:
+      osrm-download: { condition: service_completed_successfully }
+    restart: "no"
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    profiles: [routing]
+    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "1000", "/data/region.osrm"]
+    volumes:
+      - osrmdata:/data
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      osrm-prepare: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.14.0
+    profiles: [routing]
+    environment:
+      VROOM_ROUTER: osrm
+    volumes:
+      - ../routing/vroom-config.yml:/conf-src/config.yml:ro
+    entrypoint: ["/bin/bash", "-c", "sed 's/OSRM_HOST/osrm/' /conf-src/config.yml > /conf/config.yml && exec bash /docker-entrypoint.sh"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [osrm]
+    restart: unless-stopped
+
 volumes:
   pgdata:
   files:
   s3data:
   redisdata:
+  osrmdata:

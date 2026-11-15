@@ -77,6 +77,7 @@ export class OrganizationController {
         incentives: { ...current.incentives, ...body.incentives },
         approvals: { ...current.approvals, ...body.approvals },
         logistics: { ...current.logistics, ...body.logistics },
+        pod: { ...current.pod, ...body.pod },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

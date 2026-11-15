@@ -171,6 +171,30 @@ serviceAccount:
   create: true
   name: ""
 
+# ---------------------------------------------------------------------------
+# Road routing (OSRM + VROOM). Off by default; FMS uses straight-line estimates without it.
+# ---------------------------------------------------------------------------
+routing:
+  enabled: false
+  osmUrl: https://download.geofabrik.de/asia/myanmar-latest.osm.pbf
+  # Set to "true" for one rollout to re-download and rebuild the road data (e.g. monthly), then back to "false".
+  refresh: "false"
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  affinity: {}               # defaults to .Values.affinity
+  downloader:
+    image: mirror.gcr.io/curlimages/curl:8.11.1
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    # osrm-extract/partition for the Myanmar extract
+    prepareResources: { requests: { cpu: 500m, memory: 2Gi }, limits: { memory: 4Gi } }
+    resources: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 1536Mi } }
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.14.0
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 512Mi } }
+
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile: { type: RuntimeDefault }

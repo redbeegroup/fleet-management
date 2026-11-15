@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CreateLoadInput, StopOutcomeInput, UpdateCustomerInput, UpdateLoadInput, WebhookEvent } from '@fms/shared';
+import { CheckInInput, CreateLoadInput, CreateReturnInput, StopOutcomeInput, UpdateCustomerInput, UpdateLoadInput, WebhookEvent } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService, Tx } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
@@ -8,10 +8,15 @@ import { dayBounds } from '../../common/time';
 import { BLOCKING_VEHICLE_STATUSES } from '../dispatch/eligibility';
 import { TripsService } from '../dispatch/trips.service';
 import { WebhooksService } from '../integrations/webhooks.service';
+import { RoutingService, SequencedRoute } from '../routing/routing.service';
 import { autofill } from './autofill';
 import { checkLoad, describeViolations, LoadItem, loadTotals, VehicleCapacity } from './capacity';
-import { routeKm, sequenceStops } from './sequence';
+import { routeKm } from './sequence';
 import { orderOutcome, PLANNABLE } from './status';
+import { evaluatePod } from './pod';
+import { expectedReturns, reconcile } from './checkin';
+import { FilesService } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const n = (d: Prisma.Decimal | number | null | undefined) => (d == null ? null : Number(d));
 const orderSelect = {
@@ -83,6 +88,8 @@ export class LogisticsService {
     private readonly db: PrismaService,
     private readonly trips: TripsService,
     private readonly webhooks: WebhooksService,
+    private readonly routing: RoutingService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ------------------------------------------------------------ planning
@@ -137,8 +144,32 @@ export class LogisticsService {
       });
       const usable = vehicles.filter((v) => q.vehicleIds?.length || !busy.has(v.id)).map(toCapacity);
       const point = depot.latitude != null && depot.longitude != null ? { lat: depot.latitude, lng: depot.longitude } : null;
-      const r = autofill(orders.map(toLoadItem), usable, point, settings.defaultMaxStops);
+      const items = orders.map(toLoadItem);
       const byId = new Map(orders.map((o) => [o.id, o]));
+      // Road-network assignment (VROOM) when available; otherwise the greedy area/capacity heuristic.
+      const departure = this.departure(q.date, settings.departureTime, (await tx.company.findFirstOrThrow({ select: { timezone: true } })).timezone);
+      const PRI: Record<string, number> = { URGENT: 100, HIGH: 60, NORMAL: 20, LOW: 0 };
+      const vroom = await this.routing.assign(
+        point,
+        usable.map((v) => ({ id: v.id, capacity: [v.capacityKg, v.capacityM3, v.capacityCases, v.capacityPallets], maxTasks: v.maxStops ?? settings.defaultMaxStops, start: departure })),
+        items.map((i) => {
+          const o = byId.get(i.id)!;
+          return {
+            id: i.id,
+            location: i.lat != null && i.lng != null ? { lat: i.lat, lng: i.lng } : null,
+            serviceMinutes: settings.serviceMinutesPerStop,
+            window: o.windowStart && o.windowEnd ? { start: o.windowStart, end: o.windowEnd } : null,
+            amount: [i.weightKg ?? 0, i.volumeM3 ?? 0, i.cases ?? 0, i.pallets ?? 0] as [number, number, number, number],
+            priority: PRI[i.priority] ?? 20,
+          };
+        }),
+      );
+      const r = vroom
+        ? {
+            loads: vroom.loads.map((l) => ({ vehicleId: l.vehicleId, orderIds: l.jobIds })),
+            unplaced: vroom.unassigned.map((id) => ({ orderId: id, externalRef: byId.get(id)!.externalRef, reason: 'Does not fit within capacity or time windows' })),
+          }
+        : autofill(items, usable, point, settings.defaultMaxStops);
       return {
         loads: r.loads.map((l) => {
           const v = usable.find((x) => x.id === l.vehicleId)!;
@@ -146,6 +177,7 @@ export class LogisticsService {
           return { ...l, plateNumber: v.plateNumber, totals: loadTotals(items), check: checkLoad(v, loadTotals(items), settings.defaultMaxStops) };
         }),
         unplaced: r.unplaced,
+        source: vroom ? 'osrm' : 'straight-line',
       };
     });
   }
@@ -164,10 +196,11 @@ export class LogisticsService {
       if (!vehicle) throw new BadRequestException('Vehicle not found');
       this.assertCapacity(toCapacity(vehicle), orders, settings.defaultMaxStops);
 
-      const stops = this.buildStops(orders, depot);
-      const km = routeKm(depot.latitude != null ? { lat: depot.latitude, lng: depot.longitude! } : null, stops);
+      const groups = this.buildStops(orders);
       const start = input.departAt ?? this.departure(input.date, settings.departureTime, tz);
-      const minutes = stops.length * settings.serviceMinutesPerStop + Math.ceil((km / settings.avgSpeedKmh) * 60);
+      const route = await this.routing.sequence(this.point(depot), this.planned(groups, settings.serviceMinutesPerStop), start, settings.avgSpeedKmh);
+      const stops = route.order.map((id) => groups.find((g) => g.customerId === id)!);
+      const minutes = route.minutes;
       const t = await this.trips.createIn(
         tx,
         user,
@@ -189,7 +222,8 @@ export class LogisticsService {
         } as Parameters<TripsService['create']>[1],
         { kind: 'DELIVERY', plannedDate: new Date(input.date) },
       );
-      await this.writeStops(tx, user.companyId, t.id, stops);
+      await this.saveRoute(tx, t.id, route);
+      await this.writeStops(tx, user.companyId, t.id, stops, route.arrivals);
       await this.orderHook(tx, user.companyId, t.id, WebhookEvent.ORDER_PLANNED);
       return t;
     });
@@ -239,13 +273,17 @@ export class LogisticsService {
         if (input.stopIds.some((id) => !byId.has(id)) || new Set(input.stopIds).size !== existingStops.length) throw new BadRequestException('stopIds must list every stop of the load exactly once');
         order = input.stopIds.map((id) => byId.get(id)!);
       }
-      const fresh = this.buildStops(all, depot);
+      const fresh = this.buildStops(all);
       const known = fresh.filter((s) => order.includes(s.customerId)).sort((a, b) => order.indexOf(a.customerId) - order.indexOf(b.customerId));
       const newOnes = fresh.filter((s) => !order.includes(s.customerId));
       await tx.deliveryOrder.updateMany({ where: { tripId }, data: { stopId: null } });
       await tx.tripStop.deleteMany({ where: { tripId } });
       await tx.deliveryOrder.updateMany({ where: { id: { in: added.map((o) => o.id) } }, data: { tripId, status: 'PLANNED', failureReason: null, version: { increment: 1 } } });
-      await this.writeStops(tx, user.companyId, tripId, [...known, ...newOnes]);
+      const ordered = [...known, ...newOnes];
+      const tripNow = await tx.trip.findUniqueOrThrow({ where: { id: tripId }, select: { plannedStart: true } });
+      const route = await this.routing.withRoute(this.point(depot), this.planned(ordered, settings.serviceMinutesPerStop), ordered.map((s) => s.customerId), tripNow.plannedStart, settings.avgSpeedKmh);
+      await this.saveRoute(tx, tripId, route, tripNow.plannedStart);
+      await this.writeStops(tx, user.companyId, tripId, ordered, route.arrivals);
       if (added.length) await this.orderHook(tx, user.companyId, tripId, WebhookEvent.ORDER_PLANNED, { id: { in: added.map((o) => o.id) } });
       return tx.trip.findUniqueOrThrow({ where: { id: tripId }, include: { vehicle: true, driver: true } });
     });
@@ -286,7 +324,7 @@ export class LogisticsService {
         include: {
           vehicle: { select: vehicleSelect },
           driver: { select: { id: true, fullName: true, employeeNo: true, phone: true } },
-          stops: { orderBy: { seq: 'asc' }, include: { orders: { select: { ...orderSelect, lines: { orderBy: { lineNo: 'asc' } } }, orderBy: { externalRef: 'asc' } } } },
+          stops: { orderBy: { seq: 'asc' }, include: { returns: { orderBy: { createdAt: 'asc' } }, orders: { select: { ...orderSelect, lines: { orderBy: { lineNo: 'asc' } } }, orderBy: { externalRef: 'asc' } } } },
         },
       });
       if (!t) throw new NotFoundException('Load not found');
@@ -302,6 +340,13 @@ export class LogisticsService {
         plannedEnd: t.plannedEnd,
         actualStart: t.actualStart,
         actualEnd: t.actualEnd,
+        plannedKm: n(t.plannedKm),
+        plannedMinutes: t.plannedMinutes,
+        routeGeometry: t.routeGeometry,
+        routingSource: t.routingSource,
+        gpsDistanceKm: n(t.gpsDistanceKm),
+        checkedInAt: t.checkedInAt,
+        checkIn: t.checkIn,
         depot,
         vehicle: t.vehicle ? { ...toCapacity(t.vehicle), vehicleClass: t.vehicle.vehicleClass } : null,
         driver: t.driver,
@@ -323,6 +368,20 @@ export class LogisticsService {
           completedAt: s.completedAt,
           failureReason: s.failureReason,
           notes: s.notes,
+          plannedArrival: s.plannedArrival,
+          pod: {
+            photoFileIds: s.podPhotoFileIds,
+            signature: s.podSignature,
+            signedBy: s.podSignedBy,
+            latitude: s.podLat,
+            longitude: s.podLng,
+            accuracyM: s.podAccuracyM,
+            distanceM: s.podDistanceM,
+            codExpected: n(s.codExpected),
+            codCollected: n(s.codCollected),
+            flags: s.podFlags,
+          },
+          returns: s.returns.map((r) => ({ id: r.id, orderId: r.orderId, sku: r.sku, description: r.description, quantity: Number(r.quantity), uom: r.uom, reason: r.reason, photoFileId: r.photoFileId })),
           customer: { id: s.customerId },
           orders: s.orders.map((o) => ({
             ...this.orderView(o),
@@ -330,6 +389,7 @@ export class LogisticsService {
           })),
         })),
         failureReasons: settings.failureReasons,
+        podSettings: parseCompanySettings((await tx.company.findFirstOrThrow({ select: { settings: true } })).settings).pod,
       };
     });
   }
@@ -350,6 +410,14 @@ export class LogisticsService {
       if (!['PENDING', 'ARRIVED'].includes(stop.status)) throw new BadRequestException(`Stop is already ${stop.status.toLowerCase()}`);
       const orders = await tx.deliveryOrder.findMany({ where: { stopId }, include: { lines: true } });
       const now = new Date();
+      // Proof of delivery: the driver app must provide the evidence; dispatch entries are marked as such.
+      const podSettings = parseCompanySettings((await tx.company.findFirstOrThrow({ select: { settings: true } })).settings).pod;
+      const codExpected = Number(stop.codExpected ?? 0);
+      const pod = evaluatePod(input, { stopLat: stop.latitude, stopLng: stop.longitude, codExpected, settings: driverId ? podSettings : { ...podSettings, requirePhoto: false, requireSignature: false, requireCodEntry: false } });
+      if (pod.errors.length) throw new BadRequestException({ message: 'Proof of delivery incomplete', errors: pod.errors.map((m) => ({ path: 'pod', message: m })) });
+      for (const f of input.photoFileIds) await FilesService.assertOwned(tx, f);
+      const flags = driverId ? pod.flags : [...pod.flags.filter((f) => f !== 'NO_GPS'), 'RECORDED_BY_DISPATCH'];
+      const podSummary = { photos: input.photoFileIds.length, signedBy: input.signature?.name ?? null, codCollected: input.codCollected ?? null, flags };
       for (const o of orders) {
         const lines = o.lines.map((l) => {
           const given = input.deliveredLines?.find((d) => d.orderId === o.id && d.lineNo === l.lineNo);
@@ -372,12 +440,147 @@ export class LogisticsService {
           deliveredAt: status === 'FAILED' ? null : now,
           reason: input.reason ?? null,
           lines: o.lines.map((l) => ({ lineNo: l.lineNo, sku: l.sku, quantity: Number(l.quantity), deliveredQty: lines.find((x) => x.id === l.id)!.deliveredQty })),
+          pod: podSummary,
         });
       }
       return tx.tripStop.update({
         where: { id: stopId },
-        data: { status: input.outcome, completedAt: now, arrivedAt: stop.arrivedAt ?? now, failureReason: input.outcome === 'DELIVERED' ? null : (input.reason ?? null), notes: input.notes ?? null },
+        data: {
+          status: input.outcome,
+          completedAt: now,
+          arrivedAt: stop.arrivedAt ?? now,
+          failureReason: input.outcome === 'DELIVERED' ? null : (input.reason ?? null),
+          notes: input.notes ?? null,
+          podPhotoFileIds: input.photoFileIds,
+          podSignature: input.signature ? (input.signature as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+          podSignedBy: input.signature?.name ?? null,
+          podLat: input.latitude ?? null,
+          podLng: input.longitude ?? null,
+          podAccuracyM: input.accuracyM ?? null,
+          podDistanceM: pod.distanceM,
+          codCollected: input.codCollected ?? null,
+          podFlags: flags,
+        },
       });
+    });
+  }
+
+  // ------------------------------------------------------------- returns
+
+  /** Goods a customer hands back at a stop (driver during the trip, or dispatch before check-in). */
+  async addReturn(user: AuthUser, stopId: string, input: CreateReturnInput, driverId?: string) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const stop = await tx.tripStop.findFirst({ where: { id: stopId }, include: { trip: { select: { id: true, status: true, driverId: true, checkedInAt: true } }, customer: { select: { code: true } } } });
+      if (!stop || (driverId && stop.trip.driverId !== driverId)) throw new NotFoundException('Stop not found');
+      if (driverId && stop.trip.status !== 'ONGOING') throw new ForbiddenException('Returns can be recorded while the trip is ongoing');
+      if (stop.trip.checkedInAt) throw new BadRequestException('The load has already been checked in');
+      if (input.orderId && !(await tx.deliveryOrder.findFirst({ where: { id: input.orderId, customerId: stop.customerId }, select: { id: true } }))) {
+        throw new BadRequestException('Order not found for this customer');
+      }
+      await FilesService.assertOwned(tx, input.photoFileId);
+      const r = await tx.deliveryReturn.create({ data: { ...input, companyId: user.companyId, tripId: stop.tripId, stopId, customerId: stop.customerId, createdBy: user.userId } });
+      const order = input.orderId ? await tx.deliveryOrder.findUnique({ where: { id: input.orderId }, select: { externalRef: true } }) : null;
+      await this.webhooks.emit(tx, user.companyId, WebhookEvent.RETURN_COLLECTED, {
+        id: r.id,
+        tripId: stop.tripId,
+        customerCode: stop.customer.code,
+        orderExternalRef: order?.externalRef ?? null,
+        sku: r.sku,
+        description: r.description,
+        quantity: Number(r.quantity),
+        uom: r.uom,
+        reason: r.reason,
+        collectedAt: r.createdAt,
+      });
+      return { ...r, quantity: Number(r.quantity) };
+    });
+  }
+
+  // ------------------------------------------------------------ check-in
+
+  private async checkInData(tx: Tx, tripId: string) {
+    const trip = await tx.trip.findFirst({ where: { id: tripId, kind: 'DELIVERY' }, include: { stops: { select: { codCollected: true } } } });
+    if (!trip) throw new NotFoundException('Load not found');
+    const [orders, returns] = await Promise.all([
+      tx.deliveryOrder.findMany({ where: { tripId }, select: { id: true, externalRef: true, status: true, lines: { orderBy: { lineNo: 'asc' } } } }),
+      tx.deliveryReturn.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    const expected = expectedReturns(
+      orders.map((o) => ({ ...o, lines: o.lines.map((l) => ({ lineNo: l.lineNo, sku: l.sku, description: l.description, uom: l.uom, quantity: Number(l.quantity), deliveredQty: n(l.deliveredQty) })) })),
+      returns.map((r) => ({ id: r.id, sku: r.sku, description: r.description, uom: r.uom, quantity: Number(r.quantity), reason: r.reason })),
+    );
+    const cashExpected = trip.stops.reduce((s, x) => s + (n(x.codCollected) ?? 0), 0);
+    return { trip, expected, cashExpected };
+  }
+
+  /** What the warehouse should receive back (undelivered goods, customer returns) and the cash collected. */
+  checkInExpected(user: AuthUser, tripId: string) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const { trip, expected, cashExpected } = await this.checkInData(tx, tripId);
+      return { tripId, tripNo: trip.tripNo, status: trip.status, checkedInAt: trip.checkedInAt, checkIn: trip.checkIn, expected, cashExpected: Math.round(cashExpected * 100) / 100 };
+    });
+  }
+
+  async checkIn(user: AuthUser, tripId: string, input: CheckInInput) {
+    const res = await this.db.tenant(user.companyId, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM trips WHERE id = ${tripId}::uuid FOR UPDATE`;
+      const { trip, expected, cashExpected } = await this.checkInData(tx, tripId);
+      if (trip.status !== 'COMPLETED') throw new BadRequestException('Check in after the trip is completed');
+      if (trip.checkedInAt) throw new ConflictException('This load is already checked in');
+      const r = reconcile(expected, input.lines, cashExpected, input.cashReceived ?? null);
+      if (r.unknownKeys.length) throw new BadRequestException(`Unknown lines: ${r.unknownKeys.join(', ')}`);
+      const snapshot = { ...r, notes: input.notes ?? null, by: user.userId };
+      await tx.trip.update({ where: { id: tripId }, data: { checkedInAt: new Date(), checkedInBy: user.userId, checkIn: snapshot as unknown as Prisma.InputJsonValue } });
+      await this.webhooks.emit(tx, user.companyId, WebhookEvent.LOAD_CHECKED_IN, {
+        tripId,
+        tripNo: trip.tripNo,
+        ok: r.ok,
+        shortages: r.shortages,
+        overages: r.overages,
+        cashExpected: r.cashExpected,
+        cashReceived: r.cashReceived,
+        cashDiff: r.cashDiff,
+        lines: r.lines.map((l) => ({ kind: l.kind, ref: l.ref, sku: l.sku, expectedQty: l.expectedQty, receivedQty: l.receivedQty, diff: l.diff })),
+      });
+      return { trip, r };
+    });
+    if (!res.r.ok) {
+      await this.notifications
+        .notify({
+          companyId: user.companyId,
+          roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'FLEET_MANAGER'],
+          topic: 'logistics.checkin_difference',
+          severity: 'warning',
+          title: `Check-in differences on ${res.trip.tripNo}`,
+          body: `${res.r.shortages} short, ${res.r.overages} over${res.r.cashDiff ? `, cash difference ${res.r.cashDiff.toLocaleString('en-US')}` : ''}.`,
+          data: { tripId, link: `/loads/${tripId}` },
+          dedupeKey: `checkin:${tripId}`,
+        })
+        .catch(() => undefined);
+    }
+    return this.checkInExpected(user, tripId);
+  }
+
+  /** Stops whose proof of delivery was flagged (far from customer, cash mismatch, no GPS, dispatch entry). */
+  podExceptions(user: AuthUser, q: { from: string; to: string }) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const rows = await tx.tripStop.findMany({
+        where: { podFlags: { isEmpty: false }, trip: { plannedDate: { gte: new Date(q.from), lte: new Date(q.to) } } },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          completedAt: true,
+          podFlags: true,
+          podDistanceM: true,
+          codExpected: true,
+          codCollected: true,
+          trip: { select: { id: true, tripNo: true, driver: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: 500,
+      });
+      return rows.map((r) => ({ ...r, codExpected: n(r.codExpected), codCollected: n(r.codCollected) }));
     });
   }
 
@@ -460,8 +663,8 @@ export class LogisticsService {
     if (!c.ok) throw new UnprocessableEntityException({ message: `Load exceeds ${v.plateNumber}'s capacity: ${describeViolations(c)}`, violations: c.violations, warnings: c.warnings });
   }
 
-  /** One stop per customer (address/coordinates of the first order), sequenced from the depot. */
-  private buildStops(orders: OrderRow[], depot: { latitude: number | null; longitude: number | null }) {
+  /** One stop per customer (address/coordinates of the first order); the visiting order comes from routing. */
+  private buildStops(orders: OrderRow[]) {
     const byCustomer = new Map<string, OrderRow[]>();
     for (const o of [...orders].sort((a, b) => a.externalRef.localeCompare(b.externalRef))) byCustomer.set(o.customerId, [...(byCustomer.get(o.customerId) ?? []), o]);
     const stops = [...byCustomer.entries()].map(([customerId, os]) => {
@@ -476,16 +679,58 @@ export class LogisticsService {
         contactName: f.contactName,
         contactPhone: f.contactPhone ?? f.customer.phone,
         orderIds: os.map((o) => o.id),
+        // The stop's window is where all its orders' windows overlap.
+        window: (() => {
+          const ws = os.filter((o) => o.windowStart && o.windowEnd);
+          if (!ws.length) return null;
+          const start = new Date(Math.max(...ws.map((o) => o.windowStart!.getTime())));
+          const end = new Date(Math.min(...ws.map((o) => o.windowEnd!.getTime())));
+          return start < end ? { start, end } : null;
+        })(),
       };
     });
-    const seq = sequenceStops(depot.latitude != null && depot.longitude != null ? { lat: depot.latitude, lng: depot.longitude } : null, stops);
-    return seq.map((s) => ({ ...s, latitude: s.lat, longitude: s.lng }));
+    return stops;
   }
 
-  private async writeStops(tx: Tx, companyId: string, tripId: string, stops: ReturnType<LogisticsService['buildStops']>) {
+  private point(depot: { latitude: number | null; longitude: number | null }) {
+    return depot.latitude != null && depot.longitude != null ? { lat: depot.latitude, lng: depot.longitude } : null;
+  }
+
+  private planned(stops: ReturnType<LogisticsService['buildStops']>, serviceMinutes: number) {
+    return stops.map((s) => ({ id: s.customerId, lat: s.lat, lng: s.lng, serviceMinutes, window: s.window, amount: [0, 0, 0, 0] as [number, number, number, number] }));
+  }
+
+  private async saveRoute(tx: Tx, tripId: string, r: SequencedRoute, start?: Date) {
+    await tx.trip.update({
+      where: { id: tripId },
+      data: {
+        plannedKm: r.km,
+        plannedMinutes: r.minutes,
+        routeGeometry: r.geometry,
+        routingSource: r.source,
+        ...(start && { plannedEnd: new Date(start.getTime() + Math.max(30, r.minutes) * 60_000) }),
+      },
+    });
+  }
+
+  private async writeStops(tx: Tx, companyId: string, tripId: string, stops: ReturnType<LogisticsService['buildStops']>, arrivals: Map<string, Date>) {
     for (const [i, s] of stops.entries()) {
+      const cod = await tx.deliveryOrder.aggregate({ where: { id: { in: s.orderIds } }, _sum: { codAmount: true } });
       const row = await tx.tripStop.create({
-        data: { companyId, tripId, seq: i + 1, customerId: s.customerId, name: s.name, address: s.address, latitude: s.lat, longitude: s.lng, contactName: s.contactName, contactPhone: s.contactPhone },
+        data: {
+          companyId,
+          tripId,
+          seq: i + 1,
+          customerId: s.customerId,
+          name: s.name,
+          address: s.address,
+          latitude: s.lat,
+          longitude: s.lng,
+          contactName: s.contactName,
+          contactPhone: s.contactPhone,
+          plannedArrival: arrivals.get(s.customerId) ?? null,
+          codExpected: cod._sum.codAmount ?? null,
+        },
       });
       await tx.deliveryOrder.updateMany({ where: { id: { in: s.orderIds } }, data: { tripId, stopId: row.id, status: 'PLANNED', failureReason: null } });
       await tx.deliveryOrderLine.updateMany({ where: { orderId: { in: s.orderIds } }, data: { deliveredQty: null } });
@@ -507,7 +752,7 @@ export class LogisticsService {
   }
 
   private async stopFor(tx: Tx, stopId: string, driverId?: string) {
-    const stop = await tx.tripStop.findFirst({ where: { id: stopId }, include: { trip: { select: { id: true, status: true, driverId: true } } } });
+    const stop = await tx.tripStop.findFirst({ where: { id: stopId }, include: { trip: { select: { id: true, status: true, driverId: true, tripNo: true } }, customer: { select: { code: true } } } });
     if (!stop) throw new NotFoundException('Stop not found');
     if (driverId && stop.trip.driverId !== driverId) throw new NotFoundException('Stop not found');
     if (stop.trip.status !== 'ONGOING') throw new ForbiddenException('Start the trip before updating its stops');

@@ -97,6 +97,8 @@ describe('Sprint 10 delivery planning (e2e)', () => {
       t[k] = (await http().post('/api/auth/login').send({ email: `${k}-${run}@e2e.local`, password: PASSWORD }).expect(200)).body.accessToken;
     }
     apiKey = (await http().post('/api/integrations/api-keys').set(auth('a')).send({ name: 'DMS', scopes: ['orders:write', 'orders:read'] }).expect(201)).body.key;
+    // Proof-of-delivery evidence is covered in sprint11; here drivers record outcomes only.
+    await http().patch('/api/company/settings').set(auth('a')).send({ pod: { requirePhoto: false, requireCodEntry: false } }).expect(200);
     await http()
       .post('/api/integrations/webhooks')
       .set(auth('a'))

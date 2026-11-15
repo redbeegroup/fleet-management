@@ -1,0 +1,195 @@
+{{- if .Values.routing.enabled }}
+{{- $fn := include "fms.fullname" . }}
+# Road routing: OSRM (osrm-routed, MLD) + VROOM (vroom-express). The OSRM pod prepares its own data on
+# first start (download + extract/partition/customize into the PVC); later restarts reuse it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-osrm-data
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.routing.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.routing.persistence.size }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fn }}-routing
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+data:
+  download.sh: |
+{{ .Files.Get "files/routing/download.sh" | indent 4 }}
+  prepare.sh: |
+{{ .Files.Get "files/routing/prepare.sh" | indent 4 }}
+  vroom-config.yml: |
+{{ .Files.Get "files/routing/vroom-config.yml" | replace "OSRM_HOST" (printf "%s-osrm" $fn) | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-osrm
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: osrm
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # ReadWriteOnce data volume
+  selector:
+    matchLabels:
+      {{- include "fms.selectorLabels" (dict "root" . "component" "osrm") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fms.selectorLabels" (dict "root" . "component" "osrm") | nindent 8 }}
+      annotations:
+        checksum/scripts: {{ printf "%s%s%s" (.Files.Get "files/routing/download.sh") (.Files.Get "files/routing/prepare.sh") .Values.routing.osmUrl | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with (default .Values.affinity .Values.routing.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: download
+          image: {{ .Values.routing.downloader.image }}
+          command: ["/bin/sh", "/scripts/download.sh"]
+          env:
+            - { name: OSM_URL, value: {{ .Values.routing.osmUrl | quote }} }
+            - { name: REFRESH, value: {{ .Values.routing.refresh | quote }} }
+          resources:
+            {{- toYaml .Values.routing.downloader.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: scripts, mountPath: /scripts }
+        - name: prepare
+          image: {{ .Values.routing.osrm.image }}
+          command: ["/bin/sh", "/scripts/prepare.sh"]
+          env:
+            - { name: REFRESH, value: {{ .Values.routing.refresh | quote }} }
+          resources:
+            {{- toYaml .Values.routing.osrm.prepareResources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: scripts, mountPath: /scripts }
+      containers:
+        - name: osrm
+          image: {{ .Values.routing.osrm.image }}
+          args: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "1000", "/data/region.osrm"]
+          ports:
+            - { name: http, containerPort: 5000 }
+          readinessProbe:
+            httpGet: { path: /nearest/v1/driving/96.15,16.8, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.routing.osrm.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ $fn }}-osrm-data }
+        - name: scripts
+          configMap: { name: {{ $fn }}-routing }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-osrm
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "fms.selectorLabels" (dict "root" . "component" "osrm") | nindent 4 }}
+  ports:
+    - { name: http, port: 5000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-vroom
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vroom
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "fms.selectorLabels" (dict "root" . "component" "vroom") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fms.selectorLabels" (dict "root" . "component" "vroom") | nindent 8 }}
+      annotations:
+        checksum/config: {{ .Files.Get "files/routing/vroom-config.yml" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # vroom-docker's entrypoint writes into the image (/vroom-express/config.yml), so it runs as root
+      # with a writable root filesystem; it has no privileges and only talks to OSRM.
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: vroom
+          image: {{ .Values.routing.vroom.image }}
+          command: ["/bin/bash", "-c", "cp /conf-src/vroom-config.yml /conf/config.yml && exec bash /docker-entrypoint.sh"]
+          env:
+            - { name: VROOM_ROUTER, value: osrm }
+          ports:
+            - { name: http, containerPort: 3000 }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.routing.vroom.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: conf, mountPath: /conf }
+            - { name: conf-src, mountPath: /conf-src }
+      volumes:
+        - { name: conf, emptyDir: {} }
+        - name: conf-src
+          configMap:
+            name: {{ $fn }}-routing
+            items: [{ key: vroom-config.yml, path: vroom-config.yml }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-vroom
+  labels:
+    {{- include "fms.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "fms.selectorLabels" (dict "root" . "component" "vroom") | nindent 4 }}
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+{{- end }}

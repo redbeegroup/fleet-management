@@ -336,3 +336,13 @@ tr.selected td { background: var(--info-bg); }
 .manifest table { width: 100%; }
 .manifest .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 28px; }
 .manifest .sign div { border-top: 1px solid var(--text); padding-top: 4px; font-size: 12px; }
+
+/* Routing, POD, check-in */
+.route-map { height: 380px; border-radius: 10px; overflow: hidden; }
+.route-pin { width: 24px; height: 24px; border-radius: 50%; background: #64748b; color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.route-pin.depot { background: #111827; }
+.route-pod { width: 10px; height: 10px; border-radius: 50%; background: #9333ea; border: 2px solid #fff; }
+.pod { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; padding: 8px 10px; background: var(--bg-soft, rgba(0,0,0,.03)); border-radius: 8px; }
+.signature { margin: 0; }
+.signature svg { width: 180px; height: 72px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: #111; }
+.checkin input[type=number] { width: 90px; }

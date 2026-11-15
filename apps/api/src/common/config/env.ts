@@ -47,6 +47,9 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
   EXPO_PUSH_URL: z.string().default('https://exp.host/--/api/v2/push/send'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
+  /** Road routing (OSRM osrm-routed and vroom-express); straight lines when unset or down. */
+  OSRM_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  VROOM_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   /** Webhooks: allow http:// URLs (testing only). */
   WEBHOOK_ALLOW_INSECURE: z
     .string()
