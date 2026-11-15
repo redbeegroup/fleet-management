@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
-export const API_URL: string = (Constants.expoConfig?.extra?.apiUrl as string) ?? 'http://localhost:8080/api';
+export const API_URL: string =
+  (Constants.expoConfig?.extra?.apiUrl as string) ?? 'http://localhost:8080/api';
 
 export interface DriverSession {
   accessToken: string;
@@ -39,10 +40,16 @@ export class ApiError extends Error {
 
 async function errorMessage(res: Response): Promise<string> {
   try {
-    const body = (await res.json()) as { message?: string | string[]; reasons?: string[]; errors?: { path: string; message: string }[] };
+    const body = (await res.json()) as {
+      message?: string | string[];
+      reasons?: string[];
+      errors?: { path: string; message: string }[];
+    };
     if (body.reasons?.length) return body.reasons.join('\n');
     if (body.errors?.length) return body.errors.map((e) => `${e.path}: ${e.message}`).join('\n');
-    return Array.isArray(body.message) ? body.message.join('\n') : body.message ?? `Error ${res.status}`;
+    return Array.isArray(body.message)
+      ? body.message.join('\n')
+      : (body.message ?? `Error ${res.status}`);
   } catch {
     return `Error ${res.status}`;
   }
@@ -69,7 +76,10 @@ async function refresh(): Promise<boolean> {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...(init.headers as Record<string, string>) };
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(init.headers as Record<string, string>),
+  };
   if (session) headers.Authorization = `Bearer ${session.accessToken}`;
   if (init.body && !(init.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
@@ -88,9 +98,14 @@ export async function login(email: string, password: string): Promise<DriverSess
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: email.trim(), password }),
   });
-  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? 'Invalid email or password' : await errorMessage(res));
+  if (!res.ok)
+    throw new ApiError(
+      res.status,
+      res.status === 401 ? 'Invalid email or password' : await errorMessage(res),
+    );
   const s = (await res.json()) as DriverSession;
-  if (!s.user.roles.includes('DRIVER')) throw new ApiError(403, 'This app is for drivers. Use the web console instead.');
+  if (!s.user.roles.includes('DRIVER'))
+    throw new ApiError(403, 'This app is for drivers. Use the web console instead.');
   await save(s);
   return s;
 }
@@ -111,7 +126,11 @@ export async function uploadPhoto(uri: string): Promise<string> {
   const body = new FormData();
   const name = uri.split('/').pop() ?? 'photo.jpg';
   // React Native's FormData accepts { uri, name, type } file parts.
-  body.append('file', { uri, name, type: name.endsWith('.png') ? 'image/png' : 'image/jpeg' } as unknown as Blob);
+  body.append('file', {
+    uri,
+    name,
+    type: name.endsWith('.png') ? 'image/png' : 'image/jpeg',
+  } as unknown as Blob);
   const res = await api<{ id: string }>('/files', { method: 'POST', body });
   return res.id;
 }
@@ -174,7 +193,13 @@ export interface MySafety {
   harshAccel: number;
   harshCorner: number;
   idleMinutes: number;
-  recentEvents: { id: string; type: string; occurredAt: string; speedKmh: number | null; plateNumber: string | null }[];
+  recentEvents: {
+    id: string;
+    type: string;
+    occurredAt: string;
+    speedKmh: number | null;
+    plateNumber: string | null;
+  }[];
 }
 
 export interface MyIncident {
@@ -205,7 +230,13 @@ export interface MyInspection {
 }
 
 export interface MyTraining {
-  status: { courseId: string; code: string; name: string; status: 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING'; expiresAt: string | null }[];
+  status: {
+    courseId: string;
+    code: string;
+    name: string;
+    status: 'VALID' | 'EXPIRING' | 'EXPIRED' | 'MISSING';
+    expiresAt: string | null;
+  }[];
 }
 
 export interface MyAdjustment {
@@ -238,7 +269,30 @@ export interface Stop {
   contactName: string | null;
   contactPhone: string | null;
   failureReason: string | null;
-  orders: { id: string; externalRef: string; codAmount: number | null; notes: string | null; lines: StopLine[] }[];
+  orders: {
+    id: string;
+    externalRef: string;
+    codAmount: number | null;
+    notes: string | null;
+    lines: StopLine[];
+  }[];
+  plannedArrival: string | null;
+  pod: {
+    photoFileIds: string[];
+    signedBy: string | null;
+    codExpected: number | null;
+    codCollected: number | null;
+    distanceM: number | null;
+    flags: string[];
+  };
+  returns: { id: string; sku: string; quantity: number; uom: string; reason: string }[];
+}
+
+export interface PodSettings {
+  requirePhoto: boolean;
+  requireSignature: boolean;
+  maxDistanceM: number;
+  requireCodEntry: boolean;
 }
 
 export interface TripStops {
@@ -247,4 +301,5 @@ export interface TripStops {
   cod: number;
   stops: Stop[];
   failureReasons: string[];
+  podSettings: PodSettings;
 }

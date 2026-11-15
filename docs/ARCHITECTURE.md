@@ -151,6 +151,13 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - `LogisticsService.createLoad` locks the orders (`FOR UPDATE`, sorted ids), checks capacity with the shared `checkLoad`, then creates the trip with `TripsService.createIn` inside the same transaction, so vehicle/driver availability, licences and overlap rules are enforced exactly as for any trip.
 - Trip lifecycle drives order status (`TripsService`: start → DISPATCHED, cancel → back to RECEIVED, complete blocked while stops are open); stop outcomes set per-line `delivered_qty` and the order status (`logistics/status.ts`).
 
+## Routing, proof of delivery and returns
+
+- **Routing** (`modules/routing`): `RoutingService` wraps two providers. `OsrmVroomProvider` calls VROOM (`VROOM_URL`, which itself uses OSRM) to optimise stops with time windows and service times, and OSRM (`OSRM_URL`) to route a fixed stop order; capacities go to VROOM as integer dimensions (kg, m³×1000, cases, pallets×10) plus `max_tasks`. `StraightLineProvider` is the S10 logic (nearest neighbour, haversine × average speed). Any OSRM/VROOM error or timeout (10 s) falls back to straight-line, and the result records `routing_source` (`osrm` / `straight-line`) on the trip. Loads keep `planned_km`, `planned_minutes`, `route_geometry` (encoded polyline) and per-stop `planned_arrival`.
+- **Proof of delivery** is validated by the pure `logistics/pod.ts`: required evidence (photo, signature, cash entry per `settings.pod`) returns 400 for drivers; distance from the customer, missing GPS and cash differences become `pod_flags` on the stop. Photos are ordinary `files` rows owned by the company; signatures are normalised stroke arrays stored as JSON.
+- **Returns and check-in** (`logistics/checkin.ts`): expected goods back = undelivered quantities of PARTIAL/FAILED orders + `delivery_returns`; the warehouse count is reconciled per line key (`order:<id>:<line>`, `return:<id>`) and for cash. The snapshot is stored once in `trips.check_in`.
+- **Delivery KPIs** (`logistics/kpis.ts` pure, `DeliveryKpiService`): OTIF, success rate, cost per drop (trip expenses + km × the vehicle's fuel cost per km over the period, else the fleet's + driver cost per day), fill rate (highest used/limit ratio), sequence adherence (longest increasing subsequence of the completion order), ETA error and dwell.
+
 ## Approvals
 
 `ApprovalsService` (global) opens requests inside the owning transaction, notifies deciders after commit (`announce`), and on the final decision calls the handler the owning module registered (`register(kind, handler)`) inside the deciding transaction, so the decision and its effect commit together. Rules (limits, two approvers, no self-approval, no repeat approver) are pure and unit-tested.

@@ -32,6 +32,7 @@ export default function RouteMap({
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
+  const bounds = useRef<maplibregl.LngLatBounds | null>(null);
 
   useEffect(() => {
     if (!el.current || map.current) return;
@@ -42,7 +43,15 @@ export default function RouteMap({
       zoom: 11,
     });
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+    // The card may still be laying out (lazy chunk, fonts): keep the canvas sized and the route framed.
+    const ro = new ResizeObserver(() => {
+      map.current?.resize();
+      if (bounds.current)
+        map.current?.fitBounds(bounds.current, { padding: 40, maxZoom: 15, duration: 0 });
+    });
+    ro.observe(el.current);
     return () => {
+      ro.disconnect();
       map.current?.remove();
       map.current = null;
     };
@@ -100,6 +109,8 @@ export default function RouteMap({
     const all = [...pts, ...line];
     if (all.length) {
       const b = all.reduce((bb, p) => bb.extend(p), new maplibregl.LngLatBounds(all[0], all[0]));
+      bounds.current = b;
+      m.resize();
       m.fitBounds(b, { padding: 40, maxZoom: 15, duration: 0 });
     }
   }, [depot, stops, geometry]);

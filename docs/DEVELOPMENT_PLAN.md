@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals) and S10 (delivery planning & multi-stop trips) delivered**; next S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) delivered**; next S12 (costs & control, offline driver app, manager mobile approvals, route deviation). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -167,17 +167,17 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 
 | Feature | Pri | Phase / Sprint | Status |
 |---|---|---|---|
-| Delivery order management | P1* | 2 | ⏳ |
-| Vehicle loading plan | P1* | 2 | ⏳ |
-| Delivery status | P1* | 2 | ⏳ |
-| Delivery location tracking | P1* | 2 | ⏳ |
-| Electronic proof of delivery | P2 | 2 | ⏳ photo, signature, timestamp, GPS |
-| Delivery time monitoring | P2 | 2 | ⏳ |
-| Failed delivery management | P2 | 2 | ⏳ |
-| Return goods management | P2 | 2 | ⏳ |
-| Digital cargo manifest | P2 | 2 | ⏳ |
-| Loading/unloading time | P2 | 2 | ⏳ geofence dwell time |
-| Delivery route optimization | P2 | 2 | ⏳ |
+| Delivery order management | P1* | 2 / S9–S10 | ✅ DMS order API, orders list, customers |
+| Vehicle loading plan | P1* | 2 / S10 | ✅ capacity by kg, m³, cases, pallets, stops; auto-fill |
+| Delivery status | P1* | 2 / S10 | ✅ per stop and order, with webhooks |
+| Delivery location tracking | P1* | 2 / S10–S11 | ✅ live map + POD GPS position vs customer |
+| Electronic proof of delivery | P2 | 2 / S11 | ✅ photos, signature, GPS check, COD collected; exceptions list |
+| Delivery time monitoring | P2 | 2 / S11 | ✅ planned ETA per stop, ETA error and dwell time |
+| Failed delivery management | P2 | 2 / S10–S11 | ✅ reasons, re-planning, check-in of undelivered goods |
+| Return goods management | P2 | 2 / S11 | ✅ customer returns at the stop; warehouse check-in with differences |
+| Digital cargo manifest | P2 | 2 / S10 | ✅ printable manifest |
+| Loading/unloading time | P2 | 2 / S11 | 🟡 dwell time from arrive→complete; geofence-based dwell later |
+| Delivery route optimization | P2 | 2 / S11 | ✅ self-hosted OSRM + VROOM (straight-line fallback) |
 | AI load consolidation | P3 | 4 | ⏳ |
 
 \* P1 for the FMCG distribution module; scheduled in Phase 2 because it depends on dispatch (S4) and is an optional industry module. If Myanmar Zarla's distribution rollout is the first customer, pull delivery orders + status forward into S6.
@@ -208,7 +208,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle downtime | P1 | 1 / S6 | ✅ downtime and availability % |
 | Fuel efficiency dashboard | P1 | 1 / S6 | ✅ fleet and per-vehicle km/L |
 | Driver performance dashboard | P2 | 2 / S7 | ✅ safety dashboard (fleet score, event mix, ranking) |
-| Delivery efficiency | P2 | 2 | ⏳ |
+| Delivery efficiency | P2 | 2 / S11 | ✅ Delivery KPIs: OTIF, success, cost per drop, fill rate, route adherence |
 | Branch fleet comparison | P2 | 3 | 🟡 branch table in reports (Phase 1); benchmarking views in Phase 3 |
 | Vehicle productivity ranking | P2 | 3 | ⏳ |
 | Benchmarking (same class) | P2 | 3 | ⏳ |
@@ -238,7 +238,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle inspection | P2 | 2 / S8 | ✅ driver app with defect photos; defects raise repair requests; optional pre-trip gate on trip start |
 | Fuel expense submission | P2 | 2 | ✅ delivered early (S5/S6) |
 | Repair requests | P2 | 2 | ✅ delivered early (S5/S6) |
-| Proof of delivery | P2 | 2 | ⏳ |
+| Proof of delivery | P2 | 2 / S10–S11 | ✅ stop list, photos, GPS, signature pad, COD, customer returns |
 | Offline mode | P2 | 2 | ⏳ SQLite outbox + idempotency keys |
 | Fleet manager mobile app | P2 | 2 | ⏳ |
 
@@ -269,7 +269,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | GPS device integration | P1 | 1 / S1–S3 | 🟡 `TelematicsProvider` + Watch Tower adapter |
 | Notification engine | P1 | 1 / S2–S6 | ✅ in-app, SMTP e-mail, Expo push; role-based recipients; dedupe |
 | ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
-| DMS / TMS integration | P2 | 2 / S9 → 3 | 🟡 DMS order intake API + status webhooks (S9); delivery planning/ePOD statuses S10–S11 |
+| DMS / TMS integration | P2 | 2 / S9 → 3 | 🟡 DMS order intake API + status webhooks (S9); delivery planning/ePOD S10–S11 (`pod` in delivery webhooks, `return.collected`, `load.checked_in`) |
 | BI integration (Tableau, Metabase) | P2 | 3 | ⏳ read-only reporting schema / replica |
 | REST APIs & webhooks | P2 | 2 / S9 | ✅ scoped API keys, integration API v1 (separate OpenAPI), signed webhooks with retries ([INTEGRATION_API.md](INTEGRATION_API.md)) |
 | SSO (Entra ID / OIDC) | P2 | 3 | ⏳ |
@@ -417,4 +417,13 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Loads** are delivery trips (`trips.kind = DELIVERY`) created through `TripsService.createIn` in the same transaction, with all assignment checks. Stops are grouped per customer and ordered nearest-neighbour from the depot (`logistics/sequence.ts`; VROOM replaces it in S11). Loads can be edited (reorder, add, remove, change vehicle/driver) until the trip starts. Printable manifest with COD and signature lines.
 - **Execution:** trip start → orders DISPATCHED; drivers record each stop (arrived, delivered, partly delivered with quantities, failed with a reason) in the app; the trip can only be completed once every stop is resolved; cancelling a load returns its orders to planning. Webhooks `order.planned/dispatched/delivered/partially_delivered/failed`.
 - Customers page to fix outlet locations; vehicle form has cases, pallets and max-stops capacity.
+
+### Phase 2 — Sprint 11 (routing, proof of delivery, returns, delivery KPIs) delivered
+
+- **Routing engines:** self-hosted OSRM (car profile, MLD, Myanmar OSM extract from Geofabrik) and VROOM. Docker Compose profile `routing`; Helm `routing.enabled` (on for CorexLab) with a PVC, a download/prepare init step that runs only when data is missing, and Services the API reaches through `OSRM_URL`/`VROOM_URL`.
+- **`modules/routing`:** `RoutingService` uses VROOM to order a new load's stops (time windows, service time) and to build auto-fill proposals across vehicles (capacity as kg, m³, cases, pallets, max stops), and OSRM to re-route a manually reordered load. On any error it falls back to the straight-line logic and records `routing_source`. `GET /routing/status`. Loads store planned km, minutes, route geometry and per-stop ETAs; the Load page shows the road route on a map.
+- **Proof of delivery** (`settings.pod`): photo required (default), optional signature (finger strokes, drawn as SVG), GPS position checked against the customer (flag above `maxDistanceM`, default 300 m), cash collected vs expected COD. Missing required evidence is a 400 for drivers; distance, missing GPS and cash differences are **flags**, not blocks. Dispatch entries are flagged `RECORDED_BY_DISPATCH`. POD exceptions list on the Delivery KPIs page.
+- **Returns:** drivers record customer returns/pick-ups at a stop (webhook `return.collected`). After the trip, the warehouse checks in undelivered quantities, customer returns and cash (`warehouse:checkin` permission); differences notify managers and are kept on the load (webhook `load.checked_in`).
+- **Delivery KPIs** (`/delivery-kpis`, `GET /analytics/delivery`, CSV): OTIF and success rates, failure reasons, cost per drop/order/kg (trip expenses + km × fuel cost per km + optional driver cost per day — an estimate, method shown), vehicle fill rate (binding limit), route adherence (planned vs GPS km, stop order kept = longest increasing subsequence, ETA error, dwell), per driver, vehicle and day.
+- **Driver app:** delivery screen takes photos, GPS, signature and cash, and records customer returns (`expo-location`, `react-native-svg`).
 

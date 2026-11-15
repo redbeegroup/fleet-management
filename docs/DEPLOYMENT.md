@@ -66,6 +66,18 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 
 Alert emails appear in Mailpit at http://127.0.0.1:8025.
 
+**Road routing (OSRM + VROOM, optional):** the `routing` profile adds the engines. The first start downloads the Myanmar OSM extract (~100 MB, `OSM_URL` to override) and prepares it (MLD; needs ~3 GB RAM and a few minutes); later starts reuse the `osrmdata` volume.
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env --profile routing up -d
+```
+
+The API uses `OSRM_URL=http://osrm:5000` and `VROOM_URL=http://vroom:3000/` (defaults in the compose file). Without the profile, or when the engines are down, loads use straight-line estimates and show "straight-line estimate". To refresh the map data (e.g. monthly), re-run the one-shot steps with `ROUTING_REFRESH=true`, then restart the engines:
+
+```bash
+ROUTING_REFRESH=true docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env --profile routing up -d --force-recreate osrm-download osrm-prepare osrm vroom
+```
+
 ---
 
 ## 2. Production: Kubernetes + external PostgreSQL cluster
@@ -157,6 +169,10 @@ Migrations are forward-only. Ship schema changes as expand → migrate → contr
 
 - The DMS calls `https://<host>/api/integrations/v1/...` with an API key created in the console (Integrations). Contract: `docs/INTEGRATION_API.md`, OpenAPI at `/api/integrations/docs` (with `SWAGGER_ENABLED`).
 - Webhooks are sent by the **worker** over HTTPS, so its egress must reach the receivers (the chart's NetworkPolicy allows HTTPS egress). Private, loopback and link-local targets are refused; set `WEBHOOK_ALLOW_PRIVATE=true` only if the DMS receiver is on an internal network, and `WEBHOOK_ALLOW_INSECURE=true` only for plain-http test receivers.
+
+### 2.6a Road routing
+
+Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/routing.yaml`). A PVC (`routing.persistence`, 5 Gi) holds the prepared map; the OSRM pod's init containers download the extract (`routing.osmUrl`, Geofabrik Myanmar by default) and prepare it only when the files are missing, so the first rollout takes several minutes and needs ~3 Gi memory; `osrm-routed` then needs ~1.5 Gi and VROOM ~256 Mi. The API gets `OSRM_URL`/`VROOM_URL` automatically. Egress to `download.geofabrik.de` is needed on first start. To refresh the data (e.g. monthly), upgrade once with `--set routing.refresh=true`, then again with `false`. Check with `GET /api/routing/status` (`source: osrm`).
 
 ### 2.7 Mobile push
 

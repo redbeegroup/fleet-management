@@ -1,6 +1,9 @@
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -9,7 +12,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { api, Stop, Trip, TripStops } from '../api';
+import { api, Stop, Trip, TripStops, uploadPhoto } from '../api';
+import { SignaturePad, Strokes } from '../SignaturePad';
 import { Badge, Button, Card, Chips, colors, Field, s } from '../ui';
 
 const TONE = {
@@ -20,13 +24,54 @@ const TONE = {
   FAILED: 'danger',
 } as const;
 const money = (n: number) => n.toLocaleString('en-US');
+const time = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const RETURN_REASONS = ['Damaged', 'Expired', 'Wrong item', 'Unsold', 'Empty containers'];
+
+/** Current position for the proof of delivery; null when denied or unavailable (the stop gets a NO_GPS flag). */
+async function position(): Promise<{
+  latitude: number;
+  longitude: number;
+  accuracyM: number | null;
+} | null> {
+  try {
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (perm.status !== 'granted') return null;
+    const p = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+      new Promise<null>((r) => setTimeout(() => r(null), 15_000)),
+    ]);
+    return pick(p ?? (await Location.getLastKnownPositionAsync({ maxAge: 120_000 })));
+  } catch {
+    return null;
+  }
+}
+function pick(p: Location.LocationObject | null) {
+  return p
+    ? {
+        latitude: p.coords.latitude,
+        longitude: p.coords.longitude,
+        accuracyM: p.coords.accuracy != null ? Math.round(p.coords.accuracy) : null,
+      }
+    : null;
+}
 
 /** Stop-by-stop delivery for one trip. */
 export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }) {
   const [data, setData] = useState<TripStops | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
-  const [mode, setMode] = useState<'none' | 'PARTIAL' | 'FAILED'>('none');
+  const [mode, setMode] = useState<'none' | 'DELIVERED' | 'PARTIAL' | 'FAILED'>('none');
+  const [photos, setPhotos] = useState<{ id: string; uri: string }[]>([]);
+  const [strokes, setStrokes] = useState<Strokes>([]);
+  const [signedBy, setSignedBy] = useState('');
+  const [cash, setCash] = useState('');
+  const [ret, setRet] = useState<{
+    sku: string;
+    qty: string;
+    reason: string;
+    photo: { id: string; uri: string } | null;
+  } | null>(null);
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [qty, setQty] = useState<Record<string, string>>({});
@@ -55,11 +100,87 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
     setReason('');
     setNotes('');
     setQty({});
+    setPhotos([]);
+    setStrokes([]);
+    setSignedBy('');
+    setCash('');
+    setRet(null);
   }
 
-  async function post(stop: Stop, path: 'arrive' | 'complete', body?: unknown) {
+  async function takePhoto(): Promise<{ id: string; uri: string } | null> {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Camera permission is needed for the proof of delivery');
+      return null;
+    }
+    const r = await ImagePicker.launchCameraAsync({ quality: 0.5 });
+    if (r.canceled || !r.assets[0]) return null;
     setBusy(true);
     try {
+      return { id: await uploadPhoto(r.assets[0].uri), uri: r.assets[0].uri };
+    } catch (e) {
+      Alert.alert('Upload failed', (e as Error).message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Proof-of-delivery fields for a DELIVERED/PARTIAL stop, or null (with an alert) when something required is missing. */
+  function proof(stop: Stop) {
+    const rules = data!.podSettings;
+    const codExpected = stop.pod.codExpected ?? 0;
+    if (rules.requirePhoto && photos.length === 0)
+      return (Alert.alert('Take at least one photo of the delivered goods'), null);
+    if (strokes.length > 0 && !signedBy.trim())
+      return (Alert.alert('Enter the name of the person who signed'), null);
+    if (rules.requireSignature && strokes.length === 0)
+      return (Alert.alert('The customer must sign'), null);
+    if (rules.requireCodEntry && codExpected > 0 && cash === '')
+      return (Alert.alert('Enter the cash collected'), null);
+    return {
+      photoFileIds: photos.map((p) => p.id),
+      signature: strokes.length ? { name: signedBy.trim(), strokes } : null,
+      codCollected: cash === '' ? null : Number(cash),
+    };
+  }
+
+  async function saveReturn(stop: Stop) {
+    if (!ret) return;
+    if (!ret.sku.trim() || !(Number(ret.qty) > 0) || !ret.reason)
+      return Alert.alert('Enter item, quantity and reason');
+    setBusy(true);
+    try {
+      await api(`/me/trips/${trip.id}/stops/${stop.id}/returns`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sku: ret.sku.trim(),
+          quantity: Number(ret.qty),
+          reason: ret.reason,
+          photoFileId: ret.photo?.id ?? null,
+        }),
+      });
+      setRet(null);
+      await load();
+    } catch (e) {
+      Alert.alert('Could not save the return', (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function post(stop: Stop, path: 'arrive' | 'complete', body?: Record<string, unknown>) {
+    setBusy(true);
+    try {
+      if (path === 'complete') {
+        const gps = await position();
+        body = {
+          ...body,
+          latitude: gps?.latitude ?? null,
+          longitude: gps?.longitude ?? null,
+          accuracyM: gps?.accuracyM ?? null,
+        };
+      }
       await api(`/me/trips/${trip.id}/stops/${stop.id}/${path}`, {
         method: 'POST',
         body: body ? JSON.stringify(body) : undefined,
@@ -88,7 +209,10 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
     );
     if (!deliveredLines.length)
       return Alert.alert('Enter the delivered quantity for the short lines');
+    const pod = proof(stop);
+    if (!pod) return;
     void post(stop, 'complete', {
+      ...pod,
       outcome: 'PARTIAL',
       reason: reason || null,
       notes: notes || null,
@@ -127,6 +251,9 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
                 <Badge text={st.status.toLowerCase()} tone={TONE[st.status]} />
               </View>
               {st.address && <Text style={s.muted}>{st.address}</Text>}
+              {st.plannedArrival && !resolved && (
+                <Text style={s.muted}>ETA {time(st.plannedArrival)}</Text>
+              )}
               <Text style={s.muted}>
                 {st.orders.length} order(s){cod ? ` · COD ${money(cod)}` : ''}
                 {st.failureReason ? ` · ${st.failureReason}` : ''}
@@ -200,7 +327,7 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
                         <Button
                           title="Delivered"
                           busy={busy}
-                          onPress={() => void post(st, 'complete', { outcome: 'DELIVERED' })}
+                          onPress={() => setMode('DELIVERED')}
                         />
                         <Button
                           title="Partly delivered"
@@ -212,17 +339,75 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
                     )}
                     {mode !== 'none' && (
                       <>
-                        <Text style={s.label}>
-                          {mode === 'FAILED' ? 'Why could you not deliver?' : 'Reason (optional)'}
-                        </Text>
-                        <Chips
-                          value={reason}
-                          onChange={setReason}
-                          options={(data?.failureReasons ?? []).map((r) => ({
-                            value: r,
-                            label: r,
-                          }))}
-                        />
+                        {mode !== 'FAILED' && (
+                          <>
+                            <Text style={s.label}>
+                              Photos{data?.podSettings.requirePhoto ? ' (required)' : ''}
+                            </Text>
+                            <View style={[s.row, { flexWrap: 'wrap' }]}>
+                              {photos.map((p) => (
+                                <Pressable
+                                  key={p.id}
+                                  onLongPress={() =>
+                                    setPhotos((x) => x.filter((y) => y.id !== p.id))
+                                  }
+                                  accessibilityLabel="Photo, long-press to remove"
+                                >
+                                  <Image
+                                    source={{ uri: p.uri }}
+                                    style={{ width: 64, height: 64, borderRadius: 6 }}
+                                  />
+                                </Pressable>
+                              ))}
+                              {photos.length < 10 && (
+                                <Button
+                                  title={photos.length ? 'Add photo' : 'Take photo'}
+                                  kind="secondary"
+                                  busy={busy}
+                                  onPress={() =>
+                                    void takePhoto().then((p) => p && setPhotos((x) => [...x, p]))
+                                  }
+                                />
+                              )}
+                            </View>
+                            {(st.pod.codExpected ?? 0) > 0 && (
+                              <Field
+                                label={`Cash collected (expected ${money(st.pod.codExpected ?? 0)})`}
+                                keyboardType="numeric"
+                                value={cash}
+                                placeholder={String(st.pod.codExpected)}
+                                onChangeText={(v) => setCash(v.replace(/[^\d.]/g, ''))}
+                              />
+                            )}
+                            <Text style={s.label}>
+                              Signature
+                              {data?.podSettings.requireSignature ? ' (required)' : ' (optional)'}
+                            </Text>
+                            <SignaturePad value={strokes} onChange={setStrokes} />
+                            {strokes.length > 0 && (
+                              <Field
+                                label="Signed by"
+                                value={signedBy}
+                                onChangeText={setSignedBy}
+                              />
+                            )}
+                          </>
+                        )}
+                        {mode !== 'DELIVERED' && (
+                          <Text style={s.label}>
+                            {mode === 'FAILED' ? 'Why could you not deliver?' : 'Reason (optional)'}
+                          </Text>
+                        )}
+                        {mode !== 'DELIVERED' && (
+                          <Chips
+                            value={reason}
+                            onChange={setReason}
+                            options={(data?.failureReasons ?? []).map((r) => ({
+                              value: r,
+                              label: r,
+                            }))}
+                          />
+                        )}
                         <Field label="Notes" value={notes} onChangeText={setNotes} />
                         {mode === 'PARTIAL' && (
                           <Text style={s.muted}>
@@ -231,25 +416,89 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
                         )}
                         <View style={[s.row, { flexWrap: 'wrap' }]}>
                           <Button
-                            title={mode === 'FAILED' ? 'Confirm failed' : 'Confirm partial'}
+                            title={
+                              mode === 'FAILED'
+                                ? 'Confirm failed'
+                                : mode === 'DELIVERED'
+                                  ? 'Confirm delivered'
+                                  : 'Confirm partial'
+                            }
                             kind={mode === 'FAILED' ? 'danger' : 'primary'}
                             busy={busy}
                             onPress={() =>
-                              mode === 'FAILED'
-                                ? reason
-                                  ? void post(st, 'complete', {
-                                      outcome: 'FAILED',
-                                      reason,
-                                      notes: notes || null,
-                                    })
-                                  : Alert.alert('Choose a reason')
-                                : submitPartial(st)
+                              mode === 'DELIVERED'
+                                ? (() => {
+                                    const pod = proof(st);
+                                    if (pod)
+                                      void post(st, 'complete', {
+                                        ...pod,
+                                        outcome: 'DELIVERED',
+                                        notes: notes || null,
+                                      });
+                                  })()
+                                : mode === 'FAILED'
+                                  ? reason
+                                    ? void post(st, 'complete', {
+                                        outcome: 'FAILED',
+                                        reason,
+                                        notes: notes || null,
+                                      })
+                                    : Alert.alert('Choose a reason')
+                                  : submitPartial(st)
                             }
                           />
                           <Button title="Cancel" kind="secondary" onPress={reset} />
                         </View>
                       </>
                     )}
+                  </>
+                )}
+                {st.returns.length > 0 && (
+                  <Text style={s.muted}>
+                    Returns collected:{' '}
+                    {st.returns.map((r) => `${r.sku} ×${r.quantity} (${r.reason})`).join('; ')}
+                  </Text>
+                )}
+                {ongoing && mode === 'none' && !ret && (
+                  <Button
+                    title="Collect customer return"
+                    kind="secondary"
+                    onPress={() => setRet({ sku: '', qty: '', reason: '', photo: null })}
+                  />
+                )}
+                {ongoing && ret && (
+                  <>
+                    <Text style={s.label}>Customer return / pick-up</Text>
+                    <Field
+                      label="Item (SKU or name)"
+                      value={ret.sku}
+                      onChangeText={(v) => setRet({ ...ret, sku: v })}
+                    />
+                    <Field
+                      label="Quantity"
+                      keyboardType="numeric"
+                      value={ret.qty}
+                      onChangeText={(v) => setRet({ ...ret, qty: v.replace(/[^\d.]/g, '') })}
+                    />
+                    <Chips
+                      value={ret.reason}
+                      onChange={(v) => setRet({ ...ret, reason: v })}
+                      options={RETURN_REASONS.map((r) => ({ value: r, label: r }))}
+                    />
+                    <View style={[s.row, { flexWrap: 'wrap' }]}>
+                      <Button
+                        title={ret.photo ? 'Photo added ✓' : 'Add photo'}
+                        kind="secondary"
+                        busy={busy}
+                        onPress={() =>
+                          void takePhoto().then(
+                            (p) => p && setRet((r) => (r ? { ...r, photo: p } : r)),
+                          )
+                        }
+                      />
+                      <Button title="Save return" busy={busy} onPress={() => void saveReturn(st)} />
+                      <Button title="Cancel" kind="secondary" onPress={() => setRet(null)} />
+                    </View>
                   </>
                 )}
               </>

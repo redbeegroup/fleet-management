@@ -154,6 +154,8 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
           Default depot (orders without a depot code)
           <select
             name="defaultBranchId"
+            // Remount once the depots arrive: an uncontrolled select ignores a defaultValue with no matching option yet.
+            key={branches.data ? 'ready' : 'loading'}
             defaultValue={l.defaultBranchId ?? ''}
             disabled={!canSettings}
           >

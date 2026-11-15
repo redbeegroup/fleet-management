@@ -63,7 +63,11 @@ export function DeliveryKpisPage() {
           pct(t.sequencePct),
           `ETA error ${t.avgEtaErrorMin ?? '—'} min · dwell ${t.avgDwellMin ?? '—'} min`,
         ],
-        ['Distance', `${t.actualKm || '—'} km`, `planned ${t.plannedKm} km`],
+        [
+          'Distance',
+          t.actualKm ? `${t.actualKm} km` : '—',
+          `planned ${t.plannedKm} km${t.actualKm ? '' : ' · no GPS distance yet'}`,
+        ],
       ]
     : [];
 
@@ -110,48 +114,50 @@ export function DeliveryKpisPage() {
           OTIF: {k.method.otif}. Cost: {k.method.cost}.
         </p>
       )}
-      <div className="grid-2">
+      <>
         {(['drivers', 'vehicles'] as const).map((key) => (
           <section key={key} className="card table-card">
             <div className="card-head">
               <h2>By {key === 'drivers' ? 'driver' : 'vehicle'}</h2>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>{key === 'drivers' ? 'Driver' : 'Vehicle'}</th>
-                  <th className="num">Trips</th>
-                  <th className="num">OTIF</th>
-                  <th className="num">Success</th>
-                  <th className="num">Fill</th>
-                  <th className="num">Order kept</th>
-                  <th className="num">Cost / drop</th>
-                </tr>
-              </thead>
-              <tbody>
-                {k?.[key].length === 0 && (
+            <div className="table-scroll">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={7} className="muted">
-                      No delivery trips in this period.
-                    </td>
+                    <th>{key === 'drivers' ? 'Driver' : 'Vehicle'}</th>
+                    <th className="num">Trips</th>
+                    <th className="num">OTIF</th>
+                    <th className="num">Success</th>
+                    <th className="num">Fill</th>
+                    <th className="num">Order kept</th>
+                    <th className="num">Cost / drop</th>
                   </tr>
-                )}
-                {k?.[key].map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.name}</td>
-                    <td className="num">{r.trips}</td>
-                    <td className="num">{pct(r.otifPct)}</td>
-                    <td className="num">{pct(r.successRatePct)}</td>
-                    <td className="num">{pct(r.fillPct)}</td>
-                    <td className="num">{pct(r.sequencePct)}</td>
-                    <td className="num">{r.costPerDrop != null ? money(r.costPerDrop) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {k?.[key].length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="muted">
+                        No delivery trips in this period.
+                      </td>
+                    </tr>
+                  )}
+                  {k?.[key].map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.name}</td>
+                      <td className="num">{r.trips}</td>
+                      <td className="num">{pct(r.otifPct)}</td>
+                      <td className="num">{pct(r.successRatePct)}</td>
+                      <td className="num">{pct(r.fillPct)}</td>
+                      <td className="num">{pct(r.sequencePct)}</td>
+                      <td className="num">{r.costPerDrop != null ? money(r.costPerDrop) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         ))}
-      </div>
+      </>
       {t && Object.keys(t.failureReasons).length > 0 && (
         <section className="card">
           <h2>Why deliveries failed</h2>
@@ -179,53 +185,54 @@ export function DeliveryKpisPage() {
         <div className="card-head">
           <h2>Proof-of-delivery exceptions</h2>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Load</th>
-              <th>Stop</th>
-              <th>Driver</th>
-              <th>Flags</th>
-              <th className="num">Distance</th>
-              <th className="num">Cash</th>
-            </tr>
-          </thead>
-          <tbody>
-            {exc.data?.length === 0 && (
+        <div className="table-scroll">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={7} className="muted">
-                  No exceptions.
-                </td>
+                <th>When</th>
+                <th>Load</th>
+                <th>Stop</th>
+                <th>Driver</th>
+                <th>Flags</th>
+                <th className="num">Distance</th>
+                <th className="num">Cash</th>
               </tr>
-            )}
-            {exc.data?.map((e) => (
-              <tr key={e.id}>
-                <td>{e.completedAt ? formatDateTime(e.completedAt) : '—'}</td>
-                <td>
-                  <Link to={`/loads/${e.trip.id}`}>{e.trip.tripNo}</Link>{' '}
-                  <span className="muted">{e.trip.vehicle?.plateNumber}</span>
-                </td>
-                <td>{e.name}</td>
-                <td>{e.trip.driver?.fullName ?? '—'}</td>
-                <td>
-                  {e.podFlags.map((f) => (
-                    <span
-                      key={f}
-                      className={`badge badge-${f === 'RECORDED_BY_DISPATCH' || f === 'NO_GPS' ? 'muted' : 'danger'}`}
-                    >
-                      {FLAG[f] ?? f}
-                    </span>
-                  ))}
-                </td>
-                <td className="num">{e.podDistanceM != null ? `${e.podDistanceM} m` : '—'}</td>
-                <td className="num">
-                  {e.codExpected ? `${money(e.codCollected ?? 0)} / ${money(e.codExpected)}` : ''}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {exc.data?.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted">
+                    No exceptions.
+                  </td>
+                </tr>
+              )}
+              {exc.data?.map((e) => (
+                <tr key={e.id}>
+                  <td>{e.completedAt ? formatDateTime(e.completedAt) : '—'}</td>
+                  <td>
+                    <Link to={`/loads/${e.trip.id}`}>{e.trip.tripNo}</Link>{' '}
+                  </td>
+                  <td>{e.name}</td>
+                  <td>{e.trip.driver?.fullName ?? '—'}</td>
+                  <td>
+                    {e.podFlags.map((f) => (
+                      <span
+                        key={f}
+                        className={`badge badge-${f === 'RECORDED_BY_DISPATCH' || f === 'NO_GPS' ? 'muted' : 'danger'}`}
+                      >
+                        {FLAG[f] ?? f}
+                      </span>
+                    ))}
+                  </td>
+                  <td className="num">{e.podDistanceM != null ? `${e.podDistanceM} m` : '—'}</td>
+                  <td className="num">
+                    {e.codExpected ? `${money(e.codCollected ?? 0)} / ${money(e.codExpected)}` : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   );

@@ -35,7 +35,13 @@ const config: ExpoConfig = {
     [
       "expo-image-picker",
       {
-        "cameraPermission": "Take photos of fuel receipts and vehicle problems."
+        "cameraPermission": "Take photos of fuel receipts, vehicle problems and delivered goods."
+      }
+    ],
+    [
+      "expo-location",
+      {
+        "locationWhenInUsePermission": "Record where each delivery was completed (proof of delivery)."
       }
     ],
     "expo-notifications",

@@ -502,7 +502,7 @@ export class LogisticsService {
     const trip = await tx.trip.findFirst({ where: { id: tripId, kind: 'DELIVERY' }, include: { stops: { select: { codCollected: true } } } });
     if (!trip) throw new NotFoundException('Load not found');
     const [orders, returns] = await Promise.all([
-      tx.deliveryOrder.findMany({ where: { tripId }, select: { id: true, externalRef: true, status: true, lines: { orderBy: { lineNo: 'asc' } } } }),
+      tx.deliveryOrder.findMany({ where: { tripId }, orderBy: { externalRef: 'asc' }, select: { id: true, externalRef: true, status: true, lines: { orderBy: { lineNo: 'asc' } } } }),
       tx.deliveryReturn.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
     ]);
     const expected = expectedReturns(

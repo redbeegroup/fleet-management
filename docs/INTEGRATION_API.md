@@ -149,12 +149,16 @@ A company admin adds an endpoint in **Integrations → Webhooks** (HTTPS only) a
 |---|---|
 | `order.received`, `order.updated`, `order.cancelled` | the order, as returned by `GET /orders/{externalRef}` |
 | `order.planned`, `order.dispatched` | `externalRef`, `fmsId`, `status`, `version`, `customerCode`, `tripId` |
-| `order.delivered`, `order.partially_delivered`, `order.failed` | the above plus `deliveredAt`, `reason` and `lines[]` with `quantity` and `deliveredQty` |
+| `order.delivered`, `order.partially_delivered`, `order.failed` | the above plus `deliveredAt`, `reason`, `lines[]` with `quantity` and `deliveredQty`, and `pod` (below) |
+| `return.collected` | a customer return picked up at a stop: `id`, `tripId`, `customerCode`, `orderExternalRef` (when linked to an order, else null), `sku`, `description`, `quantity`, `uom`, `reason`, `collectedAt` |
+| `load.checked_in` | goods and cash checked back into the depot after a delivery trip: `tripId`, `tripNo`, `ok`, `shortages`, `overages`, `cashExpected`, `cashReceived`, `cashDiff`, `lines[]` (`kind` UNDELIVERED / CUSTOMER_RETURN, `ref`, `sku`, `expectedQty`, `receivedQty`, `diff`) |
 | `trip.assigned`, `trip.started`, `trip.completed`, `trip.cancelled` | trip no., status, times, odometer and GPS distance, vehicle plate, driver |
 | `vehicle.overspeed`, `vehicle.geofence_enter`, `vehicle.geofence_exit`, `vehicle.gps_offline` | vehicle, driver id, time, position, speed, geofence |
 | `inspection.failed` | inspection no., vehicle, driver, failed items |
 | `approval.requested`, `approval.approved`, `approval.rejected` | kind, title, amount, status, decisions |
 | `ping` | sent by **Send test** |
+
+**Proof of delivery (`pod`)** on `order.delivered` / `order.partially_delivered`: `{ "photos": 2, "signedBy": "Daw Hla", "codCollected": 125000, "flags": ["FAR_FROM_CUSTOMER"] }`. Flags: `FAR_FROM_CUSTOMER` (GPS position farther than the company limit from the customer), `NO_GPS`, `COD_SHORT`, `COD_OVER`, `RECORDED_BY_DISPATCH` (entered in the console, not by the driver). Photos and the signature are viewed in FMS.
 
 **Delivery and retries:**
 - Answer with any `2xx` within 10 seconds. Redirects are not followed.
