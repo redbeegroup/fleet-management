@@ -11,6 +11,14 @@ export interface DriverSession {
 }
 
 let session: DriverSession | null = null;
+
+/** Roles that may decide approvals on the phone (manager mode). */
+const MANAGER_ROLES = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'FLEET_MANAGER'];
+export const isDriver = (s: DriverSession) => s.user.roles.includes('DRIVER');
+export const isManager = (s: DriverSession) => s.user.roles.some((r) => MANAGER_ROLES.includes(r));
+/** Header for authenticated image loads (receipts, POD photos). */
+export const authHeaders = (): Record<string, string> =>
+  session ? { Authorization: `Bearer ${session.accessToken}` } : {};
 let onSignedOut: (() => void) | null = null;
 
 export function setSignedOutHandler(fn: () => void) {
@@ -75,7 +83,15 @@ async function refresh(): Promise<boolean> {
   return refreshing;
 }
 
-export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+/**
+ * Authenticated request: refreshes the token once on 401, throws ApiError for HTTP errors and lets
+ * network errors (no connection) through as they are, so callers can tell them apart.
+ */
+export async function rawFetch(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(init.headers as Record<string, string>),
@@ -83,12 +99,17 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   if (session) headers.Authorization = `Bearer ${session.accessToken}`;
   if (init.body && !(init.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
-  if (res.status === 401 && retry && (await refresh())) return api<T>(path, init, false);
+  if (res.status === 401 && retry && (await refresh())) return rawFetch(path, init, false);
   if (res.status === 401) {
     await save(null);
     onSignedOut?.();
   }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return res;
+}
+
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await rawFetch(path, init);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
@@ -104,8 +125,11 @@ export async function login(email: string, password: string): Promise<DriverSess
       res.status === 401 ? 'Invalid email or password' : await errorMessage(res),
     );
   const s = (await res.json()) as DriverSession;
-  if (!s.user.roles.includes('DRIVER'))
-    throw new ApiError(403, 'This app is for drivers. Use the web console instead.');
+  if (!isDriver(s) && !isManager(s))
+    throw new ApiError(
+      403,
+      'This app is for drivers and fleet managers. Use the web console instead.',
+    );
   await save(s);
   return s;
 }
@@ -302,4 +326,47 @@ export interface TripStops {
   stops: Stop[];
   failureReasons: string[];
   podSettings: PodSettings;
+}
+
+// ---- manager mode ----------------------------------------------------------
+
+export interface Approval {
+  id: string;
+  kind: 'WORK_ORDER' | 'EXPENSE' | 'FUEL' | 'VEHICLE_REQUEST' | 'CLAIM';
+  title: string;
+  amount: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  requiredApprovals: number;
+  createdAt: string;
+  decisions: {
+    approverId: string;
+    decision: 'APPROVED' | 'REJECTED';
+    note: string | null;
+    createdAt: string;
+  }[];
+  details?: { facts: [string, string][]; fileIds: string[] };
+}
+
+export interface ManagerSummary {
+  currency: string;
+  pendingApprovals: number;
+  vehicles: Record<string, number>;
+  tripsOngoing: number;
+  alerts: {
+    id: string;
+    type: string;
+    plateNumber: string;
+    occurredAt: string;
+    endedAt: string | null;
+  }[];
+  budgets: {
+    id: string;
+    scope: string;
+    category: string;
+    budget: number;
+    actual: number;
+    usedPct: number;
+    forecast: number;
+    status: 'AT_RISK' | 'OVER';
+  }[];
 }

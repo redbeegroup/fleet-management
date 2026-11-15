@@ -1,4 +1,5 @@
 import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Idempotent } from '../../common/http/idempotent';
 import { DeliveryKpiService } from './delivery-kpi.service';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
@@ -18,8 +19,7 @@ import {
   UpdateCustomerInput,
   updateCustomerSchema,
   UpdateLoadInput,
-  updateLoadSchema,
-} from '@fms/shared';
+  updateLoadSchema, driverActionSchema, DriverActionInput } from '@fms/shared';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -170,13 +170,20 @@ export class MyStopsController {
   }
 
   @Post(':stopId/arrive')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.TRIP_READ)
-  async arrive(@CurrentUser() user: AuthUser, @Param('tripId', ParseUUIDPipe) tripId: string, @Param('stopId', ParseUUIDPipe) stopId: string) {
-    return this.svc.arrive(user, stopId, await this.driverFor(user, tripId));
+  async arrive(
+    @CurrentUser() user: AuthUser,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('stopId', ParseUUIDPipe) stopId: string,
+    @Body(new ZodPipe(driverActionSchema)) body: DriverActionInput,
+  ) {
+    return this.svc.arrive(user, stopId, await this.driverFor(user, tripId), body.occurredAt);
   }
 
   @Post(':stopId/returns')
+  @Idempotent()
   @RequirePermissions(Permission.TRIP_READ)
   async addReturn(
     @CurrentUser() user: AuthUser,
@@ -188,6 +195,7 @@ export class MyStopsController {
   }
 
   @Post(':stopId/complete')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.TRIP_READ)
   async complete(

@@ -1,4 +1,5 @@
 import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Idempotent } from '../../common/http/idempotent';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CompleteTripInput,
@@ -12,8 +13,7 @@ import {
   createRepairRequestSchema,
   Permission,
   StartTripInput,
-  startTripSchema,
-} from '@fms/shared';
+  startTripSchema, driverActionSchema, DriverActionInput } from '@fms/shared';
 import { FuelService } from '../fuel/fuel.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
 import { IncidentsService } from '../safety/incidents.service';
@@ -105,6 +105,7 @@ export class MeController {
   }
 
   @Post('trips/:id/start')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.TRIP_READ)
   async start(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(startTripSchema)) body: StartTripInput) {
@@ -112,6 +113,7 @@ export class MeController {
   }
 
   @Post('trips/:id/complete')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.TRIP_READ)
   async complete(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(completeTripSchema)) body: CompleteTripInput) {
@@ -119,16 +121,18 @@ export class MeController {
   }
 
   @Post('duty/start')
+  @Idempotent()
   @RequirePermissions(Permission.TRIP_READ)
-  async dutyStart(@CurrentUser() user: AuthUser) {
-    return this.duty.start(user, await this.driverId(user), 'app');
+  async dutyStart(@CurrentUser() user: AuthUser, @Body(new ZodPipe(driverActionSchema)) body: DriverActionInput) {
+    return this.duty.start(user, await this.driverId(user), 'app', body.occurredAt);
   }
 
   @Post('duty/end')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.TRIP_READ)
-  async dutyEnd(@CurrentUser() user: AuthUser) {
-    return this.duty.end(user, await this.driverId(user));
+  async dutyEnd(@CurrentUser() user: AuthUser, @Body(new ZodPipe(driverActionSchema)) body: DriverActionInput) {
+    return this.duty.end(user, await this.driverId(user), body.occurredAt);
   }
 
   @Get('repair-requests')
@@ -139,6 +143,7 @@ export class MeController {
   }
 
   @Post('repair-requests')
+  @Idempotent()
   @RequirePermissions(Permission.REPAIR_REQUEST)
   async report(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createRepairRequestSchema)) body: CreateRepairRequestInput) {
     const driverId = await this.driverId(user);
@@ -147,6 +152,7 @@ export class MeController {
 
   /** Fuel receipt from the driver app; driverId is forced to the signed-in driver. */
   @Post('fuel')
+  @Idempotent()
   @RequirePermissions(Permission.TRIP_READ)
   async addFuel(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createFuelRecordSchema)) body: z.infer<typeof createFuelRecordSchema>) {
     const driverId = await this.driverId(user);
@@ -158,6 +164,7 @@ export class MeController {
 
   /** Incident/accident report from the driver app (driver = the signed-in driver). */
   @Post('incidents')
+  @Idempotent()
   @RequirePermissions(Permission.INCIDENT_REPORT)
   async reportIncident(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createIncidentSchema)) body: CreateIncidentInput) {
     const driverId = await this.driverId(user);
@@ -194,6 +201,7 @@ export class MeController {
   }
 
   @Post('inspections')
+  @Idempotent()
   @RequirePermissions(Permission.INSPECTION_PERFORM)
   async inspect(@CurrentUser() user: AuthUser, @Body(new ZodPipe(createInspectionSchema)) body: CreateInspectionInput) {
     const driverId = await this.driverId(user);

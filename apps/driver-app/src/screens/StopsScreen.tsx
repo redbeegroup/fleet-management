@@ -12,7 +12,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { api, Stop, Trip, TripStops, uploadPhoto } from '../api';
+import { Stop, Trip, TripStops } from '../api';
+import { cachedGet, items as outboxItems, keepPhoto, localUri, submit, subscribe } from '../outbox';
+import { stopAction } from '../outbox-core';
 import { SignaturePad, Strokes } from '../SignaturePad';
 import { Badge, Button, Card, Chips, colors, Field, s } from '../ui';
 
@@ -77,10 +79,16 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
   const [qty, setQty] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [queue, setQueue] = useState(() => outboxItems());
+  useEffect(() => subscribe(() => setQueue(outboxItems())), []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await api<TripStops>(`/me/trips/${trip.id}/stops`));
+      const r = await cachedGet<TripStops>(`/me/trips/${trip.id}/stops`);
+      setData(r.data);
+      setSavedAt(r.stale ? r.at : null);
     } catch (e) {
       Alert.alert('Could not load stops', (e as Error).message);
     } finally {
@@ -91,9 +99,33 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
     void load();
   }, [load]);
 
+  // Actions saved on the phone but not sent yet are shown as already done.
+  const waiting = new Map<string, string>();
+  for (const q of queue.filter((x) => x.tripId === trip.id && x.status === 'pending')) {
+    const a = stopAction(q.path);
+    if (!a || a.action === 'returns') continue;
+    waiting.set(
+      a.stopId,
+      a.action === 'arrive'
+        ? (waiting.get(a.stopId) ?? 'ARRIVED')
+        : String((q.body as { outcome?: string }).outcome ?? 'DELIVERED'),
+    );
+  }
+  const view: TripStops | null = data && {
+    ...data,
+    stops: data.stops.map((x) =>
+      waiting.has(x.id) && ['PENDING', 'ARRIVED'].includes(x.status)
+        ? { ...x, status: waiting.get(x.id) as Stop['status'] }
+        : x,
+    ),
+  };
+
   const done =
-    data?.stops.filter((x) => ['DELIVERED', 'PARTIAL', 'FAILED'].includes(x.status)).length ?? 0;
-  const ongoing = data?.status === 'ONGOING';
+    view?.stops.filter((x) => ['DELIVERED', 'PARTIAL', 'FAILED'].includes(x.status)).length ?? 0;
+  const ongoing =
+    data?.status === 'ONGOING' ||
+    trip.status === 'ONGOING' ||
+    queue.some((q) => q.path === `/me/trips/${trip.id}/start` && q.status === 'pending');
 
   function reset() {
     setMode('none');
@@ -115,15 +147,9 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
     }
     const r = await ImagePicker.launchCameraAsync({ quality: 0.5 });
     if (r.canceled || !r.assets[0]) return null;
-    setBusy(true);
-    try {
-      return { id: await uploadPhoto(r.assets[0].uri), uri: r.assets[0].uri };
-    } catch (e) {
-      Alert.alert('Upload failed', (e as Error).message);
-      return null;
-    } finally {
-      setBusy(false);
-    }
+    // Kept on the phone and uploaded with the delivery (works without a connection).
+    const ref = await keepPhoto(r.assets[0].uri);
+    return { id: ref, uri: localUri(ref) };
   }
 
   /** Proof-of-delivery fields for a DELIVERED/PARTIAL stop, or null (with an alert) when something required is missing. */
@@ -151,17 +177,20 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
       return Alert.alert('Enter item, quantity and reason');
     setBusy(true);
     try {
-      await api(`/me/trips/${trip.id}/stops/${stop.id}/returns`, {
-        method: 'POST',
-        body: JSON.stringify({
+      const r = await submit(
+        `/me/trips/${trip.id}/stops/${stop.id}/returns`,
+        {
           sku: ret.sku.trim(),
           quantity: Number(ret.qty),
           reason: ret.reason,
           photoFileId: ret.photo?.id ?? null,
-        }),
-      });
+        },
+        { label: `Return ${ret.sku.trim()} ×${ret.qty} · ${stop.name}`, tripId: trip.id },
+      );
       setRet(null);
-      await load();
+      if (r.queued)
+        Alert.alert('Saved on the phone', 'No connection. The return will be sent automatically.');
+      else await load();
     } catch (e) {
       Alert.alert('Could not save the return', (e as Error).message);
     } finally {
@@ -181,13 +210,18 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
           accuracyM: gps?.accuracyM ?? null,
         };
       }
-      await api(`/me/trips/${trip.id}/stops/${stop.id}/${path}`, {
-        method: 'POST',
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      const outcome = (body as { outcome?: string } | undefined)?.outcome;
+      const r = await submit(
+        `/me/trips/${trip.id}/stops/${stop.id}/${path}`,
+        { ...body, occurredAt: new Date().toISOString() },
+        {
+          label: `${path === 'arrive' ? 'Arrived' : (outcome ?? 'Delivered').toLowerCase().replace(/^./, (c) => c.toUpperCase())} · ${stop.name}`,
+          tripId: trip.id,
+        },
+      );
       reset();
       if (path === 'complete') setOpen(null);
-      await load();
+      if (!r.queued) await load();
     } catch (e) {
       Alert.alert('Could not save', (e as Error).message);
     } finally {
@@ -237,7 +271,14 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
       </View>
       {data && <Text style={s.muted}>Cash to collect (COD): {money(data.cod)}</Text>}
       {!ongoing && data && <Text style={s.muted}>Start the trip to record deliveries.</Text>}
-      {data?.stops.map((st) => {
+      {savedAt && (
+        <Text style={s.muted}>
+          Offline · stops saved at{' '}
+          {new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+          Deliveries are kept on the phone and sent later.
+        </Text>
+      )}
+      {view?.stops.map((st) => {
         const expanded = open === st.id;
         const cod = st.orders.reduce((a, o) => a + (o.codAmount ?? 0), 0);
         const resolved = ['DELIVERED', 'PARTIAL', 'FAILED'].includes(st.status);
@@ -248,7 +289,14 @@ export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }
                 <Text style={{ fontWeight: '700', flexShrink: 1, color: colors.text }}>
                   {st.seq}. {st.name}
                 </Text>
-                <Badge text={st.status.toLowerCase()} tone={TONE[st.status]} />
+                <Badge
+                  text={
+                    waiting.has(st.id)
+                      ? `${st.status.toLowerCase()} · not sent`
+                      : st.status.toLowerCase()
+                  }
+                  tone={waiting.has(st.id) ? 'muted' : TONE[st.status]}
+                />
               </View>
               {st.address && <Text style={s.muted}>{st.address}</Text>}
               {st.plannedArrival && !resolved && (

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Idempotent } from '../../common/http/idempotent';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { DecisionInput, decisionSchema, Permission } from '@fms/shared';
 import { z } from 'zod';
@@ -33,6 +34,7 @@ export class ApprovalsController {
   }
 
   @Post(':id/approve')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.APPROVAL_DECIDE)
   approve(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(decisionSchema)) body: DecisionInput) {
@@ -40,6 +42,7 @@ export class ApprovalsController {
   }
 
   @Post(':id/reject')
+  @Idempotent()
   @HttpCode(200)
   @RequirePermissions(Permission.APPROVAL_DECIDE)
   reject(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(decisionSchema)) body: DecisionInput) {

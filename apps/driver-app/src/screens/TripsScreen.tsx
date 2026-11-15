@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
-import { api, Trip } from '../api';
+import { Trip } from '../api';
+import { cachedGet, submit } from '../outbox';
 import { Badge, Button, Card, Chips, Field, s, when } from '../ui';
 import { StopsScreen } from './StopsScreen';
 
@@ -20,11 +21,14 @@ export function TripsScreen() {
   const [acting, setActing] = useState<string | null>(null);
   const [odo, setOdo] = useState<Record<string, string>>({});
   const [stopsOf, setStopsOf] = useState<Trip | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTrips(await api<Trip[]>(`/me/trips?scope=${scope}`));
+      const r = await cachedGet<Trip[]>(`/me/trips?scope=${scope}`);
+      setTrips(r.data);
+      setSavedAt(r.stale ? r.at : null);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -41,12 +45,18 @@ export function TripsScreen() {
     setActing(t.id);
     try {
       const km = odo[t.id] ? Number(odo[t.id]) : undefined;
-      await api(`/me/trips/${t.id}/${action}`, {
-        method: 'POST',
-        body: JSON.stringify(km !== undefined ? { odometerKm: km } : {}),
-      });
+      const r = await submit(
+        `/me/trips/${t.id}/${action}`,
+        { at: new Date().toISOString(), ...(km !== undefined && { odometerKm: km }) },
+        { label: `${action === 'start' ? 'Start' : 'Complete'} trip ${t.tripNo}`, tripId: t.id },
+      );
       setOdo((o) => ({ ...o, [t.id]: '' }));
-      await load();
+      if (r.queued) {
+        // Show the new state now; the phone sends it when the connection is back.
+        const status = action === 'start' ? 'ONGOING' : 'COMPLETED';
+        setTrips((list) => list.map((x) => (x.id === t.id ? { ...x, status } : x)));
+        Alert.alert('Saved on the phone', 'No connection. It will be sent automatically.');
+      } else await load();
     } catch (e) {
       Alert.alert(
         action === 'start' ? 'Cannot start trip' : 'Cannot complete trip',
@@ -73,6 +83,12 @@ export function TripsScreen() {
         ]}
       />
       {error && <Text style={s.error}>{error}</Text>}
+      {savedAt && (
+        <Text style={s.muted}>
+          Offline · showing trips saved at{' '}
+          {new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      )}
       {!loading && trips.length === 0 && (
         <Text style={s.muted}>
           {scope === 'active' ? 'No trips assigned to you right now.' : 'No finished trips yet.'}

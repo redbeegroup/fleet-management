@@ -846,8 +846,18 @@ export const updateLoadSchema = z.object({
 });
 export type UpdateLoadInput = z.infer<typeof updateLoadSchema>;
 
+/** When an action really happened on the phone (offline queue): not in the future, at most 7 days ago. */
+export const clientTimeSchema = z.coerce
+  .date()
+  .refine((d) => d.getTime() <= Date.now() + 5 * 60_000, 'Time is in the future')
+  .refine((d) => d.getTime() >= Date.now() - 7 * 86_400_000, 'Time is more than 7 days ago');
+export const driverActionSchema = z.object({ occurredAt: clientTimeSchema.optional() });
+export type DriverActionInput = z.infer<typeof driverActionSchema>;
+
 export const stopOutcomeSchema = z
   .object({
+    /** Offline: when the stop was really completed. */
+    occurredAt: clientTimeSchema.optional(),
     outcome: z.enum(['DELIVERED', 'PARTIAL', 'FAILED']),
     reason: z.string().trim().max(200).optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),

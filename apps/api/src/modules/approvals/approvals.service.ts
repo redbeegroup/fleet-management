@@ -152,8 +152,45 @@ export class ApprovalsService {
       const r = await tx.approvalRequest.findFirst({ where: { id }, include });
       if (!r) throw new NotFoundException('Approval request not found');
       if (r.requestedBy !== user.userId && !user.permissions.includes('approval:decide')) throw new NotFoundException('Approval request not found');
-      return r;
+      return { ...r, details: await this.details(tx, r.kind, r.entityId) };
     });
+  }
+
+  /** Key facts and attached photos of the record behind a request (mobile approvals). */
+  private async details(tx: Tx, kind: ApprovalKind, entityId: string): Promise<{ facts: [string, string][]; fileIds: string[] }> {
+    const d = (x: Date | null | undefined) => (x ? x.toISOString() : '');
+    const num = (x: unknown) => (x == null ? '' : Number(x).toLocaleString('en-US'));
+    switch (kind) {
+      case 'EXPENSE': {
+        const e = await tx.vehicleExpense.findFirst({ where: { id: entityId }, include: { vehicle: { select: { plateNumber: true } } } });
+        if (!e) break;
+        return { facts: [['Vehicle', e.vehicle.plateNumber], ['Category', e.category], ['Date', d(e.incurredAt)], ['Amount', num(e.amount)], ['Description', e.description ?? '']], fileIds: e.receiptFileId ? [e.receiptFileId] : [] };
+      }
+      case 'FUEL': {
+        const f = await tx.fuelRecord.findFirst({ where: { id: entityId }, include: { vehicle: { select: { plateNumber: true } } } });
+        if (!f) break;
+        return {
+          facts: [['Vehicle', f.vehicle.plateNumber], ['Filled', d(f.filledAt)], ['Litres', num(f.litres)], ['Total', num(f.totalCost)], ['Odometer', `${num(f.odometerKm)} km`], ['Station', f.station ?? ''], ['Checks', f.flags.join(', ')]],
+          fileIds: f.receiptFileId ? [f.receiptFileId] : [],
+        };
+      }
+      case 'WORK_ORDER': {
+        const w = await tx.workOrder.findFirst({ where: { id: entityId }, include: { vehicle: { select: { plateNumber: true } }, lines: true } });
+        if (!w) break;
+        return { facts: [['Vehicle', w.vehicle.plateNumber], ['Work order', `${w.woNo} · ${w.title}`], ['Estimate', num(w.estimatedCost)], ...w.lines.map((l) => [l.description, num(l.total)] as [string, string])], fileIds: [] };
+      }
+      case 'CLAIM': {
+        const c = await tx.insuranceClaim.findFirst({ where: { id: entityId }, include: { incident: { select: { description: true, photoFileIds: true, occurredAt: true } } } });
+        if (!c) break;
+        return { facts: [['Claim', c.claimNo], ['Claimed', num(c.amountClaimed)], ['Incident', d(c.incident.occurredAt)], ['What happened', c.incident.description]], fileIds: c.incident.photoFileIds };
+      }
+      case 'VEHICLE_REQUEST': {
+        const v = await tx.vehicleRequest.findFirst({ where: { id: entityId } });
+        if (!v) break;
+        return { facts: [['Request', v.requestNo], ['Purpose', v.purpose], ['From', v.originName], ['To', v.destinationName], ['Start', d(v.plannedStart)], ['End', d(v.plannedEnd)]], fileIds: [] };
+      }
+    }
+    return { facts: [], fileIds: [] };
   }
 
   private payload(r: Prisma.ApprovalRequestGetPayload<{ include: typeof include }>) {

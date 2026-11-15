@@ -49,6 +49,12 @@ export class CostsController {
     return this.costs.deleteShared(user, id);
   }
 
+  @Get('mobile/manager-summary')
+  @RequirePermissions(Permission.APPROVAL_DECIDE)
+  managerSummary(@CurrentUser() user: AuthUser) {
+    return this.costs.managerSummary(user);
+  }
+
   @Get('analytics/tco')
   @RequirePermissions(Permission.COST_READ)
   tco(@CurrentUser() user: AuthUser, @Query(new ZodPipe(costQuerySchema)) q: CostQuery) {

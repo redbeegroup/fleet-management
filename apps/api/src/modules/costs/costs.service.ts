@@ -398,6 +398,63 @@ export class CostsService {
     if (d.length && (await tx.department.count({ where: { id: { in: d } } })) !== d.length) throw new BadRequestException('Unknown department');
   }
 
+  /** Current-month budget lines with their actual spend to date. */
+  private async monthLines(tx: Tx, tz: string, today: string) {
+    const period = monthOf(today);
+    const lines = await tx.budget.findMany({ where: { period, amount: { gt: 0 } } });
+    if (!lines.length) return [];
+    const l = await this.ledger(tx, tz, { from: monthRange(period).from, to: today });
+    const names = new Map<string, string>([
+      ...(await tx.branch.findMany({ select: { id: true, name: true } })).map((b) => [SCOPE(b.id), b.name] as [string, string]),
+      ...(await tx.department.findMany({ select: { id: true, name: true } })).map((d) => [SCOPE(null, d.id), d.name] as [string, string]),
+    ]);
+    const scopeOf = new Map(l.vehicles.map((v) => [v.id, { branch: SCOPE(v.branchId), department: SCOPE(null, v.departmentId) }]));
+    return lines.map((b) => ({
+      b,
+      scope: b.scopeKey === 'company' ? 'Company' : (names.get(b.scopeKey) ?? b.scopeKey),
+      actual: r2(
+        l.rows
+          .filter((r) => r.category === b.category && r.month === period)
+          .filter((r) => b.scopeKey === 'company' || scopeOf.get(r.vehicleId)?.branch === b.scopeKey || scopeOf.get(r.vehicleId)?.department === b.scopeKey)
+          .reduce((s, r) => s + r.amount, 0),
+      ),
+    }));
+  }
+
+  /** Compact overview for the fleet manager's phone: approvals, fleet state, control alerts, budgets at risk. */
+  managerSummary(user: AuthUser) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const company = await tx.company.findFirstOrThrow({ select: { timezone: true, currency: true } });
+      const today = localDate(new Date(), company.timezone);
+      const since = new Date(Date.now() - 24 * 3_600_000);
+      const [pending, statuses, ongoing, events, lines] = await Promise.all([
+        tx.approvalRequest.count({ where: { status: 'PENDING', OR: [{ requestedBy: null }, { requestedBy: { not: user.userId } }], decisions: { none: { approverId: user.userId } } } }),
+        tx.vehicle.groupBy({ by: ['status'], where: { deletedAt: null }, _count: { _all: true } }),
+        tx.trip.count({ where: { status: 'ONGOING' } }),
+        tx.telemetryEvent.findMany({
+          where: { occurredAt: { gte: since }, type: { in: ['OFF_ROUTE', 'UNAUTHORISED_MOVEMENT', 'AFTER_HOURS', 'NO_DRIVER', 'RESTRICTED_AREA', 'OVERSPEED', 'GPS_OFFLINE'] } },
+          orderBy: { occurredAt: 'desc' },
+          take: 15,
+        }),
+        this.monthLines(tx, company.timezone, today),
+      ]);
+      const plates = new Map((await tx.vehicle.findMany({ where: { id: { in: [...new Set(events.map((e) => e.vehicleId))] } }, select: { id: true, plateNumber: true } })).map((v) => [v.id, v.plateNumber]));
+      const budgets = lines
+        .map(({ b, actual, scope }) => ({ id: b.id, scope, category: b.category, ...evaluateBudget(n(b.amount), actual, b.period, today) }))
+        .filter((x) => x.status === 'OVER' || x.status === 'AT_RISK')
+        .sort((a, b) => (b.usedPct ?? 0) - (a.usedPct ?? 0))
+        .slice(0, 5);
+      return {
+        currency: company.currency,
+        pendingApprovals: pending,
+        vehicles: Object.fromEntries(statuses.map((x) => [x.status, x._count._all])),
+        tripsOngoing: ongoing,
+        alerts: events.map((e) => ({ id: e.id, type: e.type, plateNumber: plates.get(e.vehicleId) ?? '', occurredAt: e.occurredAt, endedAt: e.endedAt, data: e.data })),
+        budgets,
+      };
+    });
+  }
+
   /** Daily: notify managers when a current-month budget line reaches 90 % or 100 % (once per level). */
   async budgetAlerts(now = new Date()): Promise<number> {
     const companies = await this.db.system((tx) => tx.company.findMany({ where: { active: true }, select: { id: true, timezone: true, currency: true } }));
@@ -406,24 +463,11 @@ export class CostsService {
       const today = localDate(now, c.timezone);
       const period = monthOf(today);
       const due = await this.db.tenant(c.id, async (tx) => {
-        const lines = await tx.budget.findMany({ where: { period, amount: { gt: 0 } } });
-        if (!lines.length) return [];
-        const l = await this.ledger(tx, c.timezone, { from: monthRange(period).from, to: today });
-        const names = new Map<string, string>([
-          ...(await tx.branch.findMany({ select: { id: true, name: true } })).map((b) => [SCOPE(b.id), b.name] as [string, string]),
-          ...(await tx.department.findMany({ select: { id: true, name: true } })).map((d) => [SCOPE(null, d.id), d.name] as [string, string]),
-        ]);
-        const scopeOf = new Map(l.vehicles.map((v) => [v.id, { branch: SCOPE(v.branchId), department: SCOPE(null, v.departmentId) }]));
         const out: { id: string; level: 90 | 100; title: string; body: string; dedupe: string }[] = [];
-        for (const b of lines) {
-          const actual = l.rows
-            .filter((r) => r.category === b.category && r.month === period)
-            .filter((r) => b.scopeKey === 'company' || scopeOf.get(r.vehicleId)?.branch === b.scopeKey || scopeOf.get(r.vehicleId)?.department === b.scopeKey)
-            .reduce((s, r) => s + r.amount, 0);
+        for (const { b, actual, scope } of await this.monthLines(tx, c.timezone, today)) {
           const level = alertLevel(n(b.amount), actual);
           if (!level || (b.alertedLevel ?? 0) >= level) continue;
           await tx.budget.update({ where: { id: b.id }, data: { alertedLevel: level } });
-          const scope = b.scopeKey === 'company' ? 'Company' : (names.get(b.scopeKey) ?? b.scopeKey);
           const pct = Math.round((actual / n(b.amount)) * 100);
           out.push({
             id: b.id,

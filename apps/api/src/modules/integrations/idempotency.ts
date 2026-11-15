@@ -10,13 +10,14 @@ const TTL_S = 24 * 3600;
 export class Idempotency {
   constructor(private readonly redis: RedisService) {}
 
-  async run<T>(companyId: string, key: string | undefined, request: unknown, fn: () => Promise<T>): Promise<T> {
+  /** `scope` narrows the key space further (e.g. per user for the driver app). */
+  async run<T>(companyId: string, key: string | undefined, request: unknown, fn: () => Promise<T>, scope?: string): Promise<T> {
     if (!key) return fn();
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) throw new UnprocessableEntityException('Idempotency-Key must be 8–128 characters [A-Za-z0-9._:-]');
     const r = this.redis.client;
     if (r.status === 'wait') await r.connect();
     const hash = createHash('sha256').update(stableStringify(request)).digest('hex');
-    const base = `idem:${companyId}:${key}`;
+    const base = `idem:${companyId}:${scope ? `${scope}:` : ''}${key}`;
     const stored = await r.get(base);
     if (stored) {
       const s = JSON.parse(stored) as { hash: string; body: T };

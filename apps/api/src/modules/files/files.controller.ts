@@ -1,3 +1,4 @@
+import { Idempotent } from '../../common/http/idempotent';
 import {
   Controller,
   Get,
@@ -25,6 +26,7 @@ export class FilesController {
   constructor(private readonly files: FilesService) {}
 
   @Post()
+  @Idempotent()
   @RequirePermissions(Permission.FILE_UPLOAD)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })

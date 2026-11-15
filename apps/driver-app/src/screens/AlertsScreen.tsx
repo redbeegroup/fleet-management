@@ -15,7 +15,10 @@ export function AlertsScreen({ onRead }: { onRead: () => void }) {
     void load();
   }, [load]);
   return (
-    <ScrollView contentContainerStyle={s.screen} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
+    <ScrollView
+      contentContainerStyle={s.screen}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+    >
       {items.some((n) => !n.readAt) && (
         <Button
           title="Mark all read"
@@ -30,7 +33,10 @@ export function AlertsScreen({ onRead }: { onRead: () => void }) {
       {!loading && items.length === 0 && <Text style={s.muted}>No notifications.</Text>}
       {items.map((n) => (
         <Card key={n.id}>
-          <Badge text={n.severity} tone={n.severity === 'critical' ? 'danger' : n.severity === 'warning' ? 'warn' : 'info'} />
+          <Badge
+            text={n.severity}
+            tone={n.severity === 'critical' ? 'danger' : n.severity === 'warning' ? 'warn' : 'info'}
+          />
           <Text style={[s.h2, n.readAt ? { opacity: 0.6 } : null]}>{n.title}</Text>
           <Text>{n.body}</Text>
           <Text style={s.muted}>{when(n.createdAt)}</Text>

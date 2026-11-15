@@ -1,3 +1,4 @@
+import { IdempotencyInterceptor } from './common/http/idempotent';
 import { BullModule } from '@nestjs/bullmq';
 import { DynamicModule, Module, Type } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -78,6 +79,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     { provide: APP_GUARD, useClass: FmsThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_FILTER, useClass: PrismaExceptionFilter },
   ],
 })

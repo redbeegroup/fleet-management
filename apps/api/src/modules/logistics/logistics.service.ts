@@ -396,11 +396,11 @@ export class LogisticsService {
 
   // --------------------------------------------------------------- stops
 
-  async arrive(user: AuthUser, stopId: string, driverId?: string) {
+  async arrive(user: AuthUser, stopId: string, driverId?: string, at?: Date) {
     return this.db.tenant(user.companyId, async (tx) => {
       const { stop } = await this.stopFor(tx, stopId, driverId);
       if (stop.status !== 'PENDING') throw new BadRequestException(`Stop is already ${stop.status.toLowerCase()}`);
-      return tx.tripStop.update({ where: { id: stopId }, data: { status: 'ARRIVED', arrivedAt: new Date() } });
+      return tx.tripStop.update({ where: { id: stopId }, data: { status: 'ARRIVED', arrivedAt: at ?? new Date() } });
     });
   }
 
@@ -409,7 +409,8 @@ export class LogisticsService {
       const { stop } = await this.stopFor(tx, stopId, driverId);
       if (!['PENDING', 'ARRIVED'].includes(stop.status)) throw new BadRequestException(`Stop is already ${stop.status.toLowerCase()}`);
       const orders = await tx.deliveryOrder.findMany({ where: { stopId }, include: { lines: true } });
-      const now = new Date();
+      // Offline completions keep the time they really happened (bounded by the schema).
+      const now = input.occurredAt ?? new Date();
       // Proof of delivery: the driver app must provide the evidence; dispatch entries are marked as such.
       const podSettings = parseCompanySettings((await tx.company.findFirstOrThrow({ select: { settings: true } })).settings).pod;
       const codExpected = Number(stop.codExpected ?? 0);

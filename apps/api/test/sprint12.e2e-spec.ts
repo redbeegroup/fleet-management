@@ -107,7 +107,7 @@ describe('Sprint 12 costs, budgets, TCO (e2e)', () => {
     await admin.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
       for (const companyId of companyIds) {
-        for (const tbl of ['telemetry_events', 'vehicle_telemetry_state', 'vehicle_last_positions', 'vehicle_positions', 'geofences', 'duty_sessions', 'vehicle_assignments', 'drivers', 'budgets', 'shared_costs', 'notifications', 'fuel_records', 'work_orders', 'vehicle_expenses', 'vehicle_documents', 'vehicle_daily_stats', 'trip_status_events', 'trips',
+        for (const tbl of ['approval_decisions', 'approval_requests', 'telemetry_events', 'vehicle_telemetry_state', 'vehicle_last_positions', 'vehicle_positions', 'geofences', 'duty_sessions', 'vehicle_assignments', 'drivers', 'budgets', 'shared_costs', 'notifications', 'fuel_records', 'work_orders', 'vehicle_expenses', 'vehicle_documents', 'vehicle_daily_stats', 'trip_status_events', 'trips',
           'vehicle_status_events', 'vehicles', 'departments', 'branches', 'company_counters', 'audit_logs', 'users']) {
           await tx.$executeRawUnsafe(`DELETE FROM ${tbl} WHERE company_id = $1::uuid`, companyId);
         }
@@ -266,4 +266,56 @@ describe('Sprint 12 costs, budgets, TCO (e2e)', () => {
     const topics = (await admin.notification.findMany({ where: { companyId: companyIds[0], topic: { startsWith: 'telematics.' } }, select: { topic: true } })).map((n) => n.topic);
     expect(new Set(topics)).toEqual(new Set(['telematics.off_route', 'telematics.unauthorised_movement', 'telematics.after_hours', 'telematics.no_driver', 'telematics.restricted_area']));
   });
+
+  it('replays driver actions with the same Idempotency-Key and keeps their real time', async () => {
+    const tok = (await http().post('/api/auth/login').send({ email: `cd1-${run}@e2e.local`, password: PASSWORD }).expect(200)).body.accessToken;
+    const drv = { Authorization: `Bearer ${tok}` };
+    const sessions = () => admin.dutySession.count({ where: { driverId: id.dr1 } });
+    const end1 = await http().post('/api/me/duty/end').set(drv).set('Idempotency-Key', `${run}-end-0001`).send({}).expect(200);
+    const end2 = await http().post('/api/me/duty/end').set(drv).set('Idempotency-Key', `${run}-end-0001`).send({}).expect(200);
+    expect(end2.body).toEqual(end1.body);
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    const s1 = await http().post('/api/me/duty/start').set(drv).set('Idempotency-Key', `${run}-start-001`).send({ occurredAt: hourAgo.toISOString() }).expect(201);
+    expect(new Date(s1.body.startedAt).getTime()).toBe(hourAgo.getTime());
+    const s2 = await http().post('/api/me/duty/start').set(drv).set('Idempotency-Key', `${run}-start-001`).send({ occurredAt: hourAgo.toISOString() }).expect(201);
+    expect(s2.body.id).toBe(s1.body.id);
+    expect(await sessions()).toBe(2);
+    // Same key, different request → 422; malformed key → 422
+    await http().post('/api/me/duty/start').set(drv).set('Idempotency-Key', `${run}-start-001`).send({}).expect(422);
+    await http().post('/api/me/duty/end').set(drv).set('Idempotency-Key', 'bad key!').send({}).expect(422);
+    // Keys are per user: the same key from another user is a new request
+    await http().post('/api/approvals/00000000-0000-4000-8000-000000000000/approve').set(auth('m')).set('Idempotency-Key', `${run}-start-001`).send({}).expect(404);
+    // Client time bounds
+    await http().post('/api/me/duty/end').set(drv).send({ occurredAt: new Date(Date.now() + 3_600_000).toISOString() }).expect(400);
+    await http().post('/api/me/duty/end').set(drv).send({ occurredAt: new Date(Date.now() - 8 * 86_400_000).toISOString() }).expect(400);
+    // Without a key nothing changes: a second start is rejected as usual
+    const again = await http().post('/api/me/duty/start').set(drv).send({});
+    expect(again.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('gives managers a mobile summary and approval details', async () => {
+    await http().patch('/api/company/settings').set(auth('a')).send({ approvals: { expenseAbove: 1000 } }).expect(200);
+    await http().post('/api/expenses').set(auth('m')).send({ vehicleId: id.v1, category: 'FINE', incurredAt: new Date().toISOString(), amount: 25_000, description: 'Parking fine Bahan' }).expect(201);
+    const sum = (await http().get('/api/mobile/manager-summary').set(auth('a')).expect(200)).body;
+    expect(sum.pendingApprovals).toBe(1);
+    expect(sum.vehicles.AVAILABLE).toBeGreaterThanOrEqual(5);
+    expect(sum.tripsOngoing).toBe(1);
+    expect(sum.budgets).toEqual([expect.objectContaining({ scope: 'Mandalay', category: 'FUEL', status: 'AT_RISK' })]);
+    await http().get('/api/mobile/manager-summary').set(auth('d')).expect(403);
+    // The requester does not see their own request as pending
+    expect((await http().get('/api/mobile/manager-summary').set(auth('m')).expect(200)).body.pendingApprovals).toBe(0);
+
+    const list = (await http().get('/api/approvals').query({ scope: 'pending' }).set(auth('a')).expect(200)).body;
+    const req = (Array.isArray(list) ? list : list.items)[0];
+    const detail = (await http().get(`/api/approvals/${req.id}`).set(auth('a')).expect(200)).body;
+    expect(detail.details.facts).toEqual(expect.arrayContaining([['Vehicle', `${run}-V1`], ['Category', 'FINE'], ['Description', 'Parking fine Bahan']]));
+    expect(detail.details.fileIds).toEqual([]);
+    // Approving twice from a phone with the same key decides once
+    const key = `${run}-approve-1`;
+    const one = await http().post(`/api/approvals/${req.id}/approve`).set(auth('a')).set('Idempotency-Key', key).send({ note: 'ok' }).expect(200);
+    const two = await http().post(`/api/approvals/${req.id}/approve`).set(auth('a')).set('Idempotency-Key', key).send({ note: 'ok' }).expect(200);
+    expect(two.body).toEqual(one.body);
+    expect(await admin.approvalDecision.count({ where: { requestId: req.id } })).toBe(1);
+  });
 });
+
