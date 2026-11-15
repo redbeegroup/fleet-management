@@ -966,7 +966,8 @@ export const controlSettingsSchema = z.object({
   offRouteMeters: z.number().int().min(100).max(20_000).default(500),
   /** Minutes off-route before an alert. */
   offRouteMinutes: z.number().int().min(1).max(120).default(5),
-  movementWithoutTrip: z.boolean().default(true),
+  /** Opt-in: fleets that move without trips (pool cars, mock telematics) would otherwise alert constantly. */
+  movementWithoutTrip: z.boolean().default(false),
   /** km driven without an ongoing trip before an alert. */
   movementWithoutTripKm: z.number().min(0.2).max(100).default(1),
   workingHoursEnabled: z.boolean().default(false),

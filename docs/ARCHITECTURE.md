@@ -162,6 +162,13 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 
 `ApprovalsService` (global) opens requests inside the owning transaction, notifies deciders after commit (`announce`), and on the final decision calls the handler the owning module registered (`register(kind, handler)`) inside the deciding transaction, so the decision and its effect commit together. Rules (limits, two approvers, no self-approval, no repeat approver) are pure and unit-tested.
 
+## Costs, budgets and control (S12)
+
+- **Ledger** (`CostsService.ledger`): reads approved fuel and expenses, completed work orders, document fees, vehicle asset data and shared costs for a day range and returns rows `{vehicleId, month, category, source, amount, tripId}`; the pure maths (depreciation, lease pro-rating, fee spreading, km allocation, budget status) is in `costs/calc.ts`. Budgets, TCO, trip costs, delivery KPIs and the manager summary all read the same ledger, so their numbers agree. Shared costs are allocated over the whole scope before branch/department filters apply.
+- **Budgets** are keyed by `(company, period YYYY-MM, scope_key, category)` with `scope_key` = `company`, `branch:<id>` or `department:<id>`; vehicles count towards their current branch/department.
+- **Control rules** (`telematics/rules/control.ts`) run after the core rules for each fix. `TelemetryRulesService` loads per batch the ongoing trip (its decoded OSRM route, cached by trip id + updatedAt), the current driver and open duty sessions, and persists the episode state in `vehicle_telemetry_state` (`off_route_*`, `no_trip_*`, `after_hours_event_id`, `no_driver_event_id`, last position).
+- **Idempotency for apps:** `IdempotencyInterceptor` (global) applies to routes marked `@Idempotent()` when the request carries `Idempotency-Key`; it reuses the integrations `Idempotency` service (Redis, 24 h) with the key scoped to company + user. The driver app's outbox uses its item id as the key and `<id>-f<n>` for photo uploads, so a resend after a lost response never applies twice.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -173,6 +180,7 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |
 | `webhook-dispatch` | every 15 s | send due webhook deliveries (retries with backoff) |
+| `budget-alerts` | daily 08:15 Asia/Yangon | current-month budget lines reaching 90 % / 100 % (once per level) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).

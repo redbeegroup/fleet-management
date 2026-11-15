@@ -1,7 +1,7 @@
 import { controlSettingsSchema } from '@fms/shared';
 import { distanceToRouteM, EMPTY_CONTROL, evaluateControl, ControlContext, ControlState, withinWorkingHours } from './control';
 
-const settings = controlSettingsSchema.parse({ workingHoursEnabled: true, requireDriverOnDuty: true });
+const settings = controlSettingsSchema.parse({ workingHoursEnabled: true, requireDriverOnDuty: true, movementWithoutTrip: true });
 const route = [
   { lat: 16.8, lng: 96.1 },
   { lat: 16.8, lng: 96.2 },

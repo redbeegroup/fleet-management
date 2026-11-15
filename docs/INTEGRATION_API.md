@@ -154,6 +154,8 @@ A company admin adds an endpoint in **Integrations → Webhooks** (HTTPS only) a
 | `load.checked_in` | goods and cash checked back into the depot after a delivery trip: `tripId`, `tripNo`, `ok`, `shortages`, `overages`, `cashExpected`, `cashReceived`, `cashDiff`, `lines[]` (`kind` UNDELIVERED / CUSTOMER_RETURN, `ref`, `sku`, `expectedQty`, `receivedQty`, `diff`) |
 | `trip.assigned`, `trip.started`, `trip.completed`, `trip.cancelled` | trip no., status, times, odometer and GPS distance, vehicle plate, driver |
 | `vehicle.overspeed`, `vehicle.geofence_enter`, `vehicle.geofence_exit`, `vehicle.gps_offline` | vehicle, driver id, time, position, speed, geofence |
+| `vehicle.off_route` | same fields; `data` has `tripId`, `tripNo`, `distanceM` (from the planned route) and `limitM` |
+| `vehicle.unauthorised_use` | same fields; `type` is `UNAUTHORISED_MOVEMENT` (no ongoing trip, `data.km`), `AFTER_HOURS`, `NO_DRIVER` (`data.reason`) or `RESTRICTED_AREA` (`geofenceId`, `data.geofence`) |
 | `inspection.failed` | inspection no., vehicle, driver, failed items |
 | `approval.requested`, `approval.approved`, `approval.rejected` | kind, title, amount, status, decisions |
 | `ping` | sent by **Send test** |

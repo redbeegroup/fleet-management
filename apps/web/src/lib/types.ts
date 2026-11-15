@@ -20,6 +20,11 @@ export interface Vehicle {
   maxStops?: number | null;
   notes?: string | null;
   acquiredAt?: string | null;
+  purchasePrice?: string | null;
+  residualValue?: string | null;
+  usefulLifeMonths?: number | null;
+  monthlyLeaseCost?: string | null;
+  inServiceAt?: string | null;
   plateNumber: string;
   vin: string | null;
   make: string;
@@ -160,6 +165,7 @@ export interface TrackResponse {
 }
 
 export interface CompanySettings {
+  control: ControlSettings;
   dispatch: { enforceLicenceClass: boolean; licenceRules: Record<string, string[]> };
   telematics: {
     speedLimitKmh: number;
@@ -871,4 +877,77 @@ export interface PodException {
   codExpected: number | null;
   codCollected: number | null;
   trip: { id: string; tripNo: string; driver: { fullName: string } | null; vehicle: { plateNumber: string } | null };
+}
+
+// ---- S12 costs ---------------------------------------------------------------
+export type BudgetStatus = 'NO_BUDGET' | 'OK' | 'AT_RISK' | 'OVER';
+export interface BudgetCell {
+  period: string;
+  budget: number | null;
+  actual: number;
+  variance: number | null;
+  usedPct: number | null;
+  forecast: number;
+  status: BudgetStatus;
+}
+export interface BudgetGrid {
+  year: number;
+  dimension: 'company' | 'branch' | 'department';
+  currency: string;
+  periods: string[];
+  categories: string[];
+  scopes: { key: string; id: string | null; name: string; budget: number; actual: number; months: BudgetCell[]; lines: { category: string; budget: number; actual: number; months: BudgetCell[] }[] }[];
+  unallocated: { id: string; period: string; description: string; amount: number }[];
+}
+export interface TcoVehicle {
+  id: string;
+  plateNumber: string;
+  name: string;
+  branch: string | null;
+  department: string | null;
+  ownership: string;
+  km: number;
+  total: number;
+  perKm: number | null;
+  perMonth: number | null;
+  ownershipCost: number;
+  running: number;
+  shared: number;
+  byCategory: Record<string, number>;
+  bookValue: number | null;
+  assetDataMissing: boolean;
+}
+export interface Tco {
+  range: { from: string; to: string; currency: string };
+  totals: { total: number; km: number; perKm: number | null; byCategory: Record<string, number>; unallocated: number };
+  vehicles: TcoVehicle[];
+  unallocated: { id: string; period: string; description: string; amount: number }[];
+  method: string;
+}
+export interface SharedCost {
+  id: string;
+  period: string;
+  branchId: string | null;
+  departmentId: string | null;
+  category: string;
+  description: string;
+  amount: number;
+}
+export interface TripCosts {
+  range: { from: string; to: string; currency: string };
+  trips: { tripId: string; tripNo: string; kind: string; vehicle: string | null; driver: string | null; endedAt: string; km: number | null; ratePerKm: number | null; running: number; expenses: number; driverCost: number; total: number; perKm: number | null; stops: number }[];
+  totals: { trips: number; total: number; km: number };
+  method: string;
+}
+
+export interface ControlSettings {
+  offRouteEnabled: boolean;
+  offRouteMeters: number;
+  offRouteMinutes: number;
+  movementWithoutTrip: boolean;
+  movementWithoutTripKm: number;
+  workingHoursEnabled: boolean;
+  workingHours: ({ start: string; end: string } | null)[];
+  requireDriverOnDuty: boolean;
+  restrictedAreaAlerts: boolean;
 }

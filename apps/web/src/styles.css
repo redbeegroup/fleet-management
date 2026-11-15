@@ -237,6 +237,7 @@ td .badge + .badge { margin-left: 4px; }
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --series-4: #eda100;
   --viz-grid: #e9e8e4;
   --viz-axis: #c9c7c0;
 }
@@ -245,6 +246,7 @@ td .badge + .badge { margin-left: 4px; }
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #c98500;
     --viz-grid: #2a2f37;
     --viz-axis: #444b55;
   }
@@ -346,3 +348,22 @@ tr.selected td { background: var(--info-bg); }
 .signature { margin: 0; }
 .signature svg { width: 180px; height: 72px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: #111; }
 .checkin input[type=number] { width: 90px; }
+
+/* Budgets (S12) */
+.budget-layout { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .budget-layout { grid-template-columns: 1fr; } }
+.budget-scopes { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.budget-scopes button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: inherit; cursor: pointer; font: inherit; }
+.budget-scopes button:hover { background: var(--bg-soft, rgba(0,0,0,.04)); }
+.budget-scopes button.active { background: var(--info-bg); }
+.budget-grid td, .budget-grid th { white-space: nowrap; }
+.budget-grid td.budget-cell { min-width: 92px; padding: 4px 6px; vertical-align: top; border-left: 3px solid transparent; }
+.budget-grid td.budget-cell input { width: 88px; text-align: right; padding: 4px 6px; }
+.budget-actual { display: block; font-size: 11px; color: var(--muted); text-align: right; }
+.budget-grid .tone-ok { border-left-color: var(--ok); }
+.budget-grid .tone-warn { border-left-color: var(--warn); }
+.budget-grid .tone-danger { border-left-color: var(--danger); }
+.budget-grid tr.total td, .budget-grid tr.total th { border-top: 2px solid var(--border); }
+.segmented { display: inline-flex; gap: 4px; }
+.hours-grid { display: flex; flex-direction: column; gap: 6px; }
+.hours-row { display: grid; grid-template-columns: 150px 130px auto 130px; justify-content: start; gap: 8px; align-items: center; }

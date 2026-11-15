@@ -13,6 +13,10 @@ export function VehicleFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const branches = useQuery({ queryKey: ['branches'], queryFn: () => api<Branch[]>('/branches') });
+  const departments = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api<{ id: string; name: string }[]>('/departments'),
+  });
   const existing = useQuery({
     queryKey: ['vehicle', id],
     queryFn: () => api<Vehicle>(`/vehicles/${id}`),
@@ -66,6 +70,12 @@ export function VehicleFormPage() {
       speedLimitKmh: num('speedLimitKmh'),
       tankCapacityL: num('tankCapacityL'),
       acquiredAt: str('acquiredAt'),
+      departmentId: str('departmentId'),
+      purchasePrice: num('purchasePrice'),
+      residualValue: num('residualValue'),
+      usefulLifeMonths: num('usefulLifeMonths'),
+      monthlyLeaseCost: num('monthlyLeaseCost'),
+      inServiceAt: str('inServiceAt'),
       notes: str('notes'),
     });
   }
@@ -188,7 +198,11 @@ export function VehicleFormPage() {
         </label>
         <label>
           Branch
-          <select name="branchId" defaultValue={v?.branchId ?? ''}>
+          <select
+            name="branchId"
+            key={branches.data ? 'ready' : 'loading'}
+            defaultValue={v?.branchId ?? ''}
+          >
             <option value="">—</option>
             {branches.data?.map((b) => (
               <option key={b.id} value={b.id}>
@@ -220,6 +234,77 @@ export function VehicleFormPage() {
             min={1}
             step="any"
             defaultValue={v?.tankCapacityL ?? ''}
+          />
+        </label>
+        <label>
+          Department (cost centre)
+          {/* key: remount once departments arrive, so the saved value is selected */}
+          <select
+            name="departmentId"
+            key={departments.data ? 'ready' : 'loading'}
+            defaultValue={v?.departmentId ?? ''}
+          >
+            <option value="">—</option>
+            {departments.data?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <h2 className="span-2">Cost of ownership</h2>
+        <p className="muted span-2">
+          Owned vehicles are depreciated straight-line (purchase price − residual value over the
+          useful life). Leased or rented vehicles use the monthly cost. Both feed the TCO and cost
+          per km.
+        </p>
+        <label>
+          Purchase price
+          <input
+            name="purchasePrice"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v?.purchasePrice ?? ''}
+          />
+        </label>
+        <label>
+          Residual value
+          <input
+            name="residualValue"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v?.residualValue ?? ''}
+          />
+        </label>
+        <label>
+          Useful life (months)
+          <input
+            name="usefulLifeMonths"
+            type="number"
+            min={1}
+            max={600}
+            defaultValue={v?.usefulLifeMonths ?? ''}
+          />
+        </label>
+        <label>
+          Monthly lease / rent
+          <input
+            name="monthlyLeaseCost"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v?.monthlyLeaseCost ?? ''}
+          />
+        </label>
+        <label>
+          In service from
+          <input
+            name="inServiceAt"
+            type="date"
+            defaultValue={v?.inServiceAt?.slice(0, 10) ?? ''}
+            placeholder="acquired date"
           />
         </label>
         <label className="span-2">

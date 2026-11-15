@@ -13,7 +13,9 @@ const sections: {
       { to: '/', label: 'Dashboard', perm: Permission.VEHICLE_READ, end: true },
       { to: '/map', label: 'Live map', perm: Permission.TRACKING_READ },
       { to: '/events', label: 'Events', perm: Permission.TRACKING_READ },
-      { to: '/reports', label: 'Reports & costs', perm: Permission.COST_READ },
+      { to: '/reports', label: 'Reports', perm: Permission.COST_READ },
+      { to: '/costs', label: 'Costs & TCO', perm: Permission.COST_READ },
+      { to: '/budgets', label: 'Budgets', perm: Permission.BUDGET_READ },
     ],
   },
   {

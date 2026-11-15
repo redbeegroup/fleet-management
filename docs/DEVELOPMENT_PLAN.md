@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) delivered**; next S12 (costs & control, offline driver app, manager mobile approvals, route deviation). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered — Phase 2 complete**; next: Phase 2 UAT, then Phase 3. Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -93,8 +93,8 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Ignition monitoring | P1 | 1 / S3 | ✅ ignition on/off events |
 | Idling monitoring | P1 | 1 / S3 | ✅ engine on + stationary ≥ threshold, with duration |
 | GPS offline alerts | P1 | 1 / S3 | ✅ worker check every 5 min, restored event |
-| Route deviation | P2 | 2 | ⏳ |
-| Unauthorized vehicle usage | P2 | 2 | ⏳ |
+| Route deviation | P2 | 2 / S12 | ✅ off the planned road route (OSRM) for N m during M min |
+| Unauthorized vehicle usage | P2 | 2 / S12 | ✅ moving without a trip (opt-in), outside working hours, without a driver on duty, restricted geofences |
 | Engine diagnostics (OBD/CAN) | P2 | 2 | ⏳ via Watch Tower where devices support it |
 | Remote immobilization (with safety controls) | P3 | 4 | ⏳ dual approval + audit, only when stationary |
 
@@ -190,11 +190,11 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Cost per kilometre | P1 | 1 / S6 | ✅ total, fuel and maintenance per km (GPS distance) |
 | Fleet expense dashboard | P1 | 1 / S6 | ✅ dashboard + reports by vehicle and branch, CSV |
 | Maintenance cost analysis | P1 | 1 / S5–S6 | ✅ parts/labour/external, per km, downtime |
-| Budget vs actual | P2 | 2 | ⏳ |
-| Total cost of ownership | P2 | 2 | ⏳ |
-| Cost per trip | P2 | 2 | ⏳ |
-| Cost per delivery | P2 | 2 | ⏳ |
-| Internal cost allocation | P2 | 2 | ⏳ |
+| Budget vs actual | P2 | 2 / S12 | ✅ monthly budgets per branch / department / company and category; forecast; 90 % / 100 % alerts |
+| Total cost of ownership | P2 | 2 / S12 | ✅ straight-line depreciation or lease + running costs + documents + shared costs; book value; CSV |
+| Cost per trip | P2 | 2 / S12 | ✅ trip km × full cost per km + trip expenses + driver cost per day |
+| Cost per delivery | P2 | 2 / S11–S12 | ✅ cost per drop / order / kg on the full cost per km |
+| Internal cost allocation | P2 | 2 / S12 | ✅ shared costs allocated to vehicles by km driven in the month |
 | Fleet profitability | P2 | 3 | ⏳ needs revenue from ERP/TMS |
 | Vehicle replacement ROI | P3 | 4 | ⏳ |
 
@@ -239,8 +239,8 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Fuel expense submission | P2 | 2 | ✅ delivered early (S5/S6) |
 | Repair requests | P2 | 2 | ✅ delivered early (S5/S6) |
 | Proof of delivery | P2 | 2 / S10–S11 | ✅ stop list, photos, GPS, signature pad, COD, customer returns |
-| Offline mode | P2 | 2 | ⏳ SQLite outbox + idempotency keys |
-| Fleet manager mobile app | P2 | 2 | ⏳ |
+| Offline mode | P2 | 2 / S12 | ✅ SQLite outbox + Idempotency-Key, cached trips/stops, photos kept until upload |
+| Fleet manager mobile app | P2 | 2 / S12 | ✅ manager mode in the same app: approvals with attachments, fleet summary, alerts; push opens the request |
 
 ### Module 12 — AI & Intelligent Automation (`ai-service`, Phase 4)
 
@@ -426,4 +426,14 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Returns:** drivers record customer returns/pick-ups at a stop (webhook `return.collected`). After the trip, the warehouse checks in undelivered quantities, customer returns and cash (`warehouse:checkin` permission); differences notify managers and are kept on the load (webhook `load.checked_in`).
 - **Delivery KPIs** (`/delivery-kpis`, `GET /analytics/delivery`, CSV): OTIF and success rates, failure reasons, cost per drop/order/kg (trip expenses + km × fuel cost per km + optional driver cost per day — an estimate, method shown), vehicle fill rate (binding limit), route adherence (planned vs GPS km, stop order kept = longest increasing subsequence, ETA error, dwell), per driver, vehicle and day.
 - **Driver app:** delivery screen takes photos, GPS, signature and cash, and records customer returns (`expo-location`, `react-native-svg`).
+
+### Phase 2 — Sprint 12 (costs & control, offline app, manager approvals) delivered — Phase 2 complete
+
+- **Cost ledger** (`modules/costs`): one normalised view of every cost per vehicle, month and category: approved fuel and expenses, completed work orders, document fees spread over their validity (insurance and road tax keep their category), straight-line depreciation (purchase price − residual over the useful life, pro-rated by day, stops at end of life or disposal) or monthly lease/rent, and **shared costs** (company, branch or department overheads) allocated to vehicles by km driven in their month (largest-remainder cents; no km → reported as not allocated).
+- **Budgets** per month and cost category for the company, each branch and each department (`/budgets` grid, copy from the previous year with a % change). Status per cell: on track, at risk (≥ 90 % or month-to-date forecast above budget), over. Daily `budget-alerts` job notifies managers once per level (re-armed when the amount changes).
+- **TCO** per vehicle (`/costs`, `GET /analytics/tco` + CSV) with ownership, running and shared costs, cost per km and per month, book value, and a flag for vehicles without asset data. **Cost per trip** (`GET /analytics/trip-costs`) and the delivery KPIs now use the vehicle's full cost per km (all categories except trip-linked expenses, which are charged to their trip).
+- **Control rules** in the GPS pipeline (pure `telematics/rules/control.ts`, settings `control`): off the planned OSRM route (500 m for 5 min by default), moving without a trip (opt-in, after 1 km), outside working hours per weekday (overnight shifts supported, company time zone), moving without a driver on duty, entering RESTRICTED geofences. Episodes open/close like overspeed, alert managers and dispatchers, and emit `vehicle.off_route` / `vehicle.unauthorised_use` webhooks.
+- **Driver app offline mode:** every action goes through a SQLite outbox and is sent in order with an `Idempotency-Key` (server: `@Idempotent()` on driver routes, file upload and approval decisions; 24 h, per user). Photos are kept on the phone until uploaded; trips, stops, profile and approvals are cached for offline viewing; actions waiting to be sent show as done with a "not sent" badge; rejected actions can be retried or discarded. Stop arrival/completion and duty start/end keep the time they happened (`occurredAt`, at most 7 days old).
+- **Manager mode** in the same mobile app (company admins and fleet managers): Fleet summary (`GET /mobile/manager-summary`: approvals waiting, trips, vehicles, control alerts of the last 24 h, budgets at risk), Approvals with the record's key facts and photos/receipts (`GET /approvals/:id` → `details`), approve/reject with a note, push notification opens the request. Users with both roles can switch.
+- Web: Costs & TCO, Budgets, vehicle cost of ownership and department, control rules in Settings, new event types.
 

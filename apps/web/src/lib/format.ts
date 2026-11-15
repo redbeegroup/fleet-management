@@ -30,6 +30,11 @@ export const EVENT_LABELS: Record<string, { label: string; tone: 'ok' | 'info' |
   HARSH_BRAKE: { label: 'Harsh braking', tone: 'danger' },
   HARSH_ACCEL: { label: 'Harsh acceleration', tone: 'warn' },
   HARSH_CORNER: { label: 'Harsh cornering', tone: 'warn' },
+  OFF_ROUTE: { label: 'Off route', tone: 'warn' },
+  UNAUTHORISED_MOVEMENT: { label: 'Moving without a trip', tone: 'danger' },
+  AFTER_HOURS: { label: 'Outside working hours', tone: 'warn' },
+  NO_DRIVER: { label: 'No driver on duty', tone: 'danger' },
+  RESTRICTED_AREA: { label: 'Restricted area', tone: 'danger' },
 };
 
 /** One-line description of a telemetry event. */

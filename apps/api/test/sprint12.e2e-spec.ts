@@ -224,7 +224,7 @@ describe('Sprint 12 costs, budgets, TCO (e2e)', () => {
 
   it('validates control settings', async () => {
     await http().patch('/api/company/settings').set(auth('a')).send({ control: { workingHours: [null] } }).expect(400);
-    const r = await http().patch('/api/company/settings').set(auth('a')).send({ control: { workingHoursEnabled: true, requireDriverOnDuty: true, offRouteMinutes: 5 } }).expect(200);
+    const r = await http().patch('/api/company/settings').set(auth('a')).send({ control: { workingHoursEnabled: true, requireDriverOnDuty: true, movementWithoutTrip: true, offRouteMinutes: 5 } }).expect(200);
     expect(r.body.control).toMatchObject({ workingHoursEnabled: true, requireDriverOnDuty: true, offRouteMeters: 500, movementWithoutTrip: true });
   });
 
