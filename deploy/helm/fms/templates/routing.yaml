@@ -97,7 +97,7 @@ spec:
           ports:
             - { name: http, containerPort: 5000 }
           readinessProbe:
-            httpGet: { path: /nearest/v1/driving/96.15,16.8, port: http }
+            httpGet: { path: "/nearest/v1/driving/96.15,16.8", port: http }
             periodSeconds: 10
           livenessProbe:
             tcpSocket: { port: http }

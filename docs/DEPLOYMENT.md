@@ -211,6 +211,6 @@ Secrets live in the `fms-secrets` Secret (created out of band; keys: `DATABASE_U
 helm upgrade fms deploy/helm/fms -n fms -f deploy/helm/fms/values-corexlab.yaml --set image.api.tag=<git-sha> --set image.web.tag=<git-sha> --timeout 32m
 ```
 
-**Road routing** is enabled (`routing.enabled`, extract from `download.openstreetmap.fr`). Cluster egress is only a few KB/s, so the first download of the ~280 MB Myanmar extract takes many hours; FMS uses straight-line estimates until `GET /api/routing/status` reports `osrm`.
+**Road routing** is enabled (`routing.enabled`, extract from `download.openstreetmap.fr`). Cluster egress is only a few KB/s, so the first download of the Myanmar extract (~310 MB) took about 8 hours; FMS used straight-line estimates until `GET /api/routing/status` reported `osrm` (live since 15 Nov 2026). The prepared data stays on the PVC, so restarts and upgrades do not download it again.
 
 **Known cluster issues** (at deployment time): `wo4` — flannel `cni0` has a wrong address (no pod can start) and lacks `iscsi-tools`; `wo1` — image pulls from ghcr.io hang; `synology-nfs` — the NAS rejects NFS 4.1; outbound pulls from Docker Hub/GHCR are slow and reset intermittently (Redis comes from `mirror.gcr.io`). FMS pods avoid `wo1` and `wo4` via affinity in `values-corexlab.yaml`; remove those exclusions once the nodes are fixed.
