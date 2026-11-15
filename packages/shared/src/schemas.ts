@@ -21,6 +21,9 @@ export const createVehicleSchema = z.object({
   fuelType: z.string().max(32).optional().nullable(),
   capacityKg: z.number().nonnegative().optional().nullable(),
   capacityM3: z.number().nonnegative().optional().nullable(),
+  capacityCases: z.number().int().nonnegative().optional().nullable(),
+  capacityPallets: z.number().int().nonnegative().optional().nullable(),
+  maxStops: z.number().int().min(1).max(500).optional().nullable(),
   odometerKm: z.number().nonnegative().default(0),
   branchId: z.string().uuid().optional().nullable(),
   departmentId: z.string().uuid().optional().nullable(),
@@ -72,6 +75,8 @@ export const createBranchSchema = z.object({
   longitude: z.number().min(-180).max(180).optional().nullable(),
 });
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export const updateBranchSchema = createBranchSchema.partial().extend({ active: z.boolean().optional() });
+export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
 
 export const createDriverSchema = z.object({
   employeeNo: z.string().trim().min(1).max(32),
@@ -191,6 +196,7 @@ export const companySettingsSchema = z.object({
   inspections: z.lazy(() => inspectionSettingsSchema).default({}),
   incentives: z.lazy(() => incentiveSettingsSchema).default({}),
   approvals: z.lazy(() => approvalSettingsSchema).default({}),
+  logistics: z.lazy(() => logisticsSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -202,6 +208,7 @@ export const updateCompanySettingsSchema = z.object({
   inspections: z.lazy(() => inspectionSettingsSchema.partial()).optional(),
   incentives: z.lazy(() => incentiveSettingsSchema.partial()).optional(),
   approvals: z.lazy(() => approvalSettingsSchema.partial()).optional(),
+  logistics: z.lazy(() => logisticsSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -689,6 +696,11 @@ export const WebhookEvent = {
   APPROVAL_REQUESTED: 'approval.requested',
   APPROVAL_APPROVED: 'approval.approved',
   APPROVAL_REJECTED: 'approval.rejected',
+  ORDER_PLANNED: 'order.planned',
+  ORDER_DISPATCHED: 'order.dispatched',
+  ORDER_DELIVERED: 'order.delivered',
+  ORDER_PARTIALLY_DELIVERED: 'order.partially_delivered',
+  ORDER_FAILED: 'order.failed',
 } as const;
 export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
 
@@ -723,11 +735,19 @@ export const orderLineSchema = z.object({
   weightKg: z.number().nonnegative().optional().nullable(),
   /** Total volume of the line. */
   volumeM3: z.number().nonnegative().optional().nullable(),
+  /** Number of cases (cartons) on the line. */
+  cases: z.number().nonnegative().optional().nullable(),
+  /** Pallet places used by the line. */
+  pallets: z.number().nonnegative().optional().nullable(),
 });
 export const OrderPriority = { LOW: 'LOW', NORMAL: 'NORMAL', HIGH: 'HIGH', URGENT: 'URGENT' } as const;
 export const upsertOrderSchema = z
   .object({
     customer: orderCustomerSchema,
+    /** Branch code of the depot that ships the order (default: settings.logistics.defaultBranchId). */
+    depotCode: z.string().trim().min(1).max(16).optional().nullable(),
+    /** Planned delivery day (company-local); defaults to the delivery window start, else the day received. */
+    deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').optional().nullable(),
     orderDate: z.coerce.date().optional().nullable(),
     priority: z.nativeEnum(OrderPriority).default('NORMAL'),
     deliveryWindow: z.object({ start: z.coerce.date(), end: z.coerce.date() }).optional().nullable(),
@@ -767,3 +787,71 @@ export const createVehicleRequestSchema = z
   .refine((r) => r.plannedEnd > r.plannedStart, { path: ['plannedEnd'], message: 'must be after plannedStart' });
 export type CreateVehicleRequestInput = z.infer<typeof createVehicleRequestSchema>;
 export const scheduleVehicleRequestSchema = z.object({ vehicleId: z.string().uuid(), driverId: z.string().uuid() });
+
+// ---------------------------------------------------------------------------
+// Delivery planning (Phase 2 / S10)
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_FAILURE_REASONS = ['Customer closed', 'Customer refused', 'No payment / COD not ready', 'Wrong address', 'Goods damaged', 'No time', 'Other'];
+
+export const logisticsSettingsSchema = z.object({
+  /** Depot for orders that do not name one. */
+  defaultBranchId: z.string().uuid().nullable().default(null),
+  /** Stop limit for vehicles that have none. */
+  defaultMaxStops: z.number().int().min(1).max(500).nullable().default(30),
+  failureReasons: z.array(z.string().trim().min(1).max(80)).min(1).max(30).default(DEFAULT_FAILURE_REASONS),
+  /** Default departure time of a load, company-local HH:MM. */
+  departureTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('07:30'),
+  /** Used to estimate a load's planned end. */
+  serviceMinutesPerStop: z.number().int().min(1).max(240).default(15),
+  avgSpeedKmh: z.number().min(5).max(120).default(25),
+});
+export type LogisticsSettings = z.infer<typeof logisticsSettingsSchema>;
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+export const planningQuerySchema = z.object({ date: day, branchId: z.string().uuid() });
+export const autofillSchema = z.object({ date: day, branchId: z.string().uuid(), vehicleIds: z.array(z.string().uuid()).max(200).optional() });
+export const createLoadSchema = z.object({
+  date: day,
+  branchId: z.string().uuid(),
+  vehicleId: z.string().uuid(),
+  driverId: z.string().uuid(),
+  orderIds: z.array(z.string().uuid()).min(1).max(500),
+  departAt: z.coerce.date().optional().nullable(),
+});
+export type CreateLoadInput = z.infer<typeof createLoadSchema>;
+export const updateLoadSchema = z.object({
+  addOrderIds: z.array(z.string().uuid()).max(500).optional(),
+  removeOrderIds: z.array(z.string().uuid()).max(500).optional(),
+  /** Full new stop order. */
+  stopIds: z.array(z.string().uuid()).max(500).optional(),
+  vehicleId: z.string().uuid().optional(),
+  driverId: z.string().uuid().optional(),
+});
+export type UpdateLoadInput = z.infer<typeof updateLoadSchema>;
+
+export const stopOutcomeSchema = z
+  .object({
+    outcome: z.enum(['DELIVERED', 'PARTIAL', 'FAILED']),
+    reason: z.string().trim().max(200).optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+    /** PARTIAL: delivered quantity per order line (lines not listed count as fully delivered). */
+    deliveredLines: z
+      .array(z.object({ orderId: z.string().uuid(), lineNo: z.number().int().min(1), quantity: z.number().nonnegative() }))
+      .max(1000)
+      .optional(),
+  })
+  .refine((o) => o.outcome !== 'FAILED' || !!o.reason, { path: ['reason'], message: 'A reason is required for a failed delivery' })
+  .refine((o) => o.outcome !== 'PARTIAL' || (o.deliveredLines?.length ?? 0) > 0, { path: ['deliveredLines'], message: 'List the delivered quantities' });
+export type StopOutcomeInput = z.infer<typeof stopOutcomeSchema>;
+
+export const updateCustomerSchema = z.object({
+  phone: z.string().max(50).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  township: z.string().max(100).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;

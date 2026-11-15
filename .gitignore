@@ -12,3 +12,4 @@ coverage/
 dist-seed/
 *.tsbuildinfo
 .data/
+dump.rdb

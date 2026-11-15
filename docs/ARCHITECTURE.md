@@ -101,7 +101,7 @@ Watch Tower API ──poll (since=last)──► IngestRunner (leader via Redis 
 
 ## Data model (current)
 
-`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `inspection_templates`, `inspections`, `training_courses`, `driver_trainings`, `driver_adjustments`, `api_keys`, `customers`, `delivery_orders`, `delivery_order_lines`, `webhook_endpoints`, `webhook_deliveries`, `approval_requests`, `approval_decisions`, `vehicle_requests`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
+`companies` (with `settings`), `company_counters`, `incidents`, `insurance_claims`, `inspection_templates`, `inspections`, `training_courses`, `driver_trainings`, `driver_adjustments`, `api_keys`, `customers`, `delivery_orders`, `delivery_order_lines`, `webhook_endpoints`, `webhook_deliveries`, `approval_requests`, `approval_decisions`, `vehicle_requests`, `trip_stops`, `vehicle_expenses`, `vehicle_daily_stats`, `user_devices`, `fuel_records`, `maintenance_plans`, `repair_requests`, `work_orders`, `work_order_lines`, `trips`, `trip_status_events`, `duty_sessions`, `branches`, `departments`, `users`, `refresh_tokens`, `audit_logs`, `files`, `notifications`, `vehicles`, `vehicle_status_events`, `vehicle_documents`, `vehicle_assignments`, `drivers`, `driver_licenses`, `geofences`, `telemetry_events`, `vehicle_telemetry_state`, `vehicle_last_positions`, `vehicle_positions` (partitioned).
 
 The source of truth is `apps/api/prisma/schema.prisma` plus `prisma/migrations/*`. The RLS and partitioning SQL is in the second migration.
 
@@ -144,6 +144,12 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - **Machine authentication** is separate from users: the global `AuthGuard` checks `X-API-Key` only on routes with `@ApiKeyAuth(scope)` and puts an `ApiClient` (company, key id, scopes) on the request, not an `AuthUser`. Any other route rejects API keys. Audit rows record the key id.
 - **Order intake** (`OrdersService`): upsert by `(company, source, external_ref)`, customer upsert by code, line replacement, `payload_hash` for no-op detection, `version` for change ordering.
 - **Webhooks** use a transactional outbox: `WebhooksService.emit(tx, …)` inserts `webhook_deliveries` rows inside the domain transaction. The worker claims due rows with `FOR UPDATE SKIP LOCKED` and a 2-minute lease, then sends them outside the transaction.
+
+## Delivery planning
+
+- Orders (`delivery_orders`) belong to a depot (`branch_id`) and a `delivery_date`. A load is a `trips` row with `kind = DELIVERY`, `planned_date` and `branch_id`, plus `trip_stops` (one per customer); orders point to their trip and stop.
+- `LogisticsService.createLoad` locks the orders (`FOR UPDATE`, sorted ids), checks capacity with the shared `checkLoad`, then creates the trip with `TripsService.createIn` inside the same transaction, so vehicle/driver availability, licences and overlap rules are enforced exactly as for any trip.
+- Trip lifecycle drives order status (`TripsService`: start → DISPATCHED, cancel → back to RECEIVED, complete blocked while stops are open); stop outcomes set per-line `delivered_qty` and the order status (`logistics/status.ts`).
 
 ## Approvals
 

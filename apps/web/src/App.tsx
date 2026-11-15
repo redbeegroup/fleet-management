@@ -25,6 +25,10 @@ import { ApprovalsPage } from './pages/ApprovalsPage';
 import { VehicleRequestsPage } from './pages/VehicleRequestsPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { OrdersPage } from './pages/OrdersPage';
+import { PlanningPage } from './pages/PlanningPage';
+import { LoadPage } from './pages/LoadPage';
+import { ManifestPage } from './pages/ManifestPage';
+import { CustomersPage } from './pages/CustomersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
@@ -81,6 +85,10 @@ export function App() {
         <Route path="vehicle-requests" element={<VehicleRequestsPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="orders" element={<OrdersPage />} />
+        <Route path="planning" element={<PlanningPage />} />
+        <Route path="loads/:id" element={<LoadPage />} />
+        <Route path="loads/:id/manifest" element={<ManifestPage />} />
+        <Route path="customers" element={<CustomersPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/new" element={<VehicleFormPage />} />
         <Route path="vehicles/:id" element={<VehicleDetailPage />} />

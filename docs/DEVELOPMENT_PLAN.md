@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) and S9 (integration platform & approvals) delivered**; next S10 (logistics core: delivery planning, loading, multi-stop trips). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals) and S10 (delivery planning & multi-stop trips) delivered**; next S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -408,4 +408,13 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Webhooks**: outbox rows written in the same transaction as the change; `webhook-dispatch` worker job (15 s) with lease + `SKIP LOCKED`, HMAC-SHA256 signatures, 8 attempts over ~22 h, auto-disable after 20 failures, redelivery, test ping. SSRF guard: https only and no private/loopback/link-local targets unless `WEBHOOK_ALLOW_INSECURE` / `WEBHOOK_ALLOW_PRIVATE`.
 - **Approvals** (`modules/approvals`): generic requests + decisions, pure rules (`rules.ts`), owning modules register outcome handlers. Work orders (`AWAITING_APPROVAL`, start/complete blocked until the cost is approved, `request-approval` when lines exceed the limit), expenses and fuel (`approval_status`; analytics count approved costs only and report pending separately), insurance claims (`PENDING_APPROVAL` → `SUBMITTED`), vehicle booking requests (new `REQUESTER` role; approved requests are scheduled into trips by dispatchers). Limits are off until set in Settings.
 - Web: Integrations (keys, webhooks, delivery log), Delivery orders, Approvals inbox, Booking requests, approval states on work orders/fuel/expenses/claims, approval limits in Settings.
+
+### Phase 2 — Sprint 10 (logistics core) delivered
+
+- **Depots** are branches with a location (Settings → Depots). DMS orders carry `depotCode`, `deliveryDate`, and line `cases`/`pallets`; the default depot applies otherwise.
+- **Capacity** (`packages/shared/src/capacity.ts`, used by API and web): weight, volume, cases, pallets and stops (vehicle limit or company default). Violations block a load (422); missing order data only warns.
+- **Planning board** (`/planning`): orders to plan for a day and depot (plus failed orders to re-plan), vehicle capacity bars, manual loads, and **auto-fill** (`logistics/autofill.ts`: priority, area, bearing from the depot, first fit into the largest vehicles). Proposals are reviewed and created per vehicle.
+- **Loads** are delivery trips (`trips.kind = DELIVERY`) created through `TripsService.createIn` in the same transaction, with all assignment checks. Stops are grouped per customer and ordered nearest-neighbour from the depot (`logistics/sequence.ts`; VROOM replaces it in S11). Loads can be edited (reorder, add, remove, change vehicle/driver) until the trip starts. Printable manifest with COD and signature lines.
+- **Execution:** trip start → orders DISPATCHED; drivers record each stop (arrived, delivered, partly delivered with quantities, failed with a reason) in the app; the trip can only be completed once every stop is resolved; cancelling a load returns its orders to planning. Webhooks `order.planned/dispatched/delivered/partially_delivered/failed`.
+- Customers page to fix outlet locations; vehicle form has cases, pallets and max-stops capacity.
 

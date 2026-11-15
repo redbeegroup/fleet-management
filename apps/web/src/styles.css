@@ -307,3 +307,32 @@ fieldset.chips { border: 1px solid var(--border); border-radius: 8px; display: f
 /* Integrations */
 .secret-once { border-color: var(--warn); background: var(--warn-bg); margin-bottom: 12px; }
 .secret-once code { display: block; padding: 8px 10px; background: var(--card, #fff); border-radius: 6px; word-break: break-all; margin: 6px 0 10px; }
+
+/* Delivery planning */
+.planning { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .planning { grid-template-columns: 1fr; } }
+.plan-side { display: grid; gap: 10px; }
+.plan-side h2 { margin: 8px 0 0; font-size: 16px; }
+.plan-card { cursor: pointer; display: grid; gap: 8px; }
+.plan-card.active { outline: 2px solid var(--primary, #2563eb); }
+.cap-bars { display: grid; gap: 4px; }
+.cap-row { display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; gap: 8px; font-size: 12px; }
+.cap-label { color: var(--muted); }
+.bar-fill { background: var(--ok); }
+.bar-fill.near { background: var(--warn); }
+.bar-fill.over { background: var(--danger); }
+tr.selected td { background: var(--info-bg); }
+.load-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.small { font-size: 12px; }
+.stop-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.stop-list li { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
+@media print {
+  .sidebar, .no-print, .page-head .actions { display: none !important; }
+  .shell { display: block !important; }
+  main, .content { padding: 0 !important; margin: 0 !important; }
+  .card { box-shadow: none !important; border: 1px solid #999 !important; break-inside: avoid; }
+  body { background: #fff !important; color: #000 !important; }
+}
+.manifest table { width: 100%; }
+.manifest .sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 28px; }
+.manifest .sign div { border-top: 1px solid var(--text); padding-top: 4px; font-size: 12px; }

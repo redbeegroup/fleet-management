@@ -131,6 +131,7 @@ export interface Trip {
   purpose: string | null;
   cargoDescription: string | null;
   gpsDistanceKm: string | null;
+  kind: 'GENERAL' | 'DELIVERY';
   vehicle: { id: string; plateNumber: string; make: string; model: string } | null;
 }
 
@@ -215,4 +216,35 @@ export interface MyAdjustment {
   amount: string;
   reason: string;
   status: 'PROPOSED' | 'APPROVED';
+}
+
+export interface StopLine {
+  lineNo: number;
+  sku: string;
+  description: string | null;
+  quantity: number;
+  uom: string;
+  deliveredQty: number | null;
+}
+
+export interface Stop {
+  id: string;
+  seq: number;
+  status: 'PENDING' | 'ARRIVED' | 'DELIVERED' | 'PARTIAL' | 'FAILED';
+  name: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  failureReason: string | null;
+  orders: { id: string; externalRef: string; codAmount: number | null; notes: string | null; lines: StopLine[] }[];
+}
+
+export interface TripStops {
+  tripNo: string;
+  status: string;
+  cod: number;
+  stops: Stop[];
+  failureReasons: string[];
 }

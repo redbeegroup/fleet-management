@@ -1,4 +1,6 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { localDate } from '../../common/time';
+import { parseCompanySettings } from '../../common/settings';
 import { Prisma } from '@prisma/client';
 import { upsertOrderSchema, UpsertOrderInput, WebhookEvent } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
@@ -7,7 +9,11 @@ import { EDITABLE, lineRows, orderColumns, payloadHash } from './order-mapping';
 import { WebhooksService } from './webhooks.service';
 
 const SOURCE = 'dms';
-const include = { customer: true, lines: { orderBy: { lineNo: 'asc' as const } } } satisfies Prisma.DeliveryOrderInclude;
+const include = {
+  customer: true,
+  lines: { orderBy: { lineNo: 'asc' as const } },
+  trip: { select: { id: true, tripNo: true, status: true, vehicle: { select: { plateNumber: true } } } },
+} satisfies Prisma.DeliveryOrderInclude;
 type OrderRow = Prisma.DeliveryOrderGetPayload<{ include: typeof include }>;
 const num = (d: Prisma.Decimal | null) => (d == null ? null : Number(d));
 
@@ -18,6 +24,11 @@ export function toApiOrder(o: OrderRow) {
     fmsId: o.id,
     status: o.status,
     version: o.version,
+    deliveryDate: o.deliveryDate ? o.deliveryDate.toISOString().slice(0, 10) : null,
+    depotId: o.branchId,
+    trip: o.trip ? { tripNo: o.trip.tripNo, status: o.trip.status, plateNumber: o.trip.vehicle?.plateNumber ?? null } : null,
+    deliveredAt: o.deliveredAt,
+    failureReason: o.failureReason,
     priority: o.priority,
     orderDate: o.orderDate,
     deliveryWindow: o.windowStart && o.windowEnd ? { start: o.windowStart, end: o.windowEnd } : null,
@@ -40,8 +51,10 @@ export function toApiOrder(o: OrderRow) {
     codAmount: num(o.codAmount),
     totalWeightKg: num(o.totalWeightKg),
     totalVolumeM3: num(o.totalVolumeM3),
+    totalCases: num(o.totalCases),
+    totalPallets: num(o.totalPallets),
     notes: o.notes,
-    lines: o.lines.map((l) => ({ lineNo: l.lineNo, sku: l.sku, description: l.description, quantity: Number(l.quantity), uom: l.uom, weightKg: num(l.weightKg), volumeM3: num(l.volumeM3) })),
+    lines: o.lines.map((l) => ({ lineNo: l.lineNo, sku: l.sku, description: l.description, quantity: Number(l.quantity), uom: l.uom, weightKg: num(l.weightKg), volumeM3: num(l.volumeM3), cases: num(l.cases), pallets: num(l.pallets), deliveredQty: num(l.deliveredQty) })),
     cancelledAt: o.cancelledAt,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt,
@@ -76,6 +89,15 @@ export class OrdersService {
       if (existing && !EDITABLE.includes(existing.status)) {
         throw new ConflictException(`Order ${externalRef} is ${existing.status} and can no longer be changed`);
       }
+      // Depot and planning date.
+      const company = await tx.company.findFirstOrThrow({ select: { timezone: true, settings: true } });
+      let branchId: string | null = parseCompanySettings(company.settings).logistics.defaultBranchId;
+      if (input.depotCode) {
+        const b = await tx.branch.findFirst({ where: { code: input.depotCode, active: true }, select: { id: true } });
+        if (!b) throw new BadRequestException({ message: 'Validation failed', errors: [{ path: 'depotCode', message: `Unknown depot ${input.depotCode}` }] });
+        branchId = b.id;
+      }
+      const deliveryDate = input.deliveryDate ?? localDate(input.deliveryWindow?.start ?? existing?.createdAt ?? new Date(), company.timezone);
       const c = input.customer;
       const customerData = { name: c.name, phone: c.phone ?? null, email: c.email ?? null, address: c.address ?? null, township: c.township ?? null, city: c.city ?? null, latitude: c.latitude ?? null, longitude: c.longitude ?? null };
       const customer = await tx.customer.upsert({
@@ -87,14 +109,14 @@ export class OrdersService {
       let order: OrderRow;
       if (!existing) {
         order = await tx.deliveryOrder.create({
-          data: { companyId, source: SOURCE, externalRef, customerId: customer.id, payloadHash: hash, ...orderColumns(input), lines: { create: lines } },
+          data: { companyId, source: SOURCE, externalRef, customerId: customer.id, payloadHash: hash, branchId, deliveryDate: new Date(deliveryDate), ...orderColumns(input), lines: { create: lines } },
           include,
         });
       } else {
         await tx.deliveryOrderLine.deleteMany({ where: { orderId: existing.id } });
         order = await tx.deliveryOrder.update({
           where: { id: existing.id },
-          data: { customerId: customer.id, payloadHash: hash, version: { increment: 1 }, ...orderColumns(input), lines: { create: lines } },
+          data: { customerId: customer.id, payloadHash: hash, branchId, deliveryDate: new Date(deliveryDate), version: { increment: 1 }, ...orderColumns(input), lines: { create: lines } },
           include,
         });
       }

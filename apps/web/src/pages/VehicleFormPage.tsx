@@ -57,6 +57,9 @@ export function VehicleFormPage() {
       fuelType: str('fuelType'),
       capacityKg: num('capacityKg'),
       capacityM3: num('capacityM3'),
+      capacityCases: num('capacityCases'),
+      capacityPallets: num('capacityPallets'),
+      maxStops: num('maxStops'),
       odometerKm: num('odometerKm') ?? 0,
       branchId: str('branchId'),
       gpsDeviceId: str('gpsDeviceId'),
@@ -119,15 +122,65 @@ export function VehicleFormPage() {
         </label>
         <label>
           Capacity (kg)
-          <input name="capacityKg" type="number" min={0} step="any" defaultValue={v?.capacityKg ?? ''} />
+          <input
+            name="capacityKg"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v?.capacityKg ?? ''}
+          />
         </label>
         <label>
           Capacity (m³)
-          <input name="capacityM3" type="number" min={0} step="any" defaultValue={v?.capacityM3 ?? ''} />
+          <input
+            name="capacityM3"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v?.capacityM3 ?? ''}
+          />
+        </label>
+        <label>
+          Capacity (cases)
+          <input
+            name="capacityCases"
+            type="number"
+            min={0}
+            step={1}
+            defaultValue={v?.capacityCases ?? ''}
+          />
+        </label>
+        <label>
+          Capacity (pallets)
+          <input
+            name="capacityPallets"
+            type="number"
+            min={0}
+            step={1}
+            defaultValue={v?.capacityPallets ?? ''}
+          />
+        </label>
+        <label>
+          Max delivery stops
+          <input
+            name="maxStops"
+            type="number"
+            min={1}
+            max={500}
+            step={1}
+            defaultValue={v?.maxStops ?? ''}
+            placeholder="company default"
+          />
         </label>
         <label>
           Odometer (km)
-          <input name="odometerKm" type="number" min={0} step="any" defaultValue={v ? Number(v.odometerKm) : ''} />
+          <input
+            name="odometerKm"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={v ? Number(v.odometerKm) : ''}
+          />
         </label>
         <label>
           Acquired on
@@ -150,11 +203,24 @@ export function VehicleFormPage() {
         </label>
         <label>
           Speed limit override (km/h)
-          <input name="speedLimitKmh" type="number" min={10} max={200} placeholder="Company default" defaultValue={v?.speedLimitKmh ?? ''} />
+          <input
+            name="speedLimitKmh"
+            type="number"
+            min={10}
+            max={200}
+            placeholder="Company default"
+            defaultValue={v?.speedLimitKmh ?? ''}
+          />
         </label>
         <label>
           Fuel tank capacity (L)
-          <input name="tankCapacityL" type="number" min={1} step="any" defaultValue={v?.tankCapacityL ?? ''} />
+          <input
+            name="tankCapacityL"
+            type="number"
+            min={1}
+            step="any"
+            defaultValue={v?.tankCapacityL ?? ''}
+          />
         </label>
         <label className="span-2">
           Notes

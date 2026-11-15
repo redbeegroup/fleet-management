@@ -27,6 +27,7 @@ import { TrainingModule } from './modules/training/training.module';
 import { IncentivesModule } from './modules/incentives/incentives.module';
 import { IntegrationsModule, WebhooksModule } from './modules/integrations/integrations.module';
 import { ApprovalsApiModule, ApprovalsModule } from './modules/approvals/approvals.module';
+import { LogisticsModule } from './modules/logistics/logistics.module';
 import { IamModule } from './modules/iam/iam.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
@@ -66,6 +67,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     IncentivesModule,
     IntegrationsModule,
     ApprovalsApiModule,
+    LogisticsModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [

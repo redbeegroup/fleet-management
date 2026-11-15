@@ -2,8 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api, Trip } from '../api';
 import { Badge, Button, Card, Chips, Field, s, when } from '../ui';
+import { StopsScreen } from './StopsScreen';
 
-const tone = { ASSIGNED: 'info', ONGOING: 'warn', COMPLETED: 'ok', CANCELLED: 'danger', PLANNED: 'muted' } as const;
+const tone = {
+  ASSIGNED: 'info',
+  ONGOING: 'warn',
+  COMPLETED: 'ok',
+  CANCELLED: 'danger',
+  PLANNED: 'muted',
+} as const;
 
 export function TripsScreen() {
   const [scope, setScope] = useState<'active' | 'recent'>('active');
@@ -12,6 +19,7 @@ export function TripsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [odo, setOdo] = useState<Record<string, string>>({});
+  const [stopsOf, setStopsOf] = useState<Trip | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,18 +41,29 @@ export function TripsScreen() {
     setActing(t.id);
     try {
       const km = odo[t.id] ? Number(odo[t.id]) : undefined;
-      await api(`/me/trips/${t.id}/${action}`, { method: 'POST', body: JSON.stringify(km !== undefined ? { odometerKm: km } : {}) });
+      await api(`/me/trips/${t.id}/${action}`, {
+        method: 'POST',
+        body: JSON.stringify(km !== undefined ? { odometerKm: km } : {}),
+      });
       setOdo((o) => ({ ...o, [t.id]: '' }));
       await load();
     } catch (e) {
-      Alert.alert(action === 'start' ? 'Cannot start trip' : 'Cannot complete trip', (e as Error).message);
+      Alert.alert(
+        action === 'start' ? 'Cannot start trip' : 'Cannot complete trip',
+        (e as Error).message,
+      );
     } finally {
       setActing(null);
     }
   }
 
+  if (stopsOf) return <StopsScreen trip={stopsOf} onBack={() => (setStopsOf(null), void load())} />;
+
   return (
-    <ScrollView contentContainerStyle={s.screen} refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
+    <ScrollView
+      contentContainerStyle={s.screen}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+    >
       <Chips
         value={scope}
         onChange={setScope}
@@ -54,7 +73,11 @@ export function TripsScreen() {
         ]}
       />
       {error && <Text style={s.error}>{error}</Text>}
-      {!loading && trips.length === 0 && <Text style={s.muted}>{scope === 'active' ? 'No trips assigned to you right now.' : 'No finished trips yet.'}</Text>}
+      {!loading && trips.length === 0 && (
+        <Text style={s.muted}>
+          {scope === 'active' ? 'No trips assigned to you right now.' : 'No finished trips yet.'}
+        </Text>
+      )}
       {trips.map((t) => (
         <Card key={t.id}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
@@ -69,10 +92,14 @@ export function TripsScreen() {
           </Text>
           {t.vehicle && (
             <Text>
-              Vehicle: <Text style={{ fontWeight: '700' }}>{t.vehicle.plateNumber}</Text> {t.vehicle.make} {t.vehicle.model}
+              Vehicle: <Text style={{ fontWeight: '700' }}>{t.vehicle.plateNumber}</Text>{' '}
+              {t.vehicle.make} {t.vehicle.model}
             </Text>
           )}
           {t.cargoDescription && <Text style={s.muted}>Cargo: {t.cargoDescription}</Text>}
+          {t.kind === 'DELIVERY' && (
+            <Button title="Delivery stops" kind="secondary" onPress={() => setStopsOf(t)} />
+          )}
           {t.actualStart && <Text style={s.muted}>Started {when(t.actualStart)}</Text>}
           {t.actualEnd && (
             <Text style={s.muted}>
@@ -87,7 +114,11 @@ export function TripsScreen() {
                 keyboardType="numeric"
                 value={odo[t.id] ?? ''}
                 onChangeText={(v) => setOdo((o) => ({ ...o, [t.id]: v.replace(/[^\d.]/g, '') }))}
-                placeholder={t.status === 'ASSIGNED' ? 'Uses vehicle odometer if empty' : 'Uses GPS distance if empty'}
+                placeholder={
+                  t.status === 'ASSIGNED'
+                    ? 'Uses vehicle odometer if empty'
+                    : 'Uses GPS distance if empty'
+                }
               />
               <Button
                 title={t.status === 'ASSIGNED' ? 'Start trip' : 'Complete trip'}

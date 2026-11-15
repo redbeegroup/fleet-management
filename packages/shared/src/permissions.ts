@@ -43,6 +43,9 @@ export const Permission = {
   VEHICLE_REQUEST_READ: 'vehicle-request:read',
   /** Ask for a vehicle (booking request). */
   VEHICLE_REQUEST_CREATE: 'vehicle-request:create',
+  LOGISTICS_READ: 'logistics:read',
+  /** Plan loads, manage delivery stops, customers' coordinates. */
+  LOGISTICS_WRITE: 'logistics:write',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -85,6 +88,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.INCENTIVE_WRITE,
     Permission.APPROVAL_DECIDE,
     Permission.VEHICLE_REQUEST_CREATE,
+    Permission.LOGISTICS_WRITE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,
@@ -103,6 +107,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ORDER_READ,
     Permission.VEHICLE_REQUEST_READ,
     Permission.VEHICLE_REQUEST_CREATE,
+    Permission.LOGISTICS_READ,
+    Permission.LOGISTICS_WRITE,
   ],
   DRIVER: [Permission.TRIP_READ, Permission.FILE_UPLOAD, Permission.REPAIR_REQUEST, Permission.INCIDENT_REPORT, Permission.INSPECTION_PERFORM],
   EXECUTIVE: [...READ_ONLY, Permission.VEHICLE_REQUEST_CREATE],

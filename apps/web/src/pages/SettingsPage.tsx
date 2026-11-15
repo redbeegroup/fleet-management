@@ -1,6 +1,7 @@
 import { Permission } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
+import { DepotSettings } from '../components/DepotSettings';
 import { licenceShort } from '../components/LicenceFields';
 import { api, ApiError, session } from '../lib/api';
 import { humanize } from '../lib/format';
@@ -312,6 +313,7 @@ export function SettingsPage() {
           </tbody>
         </table>
       </section>
+      <DepotSettings settings={data} />
     </>
   );
 }

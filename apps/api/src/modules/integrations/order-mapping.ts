@@ -37,6 +37,8 @@ export function orderColumns(o: UpsertOrderInput) {
     notes: o.notes ?? null,
     totalWeightKg: sum(o.lines.map((l) => l.weightKg)),
     totalVolumeM3: sum(o.lines.map((l) => l.volumeM3)),
+    totalCases: sum(o.lines.map((l) => l.cases)),
+    totalPallets: sum(o.lines.map((l) => l.pallets)),
   };
 }
 
@@ -49,6 +51,8 @@ export function lineRows(o: UpsertOrderInput) {
     uom: l.uom,
     weightKg: l.weightKg ?? null,
     volumeM3: l.volumeM3 ?? null,
+    cases: l.cases ?? null,
+    pallets: l.pallets ?? null,
   }));
 }
 

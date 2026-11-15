@@ -43,6 +43,8 @@ An order is identified by **your** order number (`externalRef`: letters, digits 
     "latitude": 16.8231,
     "longitude": 96.1302
   },
+  "depotCode": "YGN",
+  "deliveryDate": "2026-11-16",
   "orderDate": "2026-11-15T09:00:00+06:30",
   "priority": "NORMAL",
   "deliveryWindow": { "start": "2026-11-16T09:00:00+06:30", "end": "2026-11-16T12:00:00+06:30" },
@@ -52,7 +54,7 @@ An order is identified by **your** order number (`externalRef`: letters, digits 
   "codAmount": 125000,
   "notes": "Back entrance",
   "lines": [
-    { "sku": "WATER-1L", "description": "Water 1 L x12", "quantity": 20, "uom": "CTN", "weightKg": 240, "volumeM3": 0.4 },
+    { "sku": "WATER-1L", "description": "Water 1 L x12", "quantity": 20, "uom": "CTN", "weightKg": 240, "volumeM3": 0.4, "cases": 20, "pallets": 0.35 },
     { "sku": "RICE-5KG", "quantity": 10, "uom": "BAG", "weightKg": 50 }
   ]
 }
@@ -60,7 +62,9 @@ An order is identified by **your** order number (`externalRef`: letters, digits 
 
 **Fields:**
 - `priority`: `LOW`, `NORMAL`, `HIGH` or `URGENT`.
-- `weightKg` and `volumeM3` are the **line totals**; the order totals are their sums.
+- `weightKg`, `volumeM3`, `cases` and `pallets` are the **line totals**; the order totals are their sums. They are checked against each vehicle's capacity when loads are planned, so send them whenever you can.
+- `depotCode` is the code of the FMS branch (depot) that ships the order. When it is missing, the company's default depot is used. An unknown code is a `400`.
+- `deliveryDate` (`YYYY-MM-DD`, company-local) is the day the order is planned for. Default: the date of `deliveryWindow.start`, else the day the order was received.
 - `address`, `latitude` and `longitude` override the customer's address for this order. Latitude and longitude go together.
 - The customer is created or updated by `customer.code`.
 
@@ -95,9 +99,18 @@ An order is identified by **your** order number (`externalRef`: letters, digits 
 
 ### Order status
 
-`RECEIVED → PLANNED → DISPATCHED → DELIVERED / PARTIAL / FAILED / RETURNED`, or `CANCELLED`.
+`RECEIVED → PLANNED → DISPATCHED → DELIVERED / PARTIAL / FAILED`, or `CANCELLED`.
 
-Planning, dispatch and proof of delivery arrive in the next releases; the statuses and webhooks are already part of this contract. `version` increases with every change.
+| Status | Meaning |
+|---|---|
+| `PLANNED` | on a delivery load |
+| `DISPATCHED` | the truck left the depot |
+| `DELIVERED` | everything was delivered |
+| `PARTIAL` | some quantity was delivered; see `lines[].deliveredQty` |
+| `FAILED` | nothing delivered, with `failureReason`; the order goes back into planning |
+| `RETURNED` | reserved for the returns flow |
+
+`version` increases with every change. Once an order is `PLANNED`, `PUT` and `cancel` return `409`.
 
 ### Idempotency-Key
 
@@ -134,7 +147,9 @@ A company admin adds an endpoint in **Integrations → Webhooks** (HTTPS only) a
 
 | Event | `data` |
 |---|---|
-| `order.received`, `order.updated`, `order.cancelled` (later also planned, dispatched and delivered statuses) | the order, as returned by `GET /orders/{externalRef}` |
+| `order.received`, `order.updated`, `order.cancelled` | the order, as returned by `GET /orders/{externalRef}` |
+| `order.planned`, `order.dispatched` | `externalRef`, `fmsId`, `status`, `version`, `customerCode`, `tripId` |
+| `order.delivered`, `order.partially_delivered`, `order.failed` | the above plus `deliveredAt`, `reason` and `lines[]` with `quantity` and `deliveredQty` |
 | `trip.assigned`, `trip.started`, `trip.completed`, `trip.cancelled` | trip no., status, times, odometer and GPS distance, vehicle plate, driver |
 | `vehicle.overspeed`, `vehicle.geofence_enter`, `vehicle.geofence_exit`, `vehicle.gps_offline` | vehicle, driver id, time, position, speed, geofence |
 | `inspection.failed` | inspection no., vehicle, driver, failed items |

@@ -22,7 +22,9 @@ const sections: {
       { to: '/dispatch', label: 'Dispatch board', perm: Permission.TRIP_WRITE },
       { to: '/trips', label: 'Trips', perm: Permission.TRIP_WRITE },
       { to: '/attendance', label: 'Attendance', perm: Permission.DRIVER_READ },
+      { to: '/planning', label: 'Delivery planning', perm: Permission.LOGISTICS_READ },
       { to: '/orders', label: 'Delivery orders', perm: Permission.ORDER_READ },
+      { to: '/customers', label: 'Customers', perm: Permission.LOGISTICS_READ },
       {
         to: '/vehicle-requests',
         label: 'Booking requests',

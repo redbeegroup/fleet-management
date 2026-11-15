@@ -4,6 +4,10 @@ export interface Branch {
   id: string;
   code: string;
   name: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  active?: boolean;
 }
 
 export interface Vehicle {
@@ -11,6 +15,9 @@ export interface Vehicle {
   branchId?: string | null;
   departmentId?: string | null;
   capacityM3?: string | null;
+  capacityCases?: number | null;
+  capacityPallets?: number | null;
+  maxStops?: number | null;
   notes?: string | null;
   acquiredAt?: string | null;
   plateNumber: string;
@@ -164,6 +171,7 @@ export interface CompanySettings {
   inspections: { requirePreTrip: boolean; preTripValidHours: number };
   incentives: { safetyBonusEnabled: boolean; safetyBonusMinScore: number; safetyBonusAmount: number; trainingAlertDays: number };
   approvals: { workOrderAbove: number | null; expenseAbove: number | null; fuelAbove: number | null; claimAbove: number | null; secondApproverAbove: number | null };
+  logistics: { defaultBranchId: string | null; defaultMaxStops: number | null; failureReasons: string[]; departureTime: string; serviceMinutesPerStop: number; avgSpeedKmh: number };
 }
 
 export interface Trip {
@@ -619,6 +627,9 @@ export interface ApiOrder {
   externalRef: string;
   fmsId: string;
   status: string;
+  deliveryDate: string | null;
+  trip: { tripNo: string; status: string; plateNumber: string | null } | null;
+  failureReason: string | null;
   version: number;
   priority: string;
   deliveryWindow: { start: string; end: string } | null;
@@ -629,4 +640,122 @@ export interface ApiOrder {
   lines: { lineNo: number; sku: string; quantity: number; uom: string }[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type Limit = 'kg' | 'm3' | 'cases' | 'pallets' | 'stops';
+export interface LoadTotals {
+  kg: number;
+  m3: number;
+  cases: number;
+  pallets: number;
+  stops: number;
+  orders: number;
+  missingWeight: number;
+  missingVolume: number;
+}
+export interface LoadCheck {
+  ok: boolean;
+  violations: { limit: Limit; used: number; capacity: number }[];
+  warnings: string[];
+}
+export interface VehicleCap {
+  id: string;
+  plateNumber: string;
+  capacityKg: number | null;
+  capacityM3: number | null;
+  capacityCases: number | null;
+  capacityPallets: number | null;
+  maxStops: number | null;
+}
+export interface PlanOrder {
+  id: string;
+  externalRef: string;
+  status: string;
+  priority: string;
+  deliveryDate: string | null;
+  window: { start: string; end: string } | null;
+  customer: { id: string; code: string; name: string; township: string | null; city: string | null; latitude: number | null; longitude: number | null };
+  address: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  weightKg: number | null;
+  volumeM3: number | null;
+  cases: number | null;
+  pallets: number | null;
+  codAmount: number | null;
+  notes: string | null;
+  failureReason: string | null;
+  item: { customerId: string; weightKg: number | null; volumeM3: number | null; cases: number | null; pallets: number | null };
+}
+export interface PlanningData {
+  date: string;
+  depot: Branch;
+  settings: { defaultMaxStops: number | null; departureTime: string };
+  orders: PlanOrder[];
+  totals: LoadTotals;
+  vehicles: (VehicleCap & { vehicleClass: string; status: string; maxStopsEffective: number | null; loads: { tripId: string; tripNo: string; status: string }[] })[];
+  drivers: { id: string; fullName: string; employeeNo: string }[];
+  loads: { tripId: string; tripNo: string; status: string; vehicleId: string | null; plateNumber: string | null; driver: string | null; stops: number }[];
+}
+export interface AutofillProposal {
+  loads: { vehicleId: string; plateNumber: string; orderIds: string[]; totals: LoadTotals; check: LoadCheck }[];
+  unplaced: { orderId: string; externalRef: string; reason: string }[];
+}
+export interface LoadDetail {
+  tripId: string;
+  tripNo: string;
+  status: string;
+  plannedDate: string | null;
+  plannedStart: string;
+  plannedEnd: string;
+  actualStart: string | null;
+  actualEnd: string | null;
+  depot: Branch;
+  vehicle: (VehicleCap & { vehicleClass: string }) | null;
+  driver: { id: string; fullName: string; employeeNo: string; phone: string | null } | null;
+  totals: LoadTotals;
+  check: LoadCheck | null;
+  cod: number;
+  routeKm: number;
+  failureReasons: string[];
+  stops: {
+    id: string;
+    seq: number;
+    status: string;
+    name: string;
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    contactName: string | null;
+    contactPhone: string | null;
+    arrivedAt: string | null;
+    completedAt: string | null;
+    failureReason: string | null;
+    notes: string | null;
+    orders: (Omit<PlanOrder, 'item'> & { lines: { lineNo: number; sku: string; description: string | null; quantity: number; uom: string; cases: number | null; pallets: number | null; weightKg: number | null; deliveredQty: number | null }[] })[];
+  }[];
+}
+export interface LoadSummary {
+  tripId: string;
+  tripNo: string;
+  status: string;
+  plannedStart: string;
+  vehicle: { id: string; plateNumber: string } | null;
+  driver: { id: string; fullName: string } | null;
+  totals: LoadTotals;
+  check: LoadCheck | null;
+  stops: { total: number; done: number };
+  cod: number;
+}
+export interface CustomerRow {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  township: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  _count: { orders: number };
 }

@@ -66,21 +66,23 @@ export function OrdersPage() {
               <th className="num">Lines</th>
               <th className="num">Weight (kg)</th>
               <th className="num">COD</th>
+              <th>Delivery</th>
               <th>Status</th>
+              <th>Load</th>
               <th>Updated</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={9} className="muted">
+                <td colSpan={11} className="muted">
                   Loading…
                 </td>
               </tr>
             )}
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={9} className="muted">
+                <td colSpan={11} className="muted">
                   No orders yet. Your DMS sends them with an API key (Settings → Integrations).
                 </td>
               </tr>
@@ -108,11 +110,14 @@ export function OrdersPage() {
                 <td className="num">{o.lines.length}</td>
                 <td className="num">{o.totalWeightKg != null ? money(o.totalWeightKg) : '—'}</td>
                 <td className="num">{o.codAmount != null ? money(o.codAmount) : '—'}</td>
+                <td>{o.deliveryDate ?? '—'}</td>
                 <td>
                   <span className={`badge badge-${STATUS_TONE[o.status] ?? 'muted'}`}>
                     {humanize(o.status)}
                   </span>
+                  {o.failureReason && <div className="muted">{o.failureReason}</div>}
                 </td>
+                <td>{o.trip ? `${o.trip.tripNo} · ${o.trip.plateNumber ?? ''}` : '—'}</td>
                 <td>{formatDateTime(o.updatedAt)}</td>
               </tr>
             ))}

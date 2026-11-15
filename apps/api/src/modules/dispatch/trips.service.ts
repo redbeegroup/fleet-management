@@ -108,17 +108,33 @@ export class TripsService {
   }
 
   create(user: AuthUser, input: CreateTripInput) {
-    return this.db.tenant(user.companyId, async (tx) => {
-      const tripNo = await this.nextTripNo(tx, user.companyId, input.plannedStart);
-      const { vehicleId, driverId, ...rest } = input;
-      const trip = await tx.trip.create({ data: { ...rest, tripNo, companyId: user.companyId, createdBy: user.userId } });
-      await this.event(tx, user, trip.id, null, 'PLANNED', 'Created');
-      if (vehicleId && driverId) return this.doAssign(tx, user, trip.id, { vehicleId, driverId });
-      if (vehicleId || driverId) {
-        throw new BadRequestException('Assign both vehicleId and driverId, or neither');
-      }
-      return tx.trip.findUniqueOrThrow({ where: { id: trip.id }, include: tripInclude });
-    }).then((t) => this.afterAssign(t));
+    return this.db.tenant(user.companyId, (tx) => this.createIn(tx, user, input)).then((t) => this.afterAssign(t));
+  }
+
+  /** Create (and optionally assign) a trip inside the caller's transaction. Call `afterAssign` after commit. */
+  async createIn(tx: Tx, user: AuthUser, input: CreateTripInput, extra: { kind?: 'GENERAL' | 'DELIVERY'; plannedDate?: Date } = {}) {
+    const tripNo = await this.nextTripNo(tx, user.companyId, input.plannedStart);
+    const { vehicleId, driverId, ...rest } = input;
+    const trip = await tx.trip.create({ data: { ...rest, ...extra, tripNo, companyId: user.companyId, createdBy: user.userId } });
+    await this.event(tx, user, trip.id, null, 'PLANNED', 'Created');
+    if (vehicleId && driverId) return this.doAssign(tx, user, trip.id, { vehicleId, driverId });
+    if (vehicleId || driverId) {
+      throw new BadRequestException('Assign both vehicleId and driverId, or neither');
+    }
+    return tx.trip.findUniqueOrThrow({ where: { id: trip.id }, include: tripInclude });
+  }
+
+  /** (Re)assign inside the caller's transaction (used by delivery loads). */
+  async assignIn(tx: Tx, user: AuthUser, id: string, input: AssignTripInput) {
+    const trip = await this.lockTrip(tx, id);
+    this.assertTransition(trip.status, 'ASSIGNED', trip.status === 'ASSIGNED');
+    return this.doAssign(tx, user, id, input);
+  }
+
+  /** Delivery trips: queue an order status webhook for each order of the trip. */
+  private async orderHooks(tx: Tx, companyId: string, tripId: string, event: WebhookEvent, where: Prisma.DeliveryOrderWhereInput = {}) {
+    const orders = await tx.deliveryOrder.findMany({ where: { tripId, ...where }, select: { id: true, externalRef: true, status: true, version: true, customer: { select: { code: true } } } });
+    for (const o of orders) await this.webhooks.emit(tx, companyId, event, { externalRef: o.externalRef, fmsId: o.id, status: o.status, version: o.version, customerCode: o.customer.code, tripId });
   }
 
   update(user: AuthUser, id: string, input: UpdateTripInput) {
@@ -172,6 +188,7 @@ export class TripsService {
       }
       const at = input.at ?? new Date();
       await this.inspections.assertPreTrip(tx, vehicle.id, at);
+      if (trip.kind === 'DELIVERY' && !(await tx.tripStop.count({ where: { tripId: id } }))) throw new BadRequestException('This delivery trip has no stops');
       await this.event(tx, user, id, trip.status, 'ONGOING', 'Started');
       await this.setVehicleStatus(tx, user, vehicle.id, vehicle.status, 'OPERATING', `Trip ${trip.tripNo} started`);
       const started = await tx.trip.update({
@@ -179,6 +196,10 @@ export class TripsService {
         data: { status: 'ONGOING', actualStart: at, startOdometerKm: input.odometerKm ?? vehicle.odometerKm },
         include: tripInclude,
       });
+      if (trip.kind === 'DELIVERY') {
+        await tx.deliveryOrder.updateMany({ where: { tripId: id, status: 'PLANNED' }, data: { status: 'DISPATCHED', version: { increment: 1 } } });
+        await this.orderHooks(tx, user.companyId, id, WebhookEvent.ORDER_DISPATCHED, { status: 'DISPATCHED' });
+      }
       return this.hook(tx, user.companyId, WebhookEvent.TRIP_STARTED, started);
     });
   }
@@ -188,6 +209,10 @@ export class TripsService {
       const trip = await this.lockTrip(tx, id);
       if (driverId && trip.driverId !== driverId) throw new NotFoundException('Trip not found');
       this.assertTransition(trip.status, 'COMPLETED');
+      if (trip.kind === 'DELIVERY') {
+        const open = await tx.tripStop.count({ where: { tripId: id, status: { in: ['PENDING', 'ARRIVED'] } } });
+        if (open) throw new ConflictException(`${open} stop(s) are not resolved yet; mark them delivered or failed first`);
+      }
       const at = input.at ?? new Date();
       if (trip.actualStart && at < trip.actualStart) throw new BadRequestException('End time is before the start time');
 
@@ -231,6 +256,13 @@ export class TripsService {
       const trip = await this.lockTrip(tx, id);
       this.assertTransition(trip.status, 'CANCELLED');
       await this.event(tx, user, id, trip.status, 'CANCELLED', input.reason);
+      if (trip.kind === 'DELIVERY') {
+        // Orders not yet delivered go back to the planning pool.
+        await tx.deliveryOrder.updateMany({
+          where: { tripId: id, status: { in: ['PLANNED', 'DISPATCHED'] } },
+          data: { status: 'RECEIVED', tripId: null, stopId: null, version: { increment: 1 } },
+        });
+      }
       const cancelled = await tx.trip.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: input.reason }, include: tripInclude });
       return this.hook(tx, user.companyId, WebhookEvent.TRIP_CANCELLED, cancelled);
     });
@@ -324,7 +356,7 @@ export class TripsService {
     if (reasons.length) throw new ConflictException({ message: 'Cannot assign', reasons });
   }
 
-  private async afterAssign<T extends { status: TripStatus; driverId: string | null; tripNo: string; id: string; companyId: string; originName: string; destinationName: string; plannedStart: Date }>(
+  async afterAssign<T extends { status: TripStatus; driverId: string | null; tripNo: string; id: string; companyId: string; originName: string; destinationName: string; plannedStart: Date }>(
     trip: T,
   ): Promise<T> {
     if (trip.status !== 'ASSIGNED' || !trip.driverId) return trip;

@@ -1,7 +1,9 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Patch, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateBranchInput,
+  UpdateBranchInput,
+  updateBranchSchema,
   createBranchSchema,
   Permission,
   Role,
@@ -74,6 +76,7 @@ export class OrganizationController {
         inspections: { ...current.inspections, ...body.inspections },
         incentives: { ...current.incentives, ...body.incentives },
         approvals: { ...current.approvals, ...body.approvals },
+        logistics: { ...current.logistics, ...body.logistics },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;
@@ -92,6 +95,16 @@ export class OrganizationController {
     return this.db.tenant(user.companyId, (tx) =>
       tx.branch.create({ data: { ...body, companyId: user.companyId } }),
     );
+  }
+
+  /** Edit a branch, e.g. its depot address and coordinates used for delivery planning. */
+  @Patch('branches/:id')
+  @RequirePermissions(Permission.BRANCH_WRITE)
+  updateBranch(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(updateBranchSchema)) body: UpdateBranchInput) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      if (!(await tx.branch.findFirst({ where: { id }, select: { id: true } }))) throw new NotFoundException('Branch not found');
+      return tx.branch.update({ where: { id }, data: body });
+    });
   }
 
   @Get('departments')
