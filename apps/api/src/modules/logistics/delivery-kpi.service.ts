@@ -4,7 +4,8 @@ import { limitsOf, loadTotals } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
-import { dayBounds, localDate } from '../../common/time';
+import { localDate } from '../../common/time';
+import { CostsService } from '../costs/costs.service';
 import { avg, fillRate, minutesBetween, orderKpis, OrderOutcome, sequenceAdherence, tripCost } from './kpis';
 
 const n = (d: Prisma.Decimal | number | null | undefined) => (d == null ? null : Number(d));
@@ -17,7 +18,10 @@ const csvCell = (v: unknown) => {
 /** Delivery KPIs over delivery trips planned for local days [from, to]. */
 @Injectable()
 export class DeliveryKpiService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    private readonly costs: CostsService,
+  ) {}
 
   overview(user: AuthUser, q: { from: string; to: string; branchId?: string }) {
     return this.db.tenant(user.companyId, async (tx) => {
@@ -49,26 +53,13 @@ export class DeliveryKpiService {
         orderBy: { plannedStart: 'asc' },
       });
       const tripIds = trips.map((t) => t.id);
-      const vehicleIds = [...new Set(trips.map((t) => t.vehicleId).filter((x): x is string => !!x))];
-      const start = dayBounds(q.from, tz).start;
-      const end = dayBounds(q.to, tz).end;
-      const [expenses, fuel, km] = await Promise.all([
+      const [expenses, rates] = await Promise.all([
         tx.vehicleExpense.groupBy({ by: ['tripId'], where: { tripId: { in: tripIds }, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
-        tx.fuelRecord.groupBy({ by: ['vehicleId'], where: { vehicleId: { in: vehicleIds }, filledAt: { gte: start, lt: end }, approvalStatus: 'APPROVED' }, _sum: { totalCost: true } }),
-        tx.vehicleDailyStat.groupBy({ by: ['vehicleId'], where: { vehicleId: { in: vehicleIds }, day: { gte: new Date(q.from), lte: new Date(q.to) } }, _sum: { distanceKm: true } }),
+        // Full running cost per km per vehicle (fuel, maintenance, other expenses, documents, depreciation/lease, shared costs).
+        this.costs.costPerKm(tx, tz, q.from, q.to),
       ]);
-      // Fuel cost per km per vehicle over the period; fleet average as the fallback.
-      const fuelPerKm = new Map<string, number>();
-      let fuelSum = 0;
-      let kmSum = 0;
-      for (const f of fuel) {
-        const d = n(km.find((k) => k.vehicleId === f.vehicleId)?._sum.distanceKm) ?? 0;
-        const c = n(f._sum.totalCost) ?? 0;
-        fuelSum += c;
-        kmSum += d;
-        if (d > 0) fuelPerKm.set(f.vehicleId, c / d);
-      }
-      const fleetPerKm = kmSum > 0 ? fuelSum / kmSum : null;
+      const fuelPerKm = rates.perKm;
+      const fleetPerKm = rates.fleet;
 
       const allOrders: (OrderOutcome & { tripId: string })[] = [];
       const tripRows = trips.map((t) => {
@@ -161,7 +152,7 @@ export class DeliveryKpiService {
       return {
         range: { ...q, timezone: tz, currency: company.currency },
         method: {
-          cost: 'Trip-linked approved expenses + GPS km (or planned km) × the vehicle’s fuel cost per km in the period (fleet average if unknown)' + (settings.driverCostPerDay ? ' + driver cost per day' : ''),
+          cost: 'Trip-linked approved expenses + GPS km (or planned km) × the vehicle’s full cost per km in the period (fuel, maintenance, other expenses, documents, depreciation or lease, shared costs; fleet average if unknown)' + (settings.driverCostPerDay ? ' + driver cost per day' : ''),
           otif: 'Delivered in full and completed inside the delivery window (or on the delivery date when there is no window)',
         },
         totals: {

@@ -48,6 +48,9 @@ export const Permission = {
   LOGISTICS_WRITE: 'logistics:write',
   /** Confirm goods and cash returned to the depot after a delivery trip. */
   WAREHOUSE_CHECKIN: 'warehouse:checkin',
+  /** Monthly budgets (read: budget vs actual). */
+  BUDGET_READ: 'budget:read',
+  BUDGET_WRITE: 'budget:write',
   SETTINGS_WRITE: 'settings:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
@@ -92,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.VEHICLE_REQUEST_CREATE,
     Permission.LOGISTICS_WRITE,
     Permission.WAREHOUSE_CHECKIN,
+    Permission.BUDGET_WRITE,
   ],
   DISPATCHER: [
     Permission.VEHICLE_READ,

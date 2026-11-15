@@ -6,6 +6,8 @@ import { Tx } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { PositionFix } from './providers/telematics-provider';
+import { decodePolyline } from '../routing/polyline';
+import { ControlState, EMPTY_CONTROL, evaluateControl } from './rules/control';
 import { EMPTY_STATE, evaluate, evaluateOffline, EventClose, EventDraft, Fence, RuleState } from './rules/rules-engine';
 
 export interface VehicleRef {
@@ -28,7 +30,41 @@ const WEBHOOK_FOR: Partial<Record<string, WebhookEvent>> = {
   GEOFENCE_ENTER: WebhookEvent.VEHICLE_GEOFENCE_ENTER,
   GEOFENCE_EXIT: WebhookEvent.VEHICLE_GEOFENCE_EXIT,
   GPS_OFFLINE: WebhookEvent.VEHICLE_GPS_OFFLINE,
+  OFF_ROUTE: WebhookEvent.VEHICLE_OFF_ROUTE,
+  UNAUTHORISED_MOVEMENT: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
+  AFTER_HOURS: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
+  NO_DRIVER: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
+  RESTRICTED_AREA: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
 };
+
+/** Decoded planned routes, keyed by trip id + version (routes change only when a load is edited). */
+const routeCache = new Map<string, { lat: number; lng: number }[]>();
+function routeOf(trip: { id: string; updatedAt: Date; routeGeometry: string | null; routingSource: string | null }) {
+  if (!trip.routeGeometry || trip.routingSource !== 'osrm') return null; // straight-line plans are not a route to follow
+  const key = `${trip.id}:${trip.updatedAt.getTime()}`;
+  let r = routeCache.get(key);
+  if (!r) {
+    r = decodePolyline(trip.routeGeometry);
+    if (routeCache.size > 2000) routeCache.clear();
+    routeCache.set(key, r);
+  }
+  return r;
+}
+
+function toControl(row: Prisma.VehicleTelemetryStateGetPayload<object> | undefined): ControlState {
+  if (!row) return { ...EMPTY_CONTROL };
+  return {
+    lastLat: row.lastLat,
+    lastLng: row.lastLng,
+    offRouteSince: row.offRouteSince,
+    offRouteEventId: row.offRouteEventId,
+    offRouteMaxM: row.offRouteMaxM,
+    noTripKm: row.noTripKm,
+    noTripEventId: row.noTripEventId,
+    afterHoursEventId: row.afterHoursEventId,
+    noDriverEventId: row.noDriverEventId,
+  };
+}
 
 const ALERT_ROLES = [Role.SUPER_ADMIN, Role.COMPANY_ADMIN, Role.FLEET_MANAGER, Role.DISPATCHER];
 
@@ -63,11 +99,13 @@ export class TelemetryRulesService {
     if (!batches.length) return [];
     const companyIds = [...new Set(batches.map((b) => b.vehicle.companyId))];
     const [companies, fences, states] = await Promise.all([
-      tx.company.findMany({ where: { id: { in: companyIds } }, select: { id: true, settings: true } }),
+      tx.company.findMany({ where: { id: { in: companyIds } }, select: { id: true, settings: true, timezone: true } }),
       tx.geofence.findMany({ where: { companyId: { in: companyIds }, active: true } }),
       tx.vehicleTelemetryState.findMany({ where: { vehicleId: { in: batches.map((b) => b.vehicle.id) } } }),
     ]);
     const settingsBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).telematics]));
+    const controlBy = new Map(companies.map((c) => [c.id, { settings: parseCompanySettings(c.settings).control, timezone: c.timezone }]));
+    const restricted = new Map(fences.filter((f) => f.category === 'RESTRICTED').map((f) => [f.id, f.name]));
     const fencesBy = new Map<string, Fence[]>();
     for (const f of fences) {
       const list = fencesBy.get(f.companyId) ?? [];
@@ -75,7 +113,14 @@ export class TelemetryRulesService {
       fencesBy.set(f.companyId, list);
     }
     const stateBy = new Map(states.map((s) => [s.vehicleId, s]));
-    const driverBy = await this.currentDrivers(tx, batches.map((b) => b.vehicle.id));
+    const vehicleIds = batches.map((b) => b.vehicle.id);
+    const driverBy = await this.currentDrivers(tx, vehicleIds);
+    const [ongoing, duty] = await Promise.all([
+      tx.trip.findMany({ where: { vehicleId: { in: vehicleIds }, status: 'ONGOING' }, select: { id: true, tripNo: true, vehicleId: true, updatedAt: true, routeGeometry: true, routingSource: true } }),
+      tx.dutySession.findMany({ where: { driverId: { in: [...new Set(driverBy.values())] }, endedAt: null }, select: { driverId: true } }),
+    ]);
+    const tripBy = new Map(ongoing.map((t) => [t.vehicleId!, { id: t.id, tripNo: t.tripNo, route: routeOf(t) }]));
+    const onDuty = new Set(duty.map((d) => d.driverId));
 
     const events: PersistedEvent[] = [];
     const closes: EventClose[] = [];
@@ -87,9 +132,26 @@ export class TelemetryRulesService {
         geofences: fencesBy.get(vehicle.companyId) ?? [],
       };
       let state = toState(stateBy.get(vehicle.id));
+      let control = toControl(stateBy.get(vehicle.id));
+      const ctl = controlBy.get(vehicle.companyId)!;
+      const driverId = driverBy.get(vehicle.id) ?? null;
       for (const fix of [...fixes].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
+        const prevAt = state.lastFixAt;
         const r = evaluate(state, fix, ctx);
         state = r.state;
+        if (!prevAt || fix.recordedAt > prevAt) {
+          const c = evaluateControl(control, fix, {
+            settings: ctl.settings,
+            timezone: ctl.timezone,
+            trip: tripBy.get(vehicle.id) ?? null,
+            driverId,
+            driverOnDuty: !!driverId && onDuty.has(driverId),
+            enteredRestricted: r.opened.filter((e) => e.type === 'GEOFENCE_ENTER' && e.geofenceId && restricted.has(e.geofenceId)).map((e) => ({ id: e.geofenceId!, name: restricted.get(e.geofenceId!)! })),
+          });
+          control = c.state;
+          r.opened.push(...c.opened);
+          r.closed.push(...c.closed);
+        }
         events.push(
           ...r.opened.map((e) => ({
             ...e,
@@ -101,7 +163,7 @@ export class TelemetryRulesService {
         );
         closes.push(...r.closed);
       }
-      await this.saveState(tx, vehicle, state);
+      await this.saveState(tx, vehicle, state, control);
     }
     await this.persist(tx, events, closes);
     return events;
@@ -192,13 +254,27 @@ export class TelemetryRulesService {
           title: `${e.plateNumber} ${e.type === 'GEOFENCE_ENTER' ? 'entered' : 'left'} ${e.data?.geofence}`,
           body: `${e.plateNumber} ${e.type === 'GEOFENCE_ENTER' ? 'entered' : 'left'} geofence "${e.data?.geofence}" at ${time} UTC.`,
         };
+      case 'OFF_ROUTE':
+        return {
+          severity: 'warning',
+          title: `${e.plateNumber} off route${e.data?.tripNo ? ` on ${e.data.tripNo}` : ''}`,
+          body: `${e.plateNumber} has been more than ${e.data?.limitM} m from the planned route since ${time} UTC (${e.data?.distanceM} m away).`,
+        };
+      case 'UNAUTHORISED_MOVEMENT':
+        return { severity: 'critical', title: `${e.plateNumber} moving without a trip`, body: `${e.plateNumber} has driven ${e.data?.km} km without an ongoing trip (since ${time} UTC).` };
+      case 'AFTER_HOURS':
+        return { severity: 'warning', title: `${e.plateNumber} used outside working hours`, body: `${e.plateNumber} was moving at ${time} UTC, outside the company's working hours.` };
+      case 'NO_DRIVER':
+        return { severity: 'critical', title: `${e.plateNumber} moving without a driver on duty`, body: `${e.plateNumber} was moving at ${time} UTC: ${e.data?.reason}.` };
+      case 'RESTRICTED_AREA':
+        return { severity: 'critical', title: `${e.plateNumber} entered restricted area ${e.data?.geofence}`, body: `${e.plateNumber} entered the restricted area "${e.data?.geofence}" at ${time} UTC.` };
       default:
         return { severity: 'info', title: `${e.plateNumber} ${e.type}`, body: `${e.type} at ${time} UTC.` };
     }
   }
 
-  private async saveState(tx: Tx, vehicle: VehicleRef, s: RuleState) {
-    const data = { ...s, companyId: vehicle.companyId };
+  private async saveState(tx: Tx, vehicle: VehicleRef, s: RuleState, c: ControlState) {
+    const data = { ...s, ...c, companyId: vehicle.companyId };
     await tx.vehicleTelemetryState.upsert({ where: { vehicleId: vehicle.id }, create: { vehicleId: vehicle.id, ...data }, update: data });
   }
 

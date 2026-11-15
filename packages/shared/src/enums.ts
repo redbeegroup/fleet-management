@@ -89,5 +89,11 @@ export const TelemetryEventType = {
   HARSH_ACCEL: 'HARSH_ACCEL',
   HARSH_BRAKE: 'HARSH_BRAKE',
   HARSH_CORNER: 'HARSH_CORNER',
+  /** Control rules (S12). */
+  OFF_ROUTE: 'OFF_ROUTE',
+  UNAUTHORISED_MOVEMENT: 'UNAUTHORISED_MOVEMENT',
+  AFTER_HOURS: 'AFTER_HOURS',
+  NO_DRIVER: 'NO_DRIVER',
+  RESTRICTED_AREA: 'RESTRICTED_AREA',
 } as const;
 export type TelemetryEventType = (typeof TelemetryEventType)[keyof typeof TelemetryEventType];

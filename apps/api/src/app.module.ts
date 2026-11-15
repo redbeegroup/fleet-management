@@ -16,6 +16,7 @@ import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { MetricsInterceptor } from './common/observability/metrics';
 import { MetricsController } from './common/observability/metrics.controller';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { CostsModule } from './modules/costs/costs.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { FilesModule } from './modules/files/files.module';
@@ -68,6 +69,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     IntegrationsModule,
     ApprovalsApiModule,
     LogisticsModule,
+    CostsModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [
@@ -103,6 +105,7 @@ const redisConnection = () => {
     SafetyModule,
     TrainingModule,
     IncentivesModule,
+    CostsModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -117,7 +120,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

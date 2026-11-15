@@ -10,6 +10,7 @@ import { IncentivesService } from '../modules/incentives/incentives.service';
 import { WebhooksService } from '../modules/integrations/webhooks.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
+import { CostsService } from '../modules/costs/costs.service';
 
 export const MAINTENANCE_QUEUE = 'fms-maintenance';
 
@@ -28,6 +29,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly training: TrainingService,
     private readonly incentives: IncentivesService,
     private readonly webhooks: WebhooksService,
+    private readonly costs: CostsService,
   ) {
     super();
   }
@@ -43,6 +45,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('maintenance-due', { pattern: '0 0 2 * * *', tz: 'Asia/Yangon' }, { name: 'maintenance-due' });
     await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
+    await this.queue.upsertJobScheduler('budget-alerts', { pattern: '0 15 8 * * *', tz: 'Asia/Yangon' }, { name: 'budget-alerts' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
     await this.queue.upsertJobScheduler('webhook-dispatch', { every: 15_000 }, { name: 'webhook-dispatch' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
@@ -64,6 +67,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     switch (job.name) {
       case 'safety-alerts':
         return this.safety.lowScoreAlerts();
+      case 'budget-alerts':
+        return this.costs.budgetAlerts();
       case 'daily-stats':
         return this.analytics.rollup();
       case 'compliance-alerts': {

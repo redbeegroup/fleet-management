@@ -164,37 +164,44 @@ model AuditLog {
 }
 
 model Vehicle {
-  id              String        @id @default(uuid()) @db.Uuid
-  companyId       String        @map("company_id") @db.Uuid
-  branchId        String?       @map("branch_id") @db.Uuid
-  departmentId    String?       @map("department_id") @db.Uuid
-  plateNumber     String        @map("plate_number")
-  vin             String?
-  make            String
-  model           String
-  year            Int?
-  vehicleClass    VehicleClass  @map("vehicle_class")
-  ownership       OwnershipType @default(OWNED)
-  fuelType        String?       @map("fuel_type")
-  capacityKg      Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
-  capacityM3      Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
-  capacityCases   Int?          @map("capacity_cases")
-  capacityPallets Int?          @map("capacity_pallets")
+  id               String        @id @default(uuid()) @db.Uuid
+  companyId        String        @map("company_id") @db.Uuid
+  branchId         String?       @map("branch_id") @db.Uuid
+  departmentId     String?       @map("department_id") @db.Uuid
+  plateNumber      String        @map("plate_number")
+  vin              String?
+  make             String
+  model            String
+  year             Int?
+  vehicleClass     VehicleClass  @map("vehicle_class")
+  ownership        OwnershipType @default(OWNED)
+  fuelType         String?       @map("fuel_type")
+  capacityKg       Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
+  capacityM3       Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
+  capacityCases    Int?          @map("capacity_cases")
+  capacityPallets  Int?          @map("capacity_pallets")
   /// Max delivery stops per trip (falls back to settings.logistics.defaultMaxStops).
-  maxStops        Int?          @map("max_stops")
-  odometerKm      Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
-  status          VehicleStatus @default(AVAILABLE)
-  gpsDeviceId     String?       @map("gps_device_id")
+  maxStops         Int?          @map("max_stops")
+  odometerKm       Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
+  status           VehicleStatus @default(AVAILABLE)
+  gpsDeviceId      String?       @map("gps_device_id")
   /// Overrides the company speed limit for overspeed alerts.
-  speedLimitKmh   Int?          @map("speed_limit_kmh")
+  speedLimitKmh    Int?          @map("speed_limit_kmh")
   /// Fuel tank capacity (litres), used to flag implausible refills.
-  tankCapacityL   Decimal?      @map("tank_capacity_l") @db.Decimal(8, 1)
-  acquiredAt      DateTime?     @map("acquired_at") @db.Date
-  disposedAt      DateTime?     @map("disposed_at") @db.Date
-  notes           String?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  deletedAt       DateTime?     @map("deleted_at")
+  tankCapacityL    Decimal?      @map("tank_capacity_l") @db.Decimal(8, 1)
+  acquiredAt       DateTime?     @map("acquired_at") @db.Date
+  disposedAt       DateTime?     @map("disposed_at") @db.Date
+  /// Cost of ownership (S12): straight-line depreciation for owned vehicles, monthly lease/rent otherwise.
+  purchasePrice    Decimal?      @map("purchase_price") @db.Decimal(14, 2)
+  residualValue    Decimal?      @map("residual_value") @db.Decimal(14, 2)
+  usefulLifeMonths Int?          @map("useful_life_months")
+  monthlyLeaseCost Decimal?      @map("monthly_lease_cost") @db.Decimal(14, 2)
+  /// Depreciation / lease start (defaults to acquiredAt).
+  inServiceAt      DateTime?     @map("in_service_at") @db.Date
+  notes            String?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  deletedAt        DateTime?     @map("deleted_at")
 
   company         Company              @relation(fields: [companyId], references: [id])
   branch          Branch?              @relation(fields: [branchId], references: [id])
@@ -397,6 +404,11 @@ enum TelemetryEventType {
   HARSH_ACCEL
   HARSH_BRAKE
   HARSH_CORNER
+  OFF_ROUTE
+  UNAUTHORISED_MOVEMENT
+  AFTER_HOURS
+  NO_DRIVER
+  RESTRICTED_AREA
 }
 
 /// Virtual boundary: branch, warehouse, customer site, restricted area…
@@ -459,6 +471,16 @@ model VehicleTelemetryState {
   idleSince         DateTime? @map("idle_since")
   idleEventId       String?   @map("idle_event_id") @db.Uuid
   offlineEventId    String?   @map("offline_event_id") @db.Uuid
+  /// Control rules (S12): open episodes and their start.
+  lastLat           Float?    @map("last_lat")
+  lastLng           Float?    @map("last_lng")
+  offRouteSince     DateTime? @map("off_route_since")
+  offRouteEventId   String?   @map("off_route_event_id") @db.Uuid
+  offRouteMaxM      Float?    @map("off_route_max_m")
+  noTripKm          Float?    @map("no_trip_km")
+  noTripEventId     String?   @map("no_trip_event_id") @db.Uuid
+  afterHoursEventId String?   @map("after_hours_event_id") @db.Uuid
+  noDriverEventId   String?   @map("no_driver_event_id") @db.Uuid
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([companyId])
@@ -1400,4 +1422,45 @@ model DeliveryReturn {
   @@index([tripId])
   @@index([companyId, createdAt])
   @@map("delivery_returns")
+}
+
+/// Monthly budget per scope (company, a branch or a department) and cost category.
+model Budget {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  /// YYYY-MM
+  period       String
+  /// 'company' | 'branch:<id>' | 'department:<id>'
+  scopeKey     String   @map("scope_key")
+  branchId     String?  @map("branch_id") @db.Uuid
+  departmentId String?  @map("department_id") @db.Uuid
+  category     String
+  amount       Decimal  @db.Decimal(14, 2)
+  /// Highest alert level already sent (90 / 100).
+  alertedLevel Int?     @map("alerted_level")
+  updatedBy    String?  @map("updated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, period, scopeKey, category])
+  @@index([companyId, period])
+  @@map("budgets")
+}
+
+/// Costs not tied to one vehicle (overheads, fleet policies), allocated to vehicles by km in the month.
+model SharedCost {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  /// YYYY-MM
+  period       String
+  branchId     String?  @map("branch_id") @db.Uuid
+  departmentId String?  @map("department_id") @db.Uuid
+  category     String
+  description  String
+  amount       Decimal  @db.Decimal(14, 2)
+  createdBy    String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, period])
+  @@map("shared_costs")
 }

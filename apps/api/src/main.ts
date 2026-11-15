@@ -1,3 +1,4 @@
+import { CostsService } from './modules/costs/costs.service';
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -79,6 +80,7 @@ async function runJob(name: string | undefined) {
     'gps-offline': () => app.get(TelematicsService).checkOffline(),
     'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),
     'safety-alerts': () => app.get(SafetyService).lowScoreAlerts(),
+    'budget-alerts': () => app.get(CostsService).budgetAlerts(),
     'daily-stats': () => app.get(AnalyticsService).rollup(process.env.JOB_FROM, process.env.JOB_TO),
   };
   const job = name ? jobs[name] : undefined;

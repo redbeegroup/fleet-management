@@ -31,6 +31,12 @@ export const createVehicleSchema = z.object({
   speedLimitKmh: z.number().int().min(10).max(200).optional().nullable(),
   tankCapacityL: z.number().positive().max(2000).optional().nullable(),
   acquiredAt: optionalDate,
+  /** Cost of ownership: owned → straight-line depreciation; leased/rented → monthly cost. */
+  purchasePrice: z.number().nonnegative().max(1e13).optional().nullable(),
+  residualValue: z.number().nonnegative().max(1e13).optional().nullable(),
+  usefulLifeMonths: z.number().int().min(1).max(600).optional().nullable(),
+  monthlyLeaseCost: z.number().nonnegative().max(1e12).optional().nullable(),
+  inServiceAt: optionalDate,
   notes: z.string().max(2000).optional().nullable(),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
@@ -198,6 +204,7 @@ export const companySettingsSchema = z.object({
   approvals: z.lazy(() => approvalSettingsSchema).default({}),
   logistics: z.lazy(() => logisticsSettingsSchema).default({}),
   pod: z.lazy(() => podSettingsSchema).default({}),
+  control: z.lazy(() => controlSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -211,6 +218,7 @@ export const updateCompanySettingsSchema = z.object({
   approvals: z.lazy(() => approvalSettingsSchema.partial()).optional(),
   logistics: z.lazy(() => logisticsSettingsSchema.partial()).optional(),
   pod: z.lazy(() => podSettingsSchema.partial()).optional(),
+  control: z.lazy(() => controlSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -705,6 +713,8 @@ export const WebhookEvent = {
   ORDER_FAILED: 'order.failed',
   RETURN_COLLECTED: 'return.collected',
   LOAD_CHECKED_IN: 'load.checked_in',
+  VEHICLE_OFF_ROUTE: 'vehicle.off_route',
+  VEHICLE_UNAUTHORISED_USE: 'vehicle.unauthorised_use',
 } as const;
 export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
 
@@ -918,3 +928,92 @@ export const deliveryKpiQuerySchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   branchId: z.string().uuid().optional(),
 });
+
+// ---------------------------------------------------------------------------
+// Costs & control (Sprint 12)
+// ---------------------------------------------------------------------------
+
+/** Cost categories of the ledger (budgets and TCO use the same keys). */
+export const CostCategory = {
+  FUEL: 'FUEL',
+  MAINTENANCE: 'MAINTENANCE',
+  ...ExpenseCategory,
+  DOCUMENTS: 'DOCUMENTS',
+  DEPRECIATION: 'DEPRECIATION',
+  SHARED: 'SHARED',
+} as const;
+export type CostCategory = (typeof CostCategory)[keyof typeof CostCategory];
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
+const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
+
+/** Working window for a weekday; null = closed all day. end < start means the shift runs past midnight. */
+const dayHours = z.object({ start: hhmm, end: hhmm }).nullable();
+
+export const controlSettingsSchema = z.object({
+  offRouteEnabled: z.boolean().default(true),
+  /** Distance from the planned route that counts as off-route. */
+  offRouteMeters: z.number().int().min(100).max(20_000).default(500),
+  /** Minutes off-route before an alert. */
+  offRouteMinutes: z.number().int().min(1).max(120).default(5),
+  movementWithoutTrip: z.boolean().default(true),
+  /** km driven without an ongoing trip before an alert. */
+  movementWithoutTripKm: z.number().min(0.2).max(100).default(1),
+  workingHoursEnabled: z.boolean().default(false),
+  /** Index 0 = Sunday … 6 = Saturday (company time zone). */
+  workingHours: z
+    .array(dayHours)
+    .length(7)
+    .default([null, { start: '06:00', end: '20:00' }, { start: '06:00', end: '20:00' }, { start: '06:00', end: '20:00' }, { start: '06:00', end: '20:00' }, { start: '06:00', end: '20:00' }, { start: '06:00', end: '14:00' }]),
+  requireDriverOnDuty: z.boolean().default(false),
+  restrictedAreaAlerts: z.boolean().default(true),
+});
+export type ControlSettings = z.infer<typeof controlSettingsSchema>;
+
+export const budgetLineSchema = z.object({
+  period: month,
+  branchId: z.string().uuid().optional().nullable(),
+  departmentId: z.string().uuid().optional().nullable(),
+  category: z.nativeEnum(CostCategory),
+  /** 0 or null removes the budget line. */
+  amount: z.number().nonnegative().max(1e13).nullable(),
+});
+export const upsertBudgetsSchema = z.object({
+  lines: z
+    .array(budgetLineSchema)
+    .min(1)
+    .max(5000)
+    .refine((ls) => ls.every((l) => !(l.branchId && l.departmentId)), 'A budget line is for a branch or a department, not both'),
+});
+export type UpsertBudgetsInput = z.infer<typeof upsertBudgetsSchema>;
+
+export const budgetQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  dimension: z.enum(['company', 'branch', 'department']).default('branch'),
+});
+
+export const copyBudgetsSchema = z.object({
+  fromYear: z.number().int().min(2000).max(2100),
+  toYear: z.number().int().min(2000).max(2100),
+  /** Percentage change applied to every amount (e.g. 5 = +5 %). */
+  changePct: z.number().min(-90).max(500).default(0),
+  overwrite: z.boolean().default(false),
+});
+
+export const createSharedCostSchema = z.object({
+  period: month,
+  branchId: z.string().uuid().optional().nullable(),
+  departmentId: z.string().uuid().optional().nullable(),
+  category: z.nativeEnum(CostCategory).default('OTHER'),
+  description: z.string().trim().min(2).max(300),
+  amount: z.number().positive().max(1e13),
+});
+export type CreateSharedCostInput = z.infer<typeof createSharedCostSchema>;
+
+export const costQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  branchId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+});
+export type CostQuery = z.infer<typeof costQuerySchema>;
