@@ -66,7 +66,7 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 
 Alert emails appear in Mailpit at http://127.0.0.1:8025.
 
-**Road routing (OSRM + VROOM, optional):** the `routing` profile adds the engines. The first start downloads the Myanmar OSM extract (~100 MB, `OSM_URL` to override) and prepares it (MLD; needs ~3 GB RAM and a few minutes); later starts reuse the `osrmdata` volume.
+**Road routing (OSRM + VROOM, optional):** the `routing` profile adds the engines. The first start downloads the Myanmar OSM extract (~280 MB, `OSM_URL` to override; the transfer resumes after interruptions) and prepares it (MLD; needs ~3 GB RAM and a few minutes); later starts reuse the `osrmdata` volume.
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env --profile routing up -d
@@ -172,7 +172,7 @@ Migrations are forward-only. Ship schema changes as expand → migrate → contr
 
 ### 2.6a Road routing
 
-Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/routing.yaml`). A PVC (`routing.persistence`, 5 Gi) holds the prepared map; the OSRM pod's init containers download the extract (`routing.osmUrl`, Geofabrik Myanmar by default) and prepare it only when the files are missing, so the first rollout takes several minutes and needs ~3 Gi memory; `osrm-routed` then needs ~1.5 Gi and VROOM ~256 Mi. The API gets `OSRM_URL`/`VROOM_URL` automatically. Egress to `download.geofabrik.de` is needed on first start. To refresh the data (e.g. monthly), upgrade once with `--set routing.refresh=true`, then again with `false`. Check with `GET /api/routing/status` (`source: osrm`).
+Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/routing.yaml`). A PVC (`routing.persistence`, 5 Gi) holds the prepared map; the OSRM pod's init containers download the extract (`routing.osmUrl`, Geofabrik Myanmar by default) and prepare it only when the files are missing, so the first rollout takes several minutes and needs ~3 Gi memory; `osrm-routed` then needs ~1.5 Gi and VROOM ~256 Mi. The API gets `OSRM_URL`/`VROOM_URL` automatically. Egress to the download host is needed on first start; the ~280 MB transfer resumes after interruptions and pod restarts (partial file on the PVC). Until the data is ready the API uses straight-line estimates. To refresh the data (e.g. monthly), upgrade once with `--set routing.refresh=true`, then again with `false`. Check with `GET /api/routing/status` (`source: osrm`).
 
 ### 2.7 Mobile push
 
@@ -210,5 +210,7 @@ Secrets live in the `fms-secrets` Secret (created out of band; keys: `DATABASE_U
 ```bash
 helm upgrade fms deploy/helm/fms -n fms -f deploy/helm/fms/values-corexlab.yaml --set image.api.tag=<git-sha> --set image.web.tag=<git-sha> --timeout 32m
 ```
+
+**Road routing** is enabled (`routing.enabled`, extract from `download.openstreetmap.fr`). Cluster egress is only a few KB/s, so the first download of the ~280 MB Myanmar extract takes many hours; FMS uses straight-line estimates until `GET /api/routing/status` reports `osrm`.
 
 **Known cluster issues** (at deployment time): `wo4` — flannel `cni0` has a wrong address (no pod can start) and lacks `iscsi-tools`; `wo1` — image pulls from ghcr.io hang; `synology-nfs` — the NAS rejects NFS 4.1; outbound pulls from Docker Hub/GHCR are slow and reset intermittently (Redis comes from `mirror.gcr.io`). FMS pods avoid `wo1` and `wo4` via affinity in `values-corexlab.yaml`; remove those exclusions once the nodes are fixed.

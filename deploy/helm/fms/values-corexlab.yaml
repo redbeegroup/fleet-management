@@ -4,8 +4,8 @@
 # Images are public on GHCR, so no pull secret is needed.
 image:
   # Deploy an immutable commit tag: --set image.api.tag=<sha> --set image.web.tag=<sha>
-  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "90559cb06447f13f3dd1cb9c1bde18c09a868a43", pullPolicy: IfNotPresent }
-  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "90559cb06447f13f3dd1cb9c1bde18c09a868a43", pullPolicy: IfNotPresent }
+  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "6a08a99089e5848496cf88d7241ff553fd1279cb", pullPolicy: IfNotPresent }
+  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "6a08a99089e5848496cf88d7241ff553fd1279cb", pullPolicy: IfNotPresent }
 database:
   externalService: { enabled: false }
 secrets:
@@ -36,6 +36,8 @@ ingress: { enabled: false }
 # Road routing on the cluster: data on synology-iscsi, so the OSRM pod must run on a node with iscsi-tools.
 routing:
   enabled: true
+  # openstreetmap.fr was ~2x faster than Geofabrik from this cluster (egress is slow: a few KB/s).
+  osmUrl: https://download.openstreetmap.fr/extracts/asia/myanmar-latest.osm.pbf
   persistence: { size: 5Gi, storageClass: synology-iscsi }
   affinity:
     nodeAffinity:
