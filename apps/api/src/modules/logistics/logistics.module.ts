@@ -5,6 +5,7 @@ import { RoutingModule } from '../routing/routing.module';
 import { LogisticsController, MyStopsController } from './logistics.controller';
 import { LogisticsService } from './logistics.service';
 import { DeliveryKpiService } from './delivery-kpi.service';
+import { SiteVisitsService } from './site-visits.service';
 
-@Module({ imports: [DispatchModule, RoutingModule, CostsModule], controllers: [LogisticsController, MyStopsController], providers: [LogisticsService, DeliveryKpiService] })
+@Module({ imports: [DispatchModule, RoutingModule, CostsModule], controllers: [LogisticsController, MyStopsController], providers: [LogisticsService, DeliveryKpiService, SiteVisitsService] })
 export class LogisticsModule {}

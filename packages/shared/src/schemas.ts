@@ -830,6 +830,8 @@ export const logisticsSettingsSchema = z.object({
   avgSpeedKmh: z.number().min(5).max(120).default(25),
   /** Driver cost per trip day, added to delivery cost KPIs (optional). */
   driverCostPerDay: z.number().nonnegative().nullable().default(null),
+  /** GPS auto-arrive: a vehicle stopped within this distance of a delivery stop is marked arrived (null = off). */
+  arrivalRadiusM: z.number().int().min(30).max(2000).nullable().default(150),
 });
 export type LogisticsSettings = z.infer<typeof logisticsSettingsSchema>;
 
@@ -1112,3 +1114,52 @@ export const reviewCardTxnSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('non_fuel'), note: z.string().trim().max(500).optional() }),
 ]);
 export type ReviewCardTxnInput = z.infer<typeof reviewCardTxnSchema>;
+
+// ---------------------------------------------------------------------------
+// Site visits, group administration, invitations (Sprint 14)
+// ---------------------------------------------------------------------------
+
+export const siteVisitQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: z.string().max(40).optional(),
+  vehicleId: z.string().uuid().optional(),
+});
+export type SiteVisitQuery = z.infer<typeof siteVisitQuerySchema>;
+
+/** Passwords: at least 10 characters with a letter and a digit. */
+export const passwordSchema = z
+  .string()
+  .min(10, 'At least 10 characters')
+  .max(200)
+  .refine((p) => /[A-Za-z]/.test(p) && /\d/.test(p), 'Use letters and at least one digit');
+
+export const createCompanySchema = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,20}$/, '2–20 letters, digits or -'),
+  name: z.string().trim().min(2).max(120),
+  timezone: z.string().trim().min(3).max(60).default('Asia/Yangon'),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default('MMK'),
+  /** First company admin, invited by email. */
+  admin: z.object({ email: z.string().trim().toLowerCase().email(), fullName: z.string().trim().min(1).max(128) }),
+});
+export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
+export const updateCompanySchema = z.object({ name: z.string().trim().min(2).max(120).optional(), active: z.boolean().optional() });
+
+export const inviteUserSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  fullName: z.string().trim().min(1).max(128),
+  roles: z.array(z.string()).min(1).max(8),
+  branchId: z.string().uuid().optional().nullable(),
+});
+export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+export const updateUserSchema = z.object({
+  fullName: z.string().trim().min(1).max(128).optional(),
+  roles: z.array(z.string()).min(1).max(8).optional(),
+  branchId: z.string().uuid().nullable().optional(),
+  active: z.boolean().optional(),
+});
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+export const forgotPasswordSchema = z.object({ email: z.string().trim().toLowerCase().email() });
+export const setPasswordSchema = z.object({ token: z.string().min(20).max(200), password: passwordSchema });

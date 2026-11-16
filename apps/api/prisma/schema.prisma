@@ -109,17 +109,20 @@ model Department {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  companyId    String    @map("company_id") @db.Uuid
-  branchId     String?   @map("branch_id") @db.Uuid
-  email        String    @unique
-  fullName     String    @map("full_name")
-  passwordHash String    @map("password_hash")
-  roles        String[]
-  active       Boolean   @default(true)
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  branchId      String?   @map("branch_id") @db.Uuid
+  email         String    @unique
+  fullName      String    @map("full_name")
+  passwordHash  String    @map("password_hash")
+  roles         String[]
+  active        Boolean   @default(true)
+  lastLoginAt   DateTime? @map("last_login_at")
+  /// Invited by email and not yet set a password (S14).
+  invitedAt     DateTime? @map("invited_at")
+  passwordSetAt DateTime? @map("password_set_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   company       Company        @relation(fields: [companyId], references: [id])
   branch        Branch?        @relation(fields: [branchId], references: [id])
@@ -489,6 +492,9 @@ model VehicleTelemetryState {
   fuelLevelL        Float?    @map("fuel_level_l")
   fuelRiseFrom      Float?    @map("fuel_rise_from")
   fuelDropFrom      Float?    @map("fuel_drop_from")
+  /// Delivery stop the vehicle is at (GPS), and its open visit (S14).
+  atStopId          String?   @map("at_stop_id") @db.Uuid
+  stopVisitId       String?   @map("stop_visit_id") @db.Uuid
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([companyId])
@@ -1390,6 +1396,8 @@ model TripStop {
   contactPhone    String?    @map("contact_phone")
   status          StopStatus @default(PENDING)
   arrivedAt       DateTime?  @map("arrived_at")
+  /// 'gps' when the arrival was detected from the vehicle position (S14), else 'driver' / 'dispatch'.
+  arrivalSource   String?    @map("arrival_source")
   completedAt     DateTime?  @map("completed_at")
   failureReason   String?    @map("failure_reason")
   notes           String?
@@ -1566,4 +1574,47 @@ model VehicleDiagnostics {
 
   @@index([companyId])
   @@map("vehicle_diagnostics")
+}
+
+/// Time spent at a site (S14): a geofence (depot, warehouse, customer site…) or a delivery stop's location.
+model SiteVisit {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  vehicleId   String    @map("vehicle_id") @db.Uuid
+  driverId    String?   @map("driver_id") @db.Uuid
+  tripId      String?   @map("trip_id") @db.Uuid
+  /// 'GEOFENCE' | 'STOP'
+  kind        String
+  geofenceId  String?   @map("geofence_id") @db.Uuid
+  stopId      String?   @map("stop_id") @db.Uuid
+  customerId  String?   @map("customer_id") @db.Uuid
+  siteName    String    @map("site_name")
+  /// Geofence category (BRANCH, WAREHOUSE, CUSTOMER, SITE, RESTRICTED) or CUSTOMER for stops.
+  category    String
+  enteredAt   DateTime  @map("entered_at")
+  exitedAt    DateTime? @map("exited_at")
+  durationMin Float?    @map("duration_min")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId, enteredAt])
+  @@index([vehicleId, enteredAt])
+  @@index([stopId])
+  @@map("site_visits")
+}
+
+/// One-time tokens sent by email (S14): account invitation or password reset. Only a hash is stored.
+model AuthToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// 'INVITE' | 'RESET'
+  kind      String
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, kind])
+  @@map("auth_tokens")
 }

@@ -16,6 +16,7 @@ import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
 import { PrismaService } from '../../common/db/prisma.service';
 import { ZodPipe } from '../../common/http/zod.pipe';
+import { userSelect } from './accounts.service';
 import { AuthService } from './auth.service';
 
 const createUserSchema = z.object({
@@ -27,16 +28,6 @@ const createUserSchema = z.object({
 });
 type CreateUserInput = z.infer<typeof createUserSchema>;
 
-const userSelect = {
-  id: true,
-  email: true,
-  fullName: true,
-  roles: true,
-  branchId: true,
-  active: true,
-  lastLoginAt: true,
-  createdAt: true,
-} as const;
 
 @ApiTags('organization')
 @ApiBearerAuth()
@@ -141,6 +132,7 @@ export class OrganizationController {
           roles: body.roles,
           branchId: body.branchId ?? null,
           passwordHash,
+          passwordSetAt: new Date(),
         },
         select: userSelect,
       }),

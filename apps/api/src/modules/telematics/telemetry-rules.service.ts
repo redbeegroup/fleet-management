@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import type { PositionFix } from './providers/telematics-provider';
 import { decodePolyline } from '../routing/polyline';
 import { ControlState, EMPTY_CONTROL, evaluateControl } from './rules/control';
+import { stopArrival } from './rules/stop-arrival';
 import { Diagnostics, diagnosticEvents, EMPTY_FUEL, evaluateFuelLevel, FuelLevelState, fuelLevelL, readDiagnostics } from './rules/fuel-level';
 import { EMPTY_STATE, evaluate, evaluateOffline, EventClose, EventDraft, Fence, RuleState } from './rules/rules-engine';
 
@@ -118,6 +119,8 @@ export class TelemetryRulesService {
     const diagBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).diagnostics]));
     const diagRows = new Map((await tx.vehicleDiagnostics.findMany({ where: { vehicleId: { in: batches.map((b) => b.vehicle.id) } } })).map((d) => [d.vehicleId, d]));
     const restricted = new Map(fences.filter((f) => f.category === 'RESTRICTED').map((f) => [f.id, f.name]));
+    const fenceInfo = new Map(fences.map((f) => [f.id, { name: f.name, category: f.category }]));
+    const radiusBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).logistics.arrivalRadiusM]));
     const fencesBy = new Map<string, Fence[]>();
     for (const f of fences) {
       const list = fencesBy.get(f.companyId) ?? [];
@@ -128,10 +131,11 @@ export class TelemetryRulesService {
     const vehicleIds = batches.map((b) => b.vehicle.id);
     const driverBy = await this.currentDrivers(tx, vehicleIds);
     const [ongoing, duty] = await Promise.all([
-      tx.trip.findMany({ where: { vehicleId: { in: vehicleIds }, status: 'ONGOING' }, select: { id: true, tripNo: true, vehicleId: true, updatedAt: true, routeGeometry: true, routingSource: true } }),
+      tx.trip.findMany({ where: { vehicleId: { in: vehicleIds }, status: 'ONGOING' }, select: { id: true, tripNo: true, vehicleId: true, updatedAt: true, routeGeometry: true, routingSource: true, kind: true, stops: { select: { id: true, name: true, customerId: true, latitude: true, longitude: true, status: true } } } }),
       tx.dutySession.findMany({ where: { driverId: { in: [...new Set(driverBy.values())] }, endedAt: null }, select: { driverId: true } }),
     ]);
     const tripBy = new Map(ongoing.map((t) => [t.vehicleId!, { id: t.id, tripNo: t.tripNo, route: routeOf(t) }]));
+    const stopsBy = new Map(ongoing.filter((t) => t.kind === 'DELIVERY').map((t) => [t.vehicleId!, t.stops]));
     const onDuty = new Set(duty.map((d) => d.driverId));
 
     const events: PersistedEvent[] = [];
@@ -152,6 +156,12 @@ export class TelemetryRulesService {
         ? { dtcCodes: d0.dtcCodes, checkEngine: d0.checkEngine, coolantTempC: d0.coolantTempC, batteryV: d0.batteryV, engineHours: d0.engineHours, at: d0.recordedAt, fuelLevelL: d0.fuelLevelL }
         : null;
       let diagChanged = false;
+      const st0 = stateBy.get(vehicle.id);
+      let atStopId = st0?.atStopId ?? null;
+      let stopVisitId = st0?.stopVisitId ?? null;
+      const tripStops = stopsBy.get(vehicle.id) ?? [];
+      const radius = radiusBy.get(vehicle.companyId) ?? null;
+      const trip = tripBy.get(vehicle.id) ?? null;
       const ctl = controlBy.get(vehicle.companyId)!;
       const driverId = driverBy.get(vehicle.id) ?? null;
       for (const fix of [...fixes].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
@@ -168,6 +178,41 @@ export class TelemetryRulesService {
             enteredRestricted: r.opened.filter((e) => e.type === 'GEOFENCE_ENTER' && e.geofenceId && restricted.has(e.geofenceId)).map((e) => ({ id: e.geofenceId!, name: restricted.get(e.geofenceId!)! })),
           });
           control = c.state;
+          // Site visits: geofences entered / left at this fix.
+          for (const e of r.opened) {
+            if (e.type === 'GEOFENCE_ENTER' && e.geofenceId) {
+              const g = fenceInfo.get(e.geofenceId);
+              if (g) await tx.siteVisit.create({ data: { companyId: vehicle.companyId, vehicleId: vehicle.id, driverId, tripId: trip?.id ?? null, kind: 'GEOFENCE', geofenceId: e.geofenceId, siteName: g.name, category: g.category, enteredAt: fix.recordedAt } });
+            }
+            if (e.type === 'GEOFENCE_EXIT' && e.geofenceId) await this.closeVisit(tx, { vehicleId: vehicle.id, geofenceId: e.geofenceId, exitedAt: fix.recordedAt, endedAt: null });
+          }
+          // GPS arrival at the stops of an ongoing delivery load.
+          if (radius && tripStops.length) {
+            const a = stopArrival(
+              atStopId,
+              tripStops.filter((x) => x.latitude != null && x.longitude != null).map((x) => ({ id: x.id, latitude: x.latitude!, longitude: x.longitude!, open: x.status === 'PENDING' || x.status === 'ARRIVED' })),
+              fix,
+              radius,
+            );
+            if (a.exit && stopVisitId) {
+              await this.closeVisit(tx, { id: stopVisitId, exitedAt: fix.recordedAt });
+              stopVisitId = null;
+              atStopId = null;
+            } else if (a.exit) atStopId = null;
+            if (a.enter) {
+              const stop = tripStops.find((x) => x.id === a.enter)!;
+              const v = await tx.siteVisit.create({ data: { companyId: vehicle.companyId, vehicleId: vehicle.id, driverId, tripId: trip?.id ?? null, kind: 'STOP', stopId: stop.id, customerId: stop.customerId, siteName: stop.name, category: 'CUSTOMER', enteredAt: fix.recordedAt } });
+              atStopId = stop.id;
+              stopVisitId = v.id;
+              // The driver may still tap "Arrived"; a manual arrival is never overwritten.
+              await tx.tripStop.updateMany({ where: { id: stop.id, status: 'PENDING' }, data: { status: 'ARRIVED', arrivedAt: fix.recordedAt, arrivalSource: 'gps' } });
+            }
+          } else if (atStopId) {
+            // Trip finished or radius turned off: close what is open.
+            if (stopVisitId) await this.closeVisit(tx, { id: stopVisitId, exitedAt: fix.recordedAt });
+            atStopId = null;
+            stopVisitId = null;
+          }
           r.opened.push(...c.opened);
           r.closed.push(...c.closed);
           // Fuel level sensor and engine diagnostics (device attributes).
@@ -200,6 +245,7 @@ export class TelemetryRulesService {
         closes.push(...r.closed);
       }
       await this.saveState(tx, vehicle, state, control, fuel);
+      if ((st0?.atStopId ?? null) !== atStopId || (st0?.stopVisitId ?? null) !== stopVisitId) await tx.vehicleTelemetryState.update({ where: { vehicleId: vehicle.id }, data: { atStopId, stopVisitId } });
       if (diag && diagChanged) {
         const data = { companyId: vehicle.companyId, recordedAt: diag.at, dtcCodes: diag.dtcCodes, checkEngine: diag.checkEngine, coolantTempC: diag.coolantTempC, batteryV: diag.batteryV, engineHours: diag.engineHours, fuelLevelL: diag.fuelLevelL };
         await tx.vehicleDiagnostics.upsert({ where: { vehicleId: vehicle.id }, create: { vehicleId: vehicle.id, ...data }, update: data });
@@ -208,6 +254,15 @@ export class TelemetryRulesService {
     await this.persist(tx, events, closes);
     await this.followUps(tx, events);
     return events;
+  }
+
+  /** Closes a site visit by id, or the latest open geofence visit of a vehicle. */
+  private async closeVisit(tx: Tx, v: { id?: string; vehicleId?: string; geofenceId?: string; exitedAt: Date; endedAt?: null }) {
+    const open = v.id
+      ? await tx.siteVisit.findFirst({ where: { id: v.id, exitedAt: null } })
+      : await tx.siteVisit.findFirst({ where: { vehicleId: v.vehicleId, geofenceId: v.geofenceId, exitedAt: null }, orderBy: { enteredAt: 'desc' } });
+    if (!open || v.exitedAt < open.enteredAt) return;
+    await tx.siteVisit.update({ where: { id: open.id }, data: { exitedAt: v.exitedAt, durationMin: Math.round(((v.exitedAt.getTime() - open.enteredAt.getTime()) / 60_000) * 10) / 10 } });
   }
 
   /**

@@ -33,7 +33,7 @@ export class DeliveryKpiService {
         include: {
           vehicle: { select: { id: true, plateNumber: true, capacityKg: true, capacityM3: true, capacityCases: true, capacityPallets: true, maxStops: true } },
           driver: { select: { id: true, fullName: true } },
-          stops: { select: { seq: true, status: true, arrivedAt: true, completedAt: true, plannedArrival: true } },
+          stops: { select: { id: true, seq: true, status: true, arrivedAt: true, completedAt: true, plannedArrival: true } },
           orders: {
             select: {
               status: true,
@@ -53,6 +53,10 @@ export class DeliveryKpiService {
         orderBy: { plannedStart: 'asc' },
       });
       const tripIds = trips.map((t) => t.id);
+      // GPS time at the customer (S14) when the vehicle's visit to the stop was recorded.
+      const gpsDwell = new Map(
+        (await tx.siteVisit.findMany({ where: { tripId: { in: tripIds }, kind: 'STOP', durationMin: { not: null } }, select: { stopId: true, durationMin: true } })).map((v) => [v.stopId!, v.durationMin!]),
+      );
       const [expenses, rates] = await Promise.all([
         tx.vehicleExpense.groupBy({ by: ['tripId'], where: { tripId: { in: tripIds }, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
         // Full running cost per km per vehicle (fuel, maintenance, other expenses, documents, depreciation/lease, shared costs).
@@ -110,7 +114,7 @@ export class DeliveryKpiService {
           actualKm: gpsKm,
           kmDeviationPct: plannedKm && gpsKm ? Math.round(((gpsKm - plannedKm) / plannedKm) * 1000) / 10 : null,
           sequencePct: sequenceAdherence(done.map((s) => s.seq)),
-          avgDwellMin: avg(t.stops.map((s) => minutesBetween(s.arrivedAt, s.completedAt))),
+          avgDwellMin: avg(t.stops.map((s) => gpsDwell.get(s.id) ?? minutesBetween(s.arrivedAt, s.completedAt))),
           avgEtaErrorMin: avg(t.stops.map((s) => (s.plannedArrival && s.arrivedAt ? Math.abs(minutesBetween(s.plannedArrival, s.arrivedAt)!) : null))),
           cost,
           costPerDrop: drops ? Math.round(cost / drops) : null,

@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { Idempotent } from '../../common/http/idempotent';
 import { DeliveryKpiService } from './delivery-kpi.service';
+import { SiteVisitsService } from './site-visits.service';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   autofillSchema,
@@ -19,7 +20,7 @@ import {
   UpdateCustomerInput,
   updateCustomerSchema,
   UpdateLoadInput,
-  updateLoadSchema, driverActionSchema, DriverActionInput } from '@fms/shared';
+  updateLoadSchema, driverActionSchema, DriverActionInput, SiteVisitQuery, siteVisitQuerySchema } from '@fms/shared';
 import { z } from 'zod';
 import type { AuthUser } from '../../common/auth/auth-user';
 import { CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -38,6 +39,7 @@ export class LogisticsController {
   constructor(
     private readonly svc: LogisticsService,
     private readonly kpi: DeliveryKpiService,
+    private readonly visits: SiteVisitsService,
   ) {}
 
   @Post('logistics/stops/:id/returns')
@@ -63,6 +65,12 @@ export class LogisticsController {
   @RequirePermissions(Permission.LOGISTICS_READ)
   podExceptions(@CurrentUser() user: AuthUser, @Query(new ZodPipe(deliveryKpiQuerySchema)) q: { from: string; to: string }) {
     return this.svc.podExceptions(user, q);
+  }
+
+  @Get('analytics/site-visits')
+  @RequirePermissions(Permission.TRACKING_READ)
+  siteVisits(@CurrentUser() user: AuthUser, @Query(new ZodPipe(siteVisitQuerySchema)) q: SiteVisitQuery) {
+    return this.visits.report(user, q);
   }
 
   @Get('analytics/delivery')
