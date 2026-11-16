@@ -103,6 +103,16 @@ CREATE EXTENSION IF NOT EXISTS postgis;   -- optional; geofencing falls back wit
 
 The first migration grants `fms_app` DML rights on all tables and sets default privileges, provided the role exists when migrations run.
 
+For **BI logins** (S15), also:
+
+```sql
+CREATE ROLE fms_bi_reader NOLOGIN;
+GRANT fms_bi_reader TO fms_migrator WITH ADMIN OPTION;  -- may add logins to the group role
+ALTER ROLE fms_migrator CREATEROLE;                      -- may create/drop BI login roles
+```
+
+Alternatively, give the API a separate admin connection in `BI_ADMIN_DATABASE_URL` for a role that has `CREATEROLE` and `ADMIN` on `fms_bi_reader`. Without these, BI logins stay unavailable and the rest of FMS works normally. See [BI_REPORTING.md](BI_REPORTING.md).
+
 Checklist:
 
 - [ ] `fms_app` is **not** a superuser and does **not** have `BYPASSRLS`. Otherwise tenant isolation at the database level is off.
@@ -185,6 +195,28 @@ Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/
 ```bash
 FMS_URL=https://<host>/api FMS_EMAIL=admin@fms.local FMS_PASSWORD='<admin password>' node deploy/demo/seed-demo.cjs
 ```
+
+### 2.6d Single sign-on (Microsoft Entra ID, Google Workspace)
+
+Redirect URI for every app registration: `<APP_URL>/api/auth/sso/callback` (CorexLab: `https://fms.corexlab.net/api/auth/sso/callback`).
+
+- **Group Microsoft tenant:**
+  1. In Entra admin center → App registrations → *New registration*: single tenant, *Web* redirect URI as above.
+  2. Under *Certificates & secrets*, create a client secret.
+  3. Configure `ENTRA_TENANT_ID` and `ENTRA_CLIENT_ID` (config) and the Secret key `ENTRA_CLIENT_SECRET`.
+  4. Optional claims: add `email` to the ID token. Otherwise FMS uses `preferred_username`.
+- **Group Google Workspace:**
+  1. In Google Cloud console → *APIs & Services → Credentials*, create an OAuth client ID of type *Web application* with the redirect URI.
+  2. Set the consent screen to *Internal*.
+  3. Configure `GOOGLE_CLIENT_ID` (config) and the Secret key `GOOGLE_CLIENT_SECRET`.
+- **`SSO_ENCRYPTION_KEY`** (Secret, 32+ random characters) encrypts client secrets of company-owned providers. Without it, a key derived from `JWT_ACCESS_SECRET` is used. Changing either key makes the stored secrets unreadable, and companies must re-enter them.
+- **Companies:** *Settings → Sign-in* adds e-mail domains (group provider, approved by a super admin on *Group companies*) or their own Entra tenant / Google Workspace (domains active at once). Users must still be invited on *Users*.
+- **Driver app:** the scheme `fmsdriver` is registered in `app.config.ts`. The API redirects to `MOBILE_SSO_REDIRECT` (default `fmsdriver://sso`).
+- **Network:** pods need outbound HTTPS to `login.microsoftonline.com` and `accounts.google.com` / `oauth2.googleapis.com` / `www.googleapis.com`.
+
+### 2.6e Scheduled reports and e-mail
+
+Reports and account e-mails need `SMTP_URL` in the Secret, e.g. `smtps://user:pass@smtp.example.com:465`, and `MAIL_FROM`. Without SMTP, report runs are recorded as *Not sent: SMTP is not configured*, while preview and PDF download still work. The worker runs `report-dispatch` hourly; run it once with `MODE=job JOB=report-dispatch`.
 
 ### 2.7 Mobile push
 

@@ -1,3 +1,4 @@
+import { ReportsService } from '../modules/reports/reports.service';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
@@ -32,6 +33,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly webhooks: WebhooksService,
     private readonly costs: CostsService,
     private readonly fuelCards: FuelCardsService,
+    private readonly reports: ReportsService,
   ) {
     super();
   }
@@ -48,6 +50,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('budget-alerts', { pattern: '0 15 8 * * *', tz: 'Asia/Yangon' }, { name: 'budget-alerts' });
+    // Hourly at :05; each company's reports go out from 07:00 local time.
+    await this.queue.upsertJobScheduler('report-dispatch', { pattern: '0 5 * * * *' }, { name: 'report-dispatch' });
     await this.queue.upsertJobScheduler('fuel-card-sync', { pattern: '0 20 * * * *' }, { name: 'fuel-card-sync' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
     await this.queue.upsertJobScheduler('webhook-dispatch', { every: 15_000 }, { name: 'webhook-dispatch' });
@@ -70,6 +74,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     switch (job.name) {
       case 'safety-alerts':
         return this.safety.lowScoreAlerts();
+      case 'report-dispatch':
+        return this.reports.dispatch();
       case 'fuel-card-sync':
         return this.fuelCards.syncAll();
       case 'budget-alerts':

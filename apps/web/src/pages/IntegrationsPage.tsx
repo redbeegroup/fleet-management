@@ -9,7 +9,7 @@ import { errorText } from './IncidentsPage';
 const DELIVERY_TONE = { PENDING: 'warn', SENT: 'ok', FAILED: 'danger' } as const;
 
 /** Shows a secret exactly once with a copy button. */
-function SecretOnce({
+export function SecretOnce({
   label,
   value,
   onClose,

@@ -7,6 +7,13 @@ const envSchema = z.object({
   JOB: z.string().optional(),
   PORT: z.coerce.number().int().default(3000),
   DATABASE_URL: z.string().url(),
+  /** DDL connection (migrations). The API uses it only to manage BI logins (S15), see BI_ADMIN_DATABASE_URL. */
+  DATABASE_MIGRATION_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  /** Connection that may CREATE/ALTER/DROP ROLE for BI logins; defaults to DATABASE_MIGRATION_URL. Unset: BI logins are off. */
+  BI_ADMIN_DATABASE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  /** Host/port shown to BI users (e.g. a load balancer or a tunnel); defaults to the DATABASE_URL host. */
+  BI_DB_HOST: z.string().optional(),
+  BI_DB_PORT: z.coerce.number().int().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_ACCESS_TTL: z.string().default('15m'),

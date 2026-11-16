@@ -1,3 +1,4 @@
+import { ReportsService } from './modules/reports/reports.service';
 import { FuelCardsService } from './modules/fuel/cards/fuel-cards.service';
 import { CostsService } from './modules/costs/costs.service';
 import 'reflect-metadata';
@@ -82,6 +83,7 @@ async function runJob(name: string | undefined) {
     'maintenance-due': () => app.get(MaintenanceService).dueAlerts(),
     'safety-alerts': () => app.get(SafetyService).lowScoreAlerts(),
     'budget-alerts': () => app.get(CostsService).budgetAlerts(),
+    'report-dispatch': () => app.get(ReportsService).dispatch(),
     'fuel-card-sync': () => app.get(FuelCardsService).syncAll(),
     'daily-stats': () => app.get(AnalyticsService).rollup(process.env.JOB_FROM, process.env.JOB_TO),
   };

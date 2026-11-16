@@ -65,7 +65,7 @@ env:
   - name: VROOM_URL
     value: http://{{ include "fms.fullname" . }}-vroom:3000/
   {{- end }}
-  {{- range $key := list "WATCHTOWER_API_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "SMTP_URL" "EXPO_ACCESS_TOKEN" }}
+  {{- range $key := list "WATCHTOWER_API_KEY" "S3_ACCESS_KEY" "S3_SECRET_KEY" "SMTP_URL" "EXPO_ACCESS_TOKEN" "FUEL_CARD_API_KEY" "SSO_ENCRYPTION_KEY" "ENTRA_CLIENT_SECRET" "GOOGLE_CLIENT_SECRET" "BI_ADMIN_DATABASE_URL" }}
   - name: {{ $key }}
     valueFrom:
       secretKeyRef:

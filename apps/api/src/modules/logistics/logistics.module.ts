@@ -7,5 +7,5 @@ import { LogisticsService } from './logistics.service';
 import { DeliveryKpiService } from './delivery-kpi.service';
 import { SiteVisitsService } from './site-visits.service';
 
-@Module({ imports: [DispatchModule, RoutingModule, CostsModule], controllers: [LogisticsController, MyStopsController], providers: [LogisticsService, DeliveryKpiService, SiteVisitsService] })
+@Module({ imports: [DispatchModule, RoutingModule, CostsModule], controllers: [LogisticsController, MyStopsController], providers: [LogisticsService, DeliveryKpiService, SiteVisitsService], exports: [DeliveryKpiService, SiteVisitsService] })
 export class LogisticsModule {}

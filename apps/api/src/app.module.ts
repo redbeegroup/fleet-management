@@ -31,6 +31,8 @@ import { IntegrationsModule, WebhooksModule } from './modules/integrations/integ
 import { ApprovalsApiModule, ApprovalsModule } from './modules/approvals/approvals.module';
 import { LogisticsModule } from './modules/logistics/logistics.module';
 import { IamModule } from './modules/iam/iam.module';
+import { BiModule } from './modules/bi/bi.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
@@ -53,6 +55,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     IamModule,
+    BiModule,
     FilesModule,
     VehiclesModule,
     DriversModule,
@@ -71,6 +74,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     ApprovalsApiModule,
     LogisticsModule,
     CostsModule,
+    ReportsModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [
@@ -109,6 +113,7 @@ const redisConnection = () => {
     IncentivesModule,
     CostsModule,
     FuelModule,
+    ReportsModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -123,7 +128,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule, FuelModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule, FuelModule, ReportsModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

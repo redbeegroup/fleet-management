@@ -380,3 +380,7 @@ tr.selected td { background: var(--info-bg); }
 .divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 .sso-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .card-row { align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0 12px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+.report-preview { width: 100%; height: 720px; border: 1px solid var(--border); border-radius: 6px; background: #f4f6f9; }

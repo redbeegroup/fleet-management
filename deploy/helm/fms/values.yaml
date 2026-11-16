@@ -47,6 +47,14 @@ secrets:
     S3_SECRET_KEY: ""
     SMTP_URL: ""                     # smtp(s)://user:pass@host:port
     EXPO_ACCESS_TOKEN: ""
+    FUEL_CARD_API_KEY: ""
+    # Single sign-on (optional): key encrypting company IdP secrets (32+ random chars),
+    # and the client secrets of the group's Microsoft Entra / Google app registrations.
+    SSO_ENCRYPTION_KEY: ""
+    ENTRA_CLIENT_SECRET: ""
+    GOOGLE_CLIENT_SECRET: ""
+    # BI logins (optional): a connection allowed to CREATE/ALTER/DROP ROLE; defaults to DATABASE_MIGRATION_URL.
+    BI_ADMIN_DATABASE_URL: ""
 
 config:
   NODE_ENV: production
@@ -69,6 +77,13 @@ config:
   FILE_MAX_MB: "20"
   MAIL_FROM: FMS <no-reply@example.com>
   APP_URL: https://fms.example.com
+  # Single sign-on with the group's identity providers (secrets in the Secret). Empty = off.
+  ENTRA_TENANT_ID: ""
+  ENTRA_CLIENT_ID: ""
+  GOOGLE_CLIENT_ID: ""
+  # BI tools: host/port shown on the BI logins card when it differs from DATABASE_URL's
+  # BI_DB_HOST: db.example.com
+  # BI_DB_PORT: "5432"
   # Mobile push via Expo (set the EXPO_ACCESS_TOKEN secret key if your Expo project requires it)
   PUSH_ENABLED: "true"
   # Observability

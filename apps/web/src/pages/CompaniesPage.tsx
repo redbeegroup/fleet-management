@@ -3,6 +3,7 @@ import { FormEvent, useState } from 'react';
 import { api, session } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { errorText } from './IncidentsPage';
+import { SecretOnce } from './IntegrationsPage';
 
 interface CompanyRow {
   id: string;
@@ -82,6 +83,127 @@ function GroupSsoDomains() {
           ))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+interface BiInfo {
+  available: boolean;
+  reason?: string;
+  connection: { host: string; port: number; database: string; sslmode: string; schema: string };
+  companies: { id: string; code: string; name: string }[];
+  logins: { roleName: string; scope: 'GROUP' | 'COMPANY'; company: { code: string; name: string } | null; createdAt: string; rotatedAt: string | null }[];
+}
+
+/** Read-only database logins for Power BI / Metabase / Tableau. */
+function BiLogins() {
+  const qc = useQueryClient();
+  const [secret, setSecret] = useState<{ roleName: string; password: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState('');
+  const info = useQuery({ queryKey: ['bi-logins'], queryFn: () => api<BiInfo>('/admin/bi-logins') });
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['bi-logins'] });
+  const shown = (r: { roleName: string; password: string }) => (setSecret(r), setErr(null), refresh());
+  const create = useMutation({
+    mutationFn: (id: string | null) =>
+      api<{ roleName: string; password: string }>('/admin/bi-logins', { method: 'POST', body: JSON.stringify({ companyId: id }) }),
+    onSuccess: shown,
+    onError: (e) => setErr(errorText(e)),
+  });
+  const rotate = useMutation({
+    mutationFn: (role: string) => api<{ roleName: string; password: string }>(`/admin/bi-logins/${role}/rotate`, { method: 'POST' }),
+    onSuccess: shown,
+    onError: (e) => setErr(errorText(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (role: string) => api(`/admin/bi-logins/${role}`, { method: 'DELETE' }),
+    onSuccess: () => (setSecret(null), refresh()),
+    onError: (e) => setErr(errorText(e)),
+  });
+  const d = info.data;
+  const c = d?.connection;
+  return (
+    <section className="card">
+      <h2>BI access (Power BI, Metabase, Tableau)</h2>
+      <p className="muted small">
+        Read-only database logins. A company login sees only that company; the group login sees
+        all companies (column <code>company_code</code>). They read the views in schema{' '}
+        <code>reporting</code> only. See docs/BI_REPORTING.md for the data dictionary.
+      </p>
+      {d && !d.available && <p className="error">BI logins are not available: {d.reason}</p>}
+      {err && <p className="error">{err}</p>}
+      {secret && (
+        <SecretOnce label={`Password for ${secret.roleName}`} value={secret.password} onClose={() => setSecret(null)} />
+      )}
+      {c && (
+        <dl className="kv">
+          <dt>Host</dt>
+          <dd>{c.host}</dd>
+          <dt>Port</dt>
+          <dd>{c.port}</dd>
+          <dt>Database</dt>
+          <dd>{c.database}</dd>
+          <dt>Schema</dt>
+          <dd>{c.schema}</dd>
+          <dt>SSL</dt>
+          <dd>{c.sslmode}</dd>
+        </dl>
+      )}
+      <table>
+        <thead>
+          <tr>
+            <th>Login</th>
+            <th>Sees</th>
+            <th>Created</th>
+            <th>Password changed</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {d?.logins.length === 0 && (
+            <tr>
+              <td colSpan={5} className="muted">
+                No BI logins yet.
+              </td>
+            </tr>
+          )}
+          {d?.logins.map((l) => (
+            <tr key={l.roleName}>
+              <td>
+                <code>{l.roleName}</code>
+              </td>
+              <td>{l.scope === 'GROUP' ? 'All companies' : `${l.company?.code} · ${l.company?.name}`}</td>
+              <td>{formatDate(l.createdAt)}</td>
+              <td>{l.rotatedAt ? formatDate(l.rotatedAt) : '—'}</td>
+              <td>
+                <div className="row-actions">
+                  <button className="link" onClick={() => confirm(`New password for ${l.roleName}? The old one stops working.`) && rotate.mutate(l.roleName)}>
+                    New password
+                  </button>
+                  <button className="link danger" onClick={() => confirm(`Remove ${l.roleName}? Reports using it stop refreshing.`) && remove.mutate(l.roleName)}>
+                    Remove
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {d?.available && (
+        <div className="row-actions">
+          <select aria-label="Company for a BI login" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+            <option value="">All companies (group login)</option>
+            {d.companies.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.code} · {x.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary" disabled={create.isPending} onClick={() => create.mutate(companyId || null)}>
+            Create BI login
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -218,6 +340,7 @@ export function CompaniesPage() {
         </table>
       </section>
       <GroupSsoDomains />
+      <BiLogins />
     </>
   );
 }

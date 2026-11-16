@@ -37,6 +37,7 @@ import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
 import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
+import { ReportSubscriptionsPage } from './pages/ReportSubscriptionsPage';
 import { SsoPage } from './pages/SsoPage';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { UsersPage } from './pages/UsersPage';
@@ -101,6 +102,7 @@ export function App() {
         <Route path="customers" element={<CustomersPage />} />
         <Route path="delivery-kpis" element={<DeliveryKpisPage />} />
         <Route path="site-visits" element={<SiteVisitsPage />} />
+        <Route path="report-subscriptions" element={<ReportSubscriptionsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="admin/companies" element={<CompaniesPage />} />
         <Route path="costs" element={<CostsPage />} />

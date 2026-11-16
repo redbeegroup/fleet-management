@@ -16,6 +16,7 @@ const sections: {
       { to: '/reports', label: 'Reports', perm: Permission.COST_READ },
       { to: '/costs', label: 'Costs & TCO', perm: Permission.COST_READ },
       { to: '/budgets', label: 'Budgets', perm: Permission.BUDGET_READ },
+      { to: '/report-subscriptions', label: 'Scheduled reports', perm: Permission.SAFETY_READ },
     ],
   },
   {

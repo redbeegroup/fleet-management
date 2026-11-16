@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**; next: Phase 3 (S15 SSO + BI + scheduled reports). Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3 started: S15 (single sign-on, BI access, scheduled management reports) delivered.** Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -212,7 +212,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Branch fleet comparison | P2 | 3 | 🟡 branch table in reports (Phase 1); benchmarking views in Phase 3 |
 | Vehicle productivity ranking | P2 | 3 | ⏳ |
 | Benchmarking (same class) | P2 | 3 | ⏳ |
-| Automated management reports | P2 | 3 | ⏳ daily/weekly/monthly PDF + email |
+| Automated management reports | P2 | 3 | ✅ S15: fleet, budget & TCO, delivery, safety & compliance — daily/weekly/monthly e-mail with PDF + CSV |
 | AI executive insights | P3 | 4 | ⏳ |
 
 ### Module 10 — Compliance, Insurance & Incidents (`compliance`)
@@ -270,9 +270,9 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Notification engine | P1 | 1 / S2–S6 | ✅ in-app, SMTP e-mail, Expo push; role-based recipients; dedupe |
 | ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
 | DMS / TMS integration | P2 | 2 / S9 → 3 | 🟡 DMS order intake API + status webhooks (S9); delivery planning/ePOD S10–S11 (`pod` in delivery webhooks, `return.collected`, `load.checked_in`) |
-| BI integration (Tableau, Metabase) | P2 | 3 | ⏳ read-only reporting schema / replica |
+| BI integration (Tableau, Metabase) | P2 | 3 | ✅ S15: read-only `reporting` views, per-company and group logins ([BI_REPORTING.md](BI_REPORTING.md)) |
 | REST APIs & webhooks | P2 | 2 / S9 | ✅ scoped API keys, integration API v1 (separate OpenAPI), signed webhooks with retries ([INTEGRATION_API.md](INTEGRATION_API.md)) |
-| SSO (Entra ID / OIDC) | P2 | 3 | ⏳ |
+| SSO (Entra ID / OIDC) | P2 | 3 | ✅ S15: Microsoft Entra ID and Google Workspace (group and per-company), invited users only |
 | Workflow & approval engine | P2 | 2 / S9 | ✅ work orders, expenses, fuel and claims above configurable limits, vehicle booking requests; two approvers above a second limit; no self-approval |
 | Multi-tenant SaaS architecture | P2 | 2 / S14 | ✅ group companies: tenant isolation, super-admin company onboarding with invited first admin, user invitations and password reset (no self-signup or billing: group use only) |
 
@@ -455,3 +455,28 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Group companies** (`/admin/companies`, super admins, `company:manage`): list with users and vehicles, create a company with its first admin (invited), rename, deactivate (all its users are signed out and cannot sign in).
 - **UAT pack:** `docs/UAT_PHASE2.md` (44 checks across S7–S14) and the idempotent demo seed `deploy/demo/seed-demo.cjs`, which loads Phase 2 demo data through the public API.
 
+### Phase 3 — Sprint 15 (single sign-on, BI access, scheduled reports) delivered
+
+- **Single sign-on** (OpenID Connect, authorization code + PKCE, `openid-client`):
+  - Providers: the group's Microsoft Entra tenant and Google Workspace (configuration and Secret), plus each company's own Entra tenant or Google Workspace. A company's client secret is stored AES-256-GCM encrypted (`SSO_ENCRYPTION_KEY`).
+  - E-mail domains route to a company and provider. Domains on the group providers need a super admin's approval; a company's own provider is trusted for its domains.
+  - Only invited, active users of that company can sign in; nobody is created on the fly. The first sign-in links the identity (`iss|sub`), later ones must match. Admins can unlink.
+  - The ID token must come from the expected tenant (Entra `tid`, Google `hd`), and Google e-mails must be verified.
+  - The callback gives the browser or driver app a one-time code (Redis, 60 s), exchanged for the usual tokens; tokens never travel in a URL.
+  - A company can switch password sign-in off; super admins keep it. Audit: `sso.login`, `sso.link`, `sso.refused` with the reason.
+  - Web: e-mail-first login with Microsoft/Google buttons, *Settings → Sign-in*, an SSO badge and unlink on *Users*, domain approval on *Group companies*. Driver app: `expo-web-browser` with the deep link `fmsdriver://sso`.
+- **BI access** ([BI_REPORTING.md](BI_REPORTING.md)):
+  - Schema `reporting` holds 24 documented views with company-local dates, including the cost ledger and a calendar.
+  - Each BI login is a PostgreSQL role in `fms_bi_reader`. It can read only these views (no table rights) and is read-only, with a statement timeout.
+  - Each view filters through `fms_bi_sees(company_id)`, keyed by `session_user`. Company logins see their company; the group login sees all. Session settings cannot widen this.
+  - Super admins create, rotate and remove logins on *Group companies*. The password is shown once; the database keeps only its SCRAM hash.
+- **Scheduled management reports:**
+  - Four reports: Fleet overview, Budget vs actual & TCO, Delivery performance, Safety & compliance. Each compares with the previous period.
+  - Periods: daily (yesterday), weekly (last Mon–Sun), monthly (last month), sent at 07:00 company time by the hourly `report-dispatch` job.
+  - Each send is recorded once per subscription and period in `report_runs`; failures retry up to 5 times.
+  - Every report is an HTML e-mail (email-safe table bars) with a PDF (pdfkit) and CSV attached.
+  - Recipients are FMS users who hold the report's permission, plus extra addresses entered by an admin.
+  - *Scheduled reports* page: preview in the browser, PDF download, subscribe, pause, send now, last runs.
+- **Tests:**
+  - Unit: SSO claim checks and encryption; report periods, ISO weeks, time zones, CSV, builders and PDF.
+  - e2e: SSO against a fake OpenID provider (tenant, subject pinning, unknown or inactive users, password switch, mobile deep link); BI logins connecting to PostgreSQL (own company only, no raw tables, settings cannot widen, group sees all, rotate, remove); reports (preview, recipients' permissions, once per period from 07:00, send now, isolation).

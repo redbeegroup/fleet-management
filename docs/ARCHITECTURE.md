@@ -180,6 +180,22 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - Site visits are written in the same system transaction as the GPS rules pass: geofence visits from `GEOFENCE_ENTER`/`EXIT` events, stop visits from the pure `telematics/rules/stop-arrival.ts` (state `at_stop_id` / `stop_visit_id` in `vehicle_telemetry_state`). Durations are stored on close; open visits are not reported.
 - Account e-mails (`AccountsService`): one-time tokens in `auth_tokens` (only a SHA-256 hash is stored; INVITE 72 h, RESET 1 h; claiming is a conditional update so a link works once). `AccountMailer` sends through `SMTP_URL`; without SMTP it logs, and outside production keeps the last messages in memory (used by the e2e tests). `/api/auth/forgot-password`, `token-info` and `set-password` are public and rate-limited.
 
+## Single sign-on, BI access, scheduled reports (S15)
+
+- **SSO** (`modules/iam/sso`):
+  - `sso-core.ts` (pure) does secret encryption, domain parsing and tenant/e-mail claim checks. `SsoService` runs the OIDC flow with `openid-client`; discovery is cached per issuer.
+  - Pending logins (`state`, `nonce`, PKCE verifier, web or mobile) live in Redis for 10 min. One-time codes live in Redis for 60 s and are read with `GETDEL`.
+  - Domain routing is `sso_domains` (unique domain → company + `GROUP_ENTRA` | `GROUP_GOOGLE` | `COMPANY` provider). `sso_providers` hold company IdPs with AES-GCM encrypted secrets. Users carry `sso_subject` (unique) and `sso_linked_at`.
+  - Entra issuers are per tenant (`ENTRA_AUTHORITY/<tenant>/v2.0`), so `openid-client` validates `iss`. `ENTRA_AUTHORITY` and `GOOGLE_ISSUER` can be overridden for tests.
+- **BI** (`modules/bi`, migration `20270421000000_bi_reporting`):
+  - Views in `reporting` run with the owner's rights. They filter with `fms_bi_sees(company_id)`, a `SECURITY DEFINER` function over `fms_bi.logins` keyed by `session_user`.
+  - For a non-superuser owner (FORCE RLS), a `bi_read` SELECT policy `TO <owner>` applies the same rule; application queries (`fms_app`) are unaffected.
+  - Login roles are members of `fms_bi_reader` (SELECT on `reporting.*` only) and are managed through `BI_ADMIN_DATABASE_URL`, else `DATABASE_MIGRATION_URL`.
+- **Reports** (`modules/reports`):
+  - `period.ts` handles periods, due times and the local clock. `builders.ts` turns service results into a `ReportModel`. `render.ts` renders HTML, text and PDF. `model.ts` handles change vs previous and safe CSV. All are pure and unit-tested.
+  - `ReportsService` builds with the company's full read access (the existing analytics, costs, delivery-KPI, site-visit and safety services). It then sends only to recipients holding the report's permission.
+  - Runs are unique per (subscription, period key).
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -193,6 +209,7 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `webhook-dispatch` | every 15 s | send due webhook deliveries (retries with backoff) |
 | `fuel-card-sync` | hourly | pull card transactions from the provider API for companies with sync enabled |
 | `budget-alerts` | daily 08:15 Asia/Yangon | current-month budget lines reaching 90 % / 100 % (once per level) |
+| `report-dispatch` | hourly at :05 | scheduled management reports due (from 07:00 company time; once per period) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 
 BullMQ job schedulers are idempotent, so several worker replicas are safe. Any job can also be run once with `MODE=job JOB=<name>` (e.g. `docker compose run --rm -e MODE=job -e JOB=compliance-alerts api`, or a Kubernetes CronJob).
