@@ -6,7 +6,9 @@ import type { AuthUser } from '../../common/auth/auth-user';
 import { PrismaService, Tx } from '../../common/db/prisma.service';
 import { parseCompanySettings } from '../../common/settings';
 import { FilesService } from '../files/files.service';
-import { computeFuelChain } from './efficiency';
+import { trackDistanceKm } from '../telematics/rules/geo';
+import { consumptionVariance, kmCheck, locationCheck } from './checks';
+import { computeFuelChain, median } from './efficiency';
 
 export interface FuelListQuery {
   vehicleId?: string;
@@ -66,9 +68,11 @@ export class FuelService implements OnModuleInit {
       const unitPrice = input.unitPrice ?? round(input.totalCost! / input.litres, 2);
       const totalCost = input.totalCost ?? round(input.unitPrice! * input.litres, 2);
       const needsApproval = (await this.approvals.need(tx, 'FUEL', totalCost)).needed;
+      const where = await this.whereWasVehicle(tx, vehicle.id, input.filledAt, input.latitude != null && input.longitude != null ? { lat: input.latitude, lng: input.longitude } : null);
       const rec = await tx.fuelRecord.create({
         data: {
           ...input,
+          ...where,
           unitPrice,
           totalCost,
           approvalStatus: needsApproval ? 'PENDING' : 'APPROVED',
@@ -81,6 +85,7 @@ export class FuelService implements OnModuleInit {
       if (input.odometerKm > Number(vehicle.odometerKm)) {
         await tx.vehicle.update({ where: { id: vehicle.id }, data: { odometerKm: input.odometerKm } });
       }
+      await this.refreshGpsKm(tx, vehicle.id, rec.id);
       await this.recompute(tx, user.companyId, vehicle.id);
       const req = needsApproval
         ? await this.approvals.request(tx, user.companyId, user.userId, {
@@ -107,10 +112,47 @@ export class FuelService implements OnModuleInit {
     });
   }
 
+  /**
+   * Where the vehicle was at fill time: the GPS fix closest to `filledAt` (±15 min) compared with the
+   * fill location (phone GPS). Without a phone location the vehicle position becomes the fill location.
+   */
+  private async whereWasVehicle(tx: Tx, vehicleId: string, at: Date, fill: { lat: number; lng: number } | null) {
+    const [fix] = await tx.$queryRaw<{ latitude: number; longitude: number; speed_kmh: number | null; recorded_at: Date }[]>`
+      SELECT latitude, longitude, speed_kmh, recorded_at FROM vehicle_positions
+       WHERE vehicle_id = ${vehicleId}::uuid AND recorded_at BETWEEN ${new Date(at.getTime() - 15 * 60_000)} AND ${new Date(at.getTime() + 15 * 60_000)}
+       ORDER BY abs(extract(epoch from recorded_at - ${at}::timestamptz)) LIMIT 1`;
+    const settings = parseCompanySettings((await tx.company.findFirstOrThrow({ select: { settings: true } })).settings).fuelControl;
+    const vehicle = fix ? { lat: fix.latitude, lng: fix.longitude, speedKmh: fix.speed_kmh, minutesFromFill: Math.abs(fix.recorded_at.getTime() - at.getTime()) / 60_000 } : null;
+    const c = locationCheck({ fill, vehicle, maxM: settings.locationMaxM });
+    return {
+      latitude: fill?.lat ?? vehicle?.lat ?? null,
+      longitude: fill?.lng ?? vehicle?.lng ?? null,
+      locationSource: fill ? 'phone' : vehicle ? 'gps' : null,
+      vehicleDistanceM: c.distanceM,
+      // Persisted, then merged into the recomputed flags.
+      flags: c.flag ? [c.flag] : [],
+    };
+  }
+
+  /** GPS km since the previous fill, for this fill and the one after it (back-dated entries). */
+  private async refreshGpsKm(tx: Tx, vehicleId: string, id: string) {
+    const fills = await tx.fuelRecord.findMany({ where: { vehicleId }, select: { id: true, filledAt: true }, orderBy: { filledAt: 'asc' } });
+    const i = fills.findIndex((f) => f.id === id);
+    for (const k of [i, i + 1]) {
+      if (k <= 0 || k >= fills.length) continue;
+      const rows = await tx.$queryRaw<{ recorded_at: Date; latitude: number; longitude: number }[]>`
+        SELECT recorded_at, latitude, longitude FROM vehicle_positions
+         WHERE vehicle_id = ${vehicleId}::uuid AND recorded_at BETWEEN ${fills[k - 1].filledAt} AND ${fills[k].filledAt}
+         ORDER BY recorded_at`;
+      const km = rows.length > 1 ? Math.round(trackDistanceKm(rows.map((r) => ({ ...r, recordedAt: r.recorded_at }))) * 10) / 10 : null;
+      await tx.fuelRecord.update({ where: { id: fills[k].id }, data: { gpsKm: km } });
+    }
+  }
+
   /** Re-derives efficiency and flags for a vehicle's whole chain (handles back-dated entries). */
   private async recompute(tx: Tx, companyId: string, vehicleId: string) {
     const [fills, vehicle, company] = await Promise.all([
-      tx.fuelRecord.findMany({ where: { vehicleId }, select: { id: true, filledAt: true, odometerKm: true, litres: true, fullTank: true, distanceKm: true, kmPerLitre: true, flags: true } }),
+      tx.fuelRecord.findMany({ where: { vehicleId }, select: { id: true, filledAt: true, odometerKm: true, litres: true, fullTank: true, distanceKm: true, kmPerLitre: true, flags: true, gpsKm: true }, orderBy: { filledAt: 'asc' } }),
       tx.vehicle.findUniqueOrThrow({ where: { id: vehicleId }, select: { tankCapacityL: true } }),
       tx.company.findUniqueOrThrow({ where: { id: companyId }, select: { settings: true } }),
     ]);
@@ -118,14 +160,63 @@ export class FuelService implements OnModuleInit {
       fills.map((f) => ({ ...f, odometerKm: Number(f.odometerKm), litres: Number(f.litres) })),
       { tankCapacityL: vehicle.tankCapacityL ? Number(vehicle.tankCapacityL) : null, lowEfficiencyRatio: parseCompanySettings(company.settings).maintenance.lowEfficiencyRatio },
     );
-    for (const f of fills) {
+    const fc = parseCompanySettings(company.settings).fuelControl;
+    // Flags that are not derived from the chain are kept (location, card, sensor checks).
+    const KEEP = new Set(['VEHICLE_ELSEWHERE', 'CARD_MISMATCH', 'SENSOR_MISMATCH']);
+    for (const [i, f] of fills.entries()) {
       const r = results.get(f.id)!;
-      const changed =
-        n(f.distanceKm) !== n(r.distanceKm) || n(f.kmPerLitre) !== n(r.kmPerLitre) || f.flags.join() !== r.flags.join();
+      const prev = fills[i - 1];
+      const km = prev ? kmCheck(Number(f.odometerKm) - Number(prev.odometerKm), f.gpsKm == null ? null : Number(f.gpsKm), fc.kmMismatchPct) : null;
+      const flags = [...r.flags, ...(km ? [km] : []), ...f.flags.filter((x) => KEEP.has(x))];
+      const changed = n(f.distanceKm) !== n(r.distanceKm) || n(f.kmPerLitre) !== n(r.kmPerLitre) || f.flags.join() !== flags.join();
       if (changed) {
-        await tx.fuelRecord.update({ where: { id: f.id }, data: { distanceKm: r.distanceKm, kmPerLitre: r.kmPerLitre, flags: r.flags } });
+        await tx.fuelRecord.update({ where: { id: f.id }, data: { distanceKm: r.distanceKm, kmPerLitre: r.kmPerLitre, flags } });
       }
     }
+  }
+
+  /** Public so card/sensor checks can re-run the chain after adding a flag. */
+  recomputeIn(tx: Tx, companyId: string, vehicleId: string) {
+    return this.recompute(tx, companyId, vehicleId);
+  }
+
+  /**
+   * Consumption variance per vehicle for [from, to): actual km/L of the period's full-to-full segments vs
+   * the vehicle's own median over the previous 90 days (else its class median), litres and cost above it.
+   */
+  variance(user: AuthUser, from: Date, to: Date) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const baselineFrom = new Date(from.getTime() - 90 * 86_400_000);
+      const rows = await tx.fuelRecord.findMany({
+        where: { filledAt: { gte: baselineFrom, lt: to }, approvalStatus: { not: 'REJECTED' } },
+        select: { vehicleId: true, filledAt: true, litres: true, totalCost: true, distanceKm: true, kmPerLitre: true },
+      });
+      const vehicles = await tx.vehicle.findMany({ where: { deletedAt: null }, select: { id: true, plateNumber: true, vehicleClass: true, make: true, model: true } });
+      const cls = new Map(vehicles.map((v) => [v.id, v.vehicleClass]));
+      const base = (r: (typeof rows)[number]) => r.filledAt < from && r.kmPerLitre != null;
+      const classBase = new Map<string, number[]>();
+      for (const r of rows.filter(base)) classBase.set(cls.get(r.vehicleId)!, [...(classBase.get(cls.get(r.vehicleId)!) ?? []), n(r.kmPerLitre)]);
+      const out = vehicles
+        .map((v) => {
+          const mine = rows.filter((r) => r.vehicleId === v.id);
+          const period = mine.filter((r) => r.filledAt >= from);
+          const segs = period.filter((r) => r.distanceKm && r.kmPerLitre).map((r) => ({ km: n(r.distanceKm), litres: n(r.distanceKm) / n(r.kmPerLitre) }));
+          const litres = period.reduce((s, r) => s + n(r.litres), 0);
+          const cost = period.reduce((s, r) => s + n(r.totalCost), 0);
+          const cv = consumptionVariance({ segments: segs, baseline: mine.filter(base).map((r) => n(r.kmPerLitre)), classBaseline: classBase.get(v.vehicleClass) ?? [], unitPrice: litres ? cost / litres : null });
+          return { id: v.id, plateNumber: v.plateNumber, name: `${v.make} ${v.model}`, vehicleClass: v.vehicleClass, fills: period.length, ...cv };
+        })
+        .filter((v) => v.fills > 0)
+        .sort((a, b) => (a.variancePct ?? 0) - (b.variancePct ?? 0));
+      return {
+        from,
+        to,
+        vehicles: out,
+        totals: { excessLitres: round(out.reduce((s, v) => s + (v.excessLitres ?? 0), 0), 1), excessCost: Math.round(out.reduce((s, v) => s + (v.excessCost ?? 0), 0)) },
+        classMedians: Object.fromEntries([...classBase].map(([k, xs]) => [k, xs.length >= 3 ? round(median(xs)!, 2) : null])),
+        method: 'Actual km/L = km ÷ litres of the full-to-full segments ending in the period. Expected = the vehicle’s median km/L over the previous 90 days (at least 3 segments), else the median of its class. Excess litres = litres above what the expected km/L needed for the same km.',
+      };
+    });
   }
 
   /** Per-vehicle and fleet totals for [from, to). */

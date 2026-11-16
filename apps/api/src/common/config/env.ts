@@ -21,6 +21,10 @@ const envSchema = z.object({
   WATCHTOWER_API_KEY: z.string().optional(),
   WATCHTOWER_POLL_SECONDS: z.coerce.number().int().positive().default(30),
   TELEMATICS_PROVIDER: z.enum(['watchtower', 'mock']).default('mock'),
+  /** Fuel card provider API for companies with card sync enabled: none, mock (demo/test) or a generic REST API. */
+  FUEL_CARD_API: z.enum(['none', 'mock', 'rest']).default('none'),
+  FUEL_CARD_API_URL: z.string().optional(),
+  FUEL_CARD_API_KEY: z.string().optional(),
 
   // File storage
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),

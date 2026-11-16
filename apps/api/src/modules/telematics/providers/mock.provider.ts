@@ -7,6 +7,15 @@ import type { PositionFix, TelematicsProvider } from './telematics-provider';
 export class MockTelematicsProvider implements TelematicsProvider {
   readonly name = 'mock';
   private tick = 0;
+  private levels = new Map<number, number>();
+
+  private fuel(i: number, moving: boolean): number {
+    let l = this.levels.get(i) ?? 60 + ((i * 17) % 40);
+    if (this.tick % 240 === 0) l = 110;
+    else if (moving) l = Math.max(5, l - 0.08);
+    this.levels.set(i, l);
+    return Math.round(l * 10) / 10;
+  }
 
   constructor(private readonly deviceIds: () => Promise<string[]>) {}
 
@@ -30,8 +39,16 @@ export class MockTelematicsProvider implements TelematicsProvider {
         speedKmh: speeding ? 95 : moving ? 25 + ((this.tick * 7 + i * 13) % 45) : 0,
         heading: ((angle * 180) / Math.PI + 90) % 360,
         ignition: !parked,
-        // Occasional simulated accelerometer events (as a device would report them).
-        ...((this.tick + i * 11) % 47 === 0 && { attributes: { event: ['harsh_braking', 'harsh_acceleration', 'harsh_cornering'][(this.tick + i) % 3] } }),
+        attributes: {
+          // Occasional simulated accelerometer events (as a device would report them).
+          ...((this.tick + i * 11) % 47 === 0 && { event: ['harsh_braking', 'harsh_acceleration', 'harsh_cornering'][(this.tick + i) % 3] }),
+          // Fuel level: falls while driving, refilled to 110 L at the start of each 240-tick day cycle.
+          fuelLevelL: this.fuel(i, moving),
+          coolantTempC: moving ? 88 : 80,
+          batteryV: parked ? 12.4 : 13.9,
+          // A trouble code appears for a while on one device in five.
+          ...(i % 5 === 2 && (this.tick % 240) > 120 && { dtc: ['P0301'], mil: true }),
+        },
       };
     });
   }

@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import type { PositionFix } from './providers/telematics-provider';
 import { decodePolyline } from '../routing/polyline';
 import { ControlState, EMPTY_CONTROL, evaluateControl } from './rules/control';
+import { Diagnostics, diagnosticEvents, EMPTY_FUEL, evaluateFuelLevel, FuelLevelState, fuelLevelL, readDiagnostics } from './rules/fuel-level';
 import { EMPTY_STATE, evaluate, evaluateOffline, EventClose, EventDraft, Fence, RuleState } from './rules/rules-engine';
 
 export interface VehicleRef {
@@ -15,6 +16,7 @@ export interface VehicleRef {
   companyId: string;
   plateNumber: string;
   speedLimitKmh: number | null;
+  tankCapacityL?: Prisma.Decimal | number | null;
 }
 
 export interface PersistedEvent extends EventDraft {
@@ -35,7 +37,14 @@ const WEBHOOK_FOR: Partial<Record<string, WebhookEvent>> = {
   AFTER_HOURS: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
   NO_DRIVER: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
   RESTRICTED_AREA: WebhookEvent.VEHICLE_UNAUTHORISED_USE,
+  FUEL_DROP: WebhookEvent.VEHICLE_FUEL_DROP,
+  ENGINE_FAULT: WebhookEvent.VEHICLE_ENGINE_FAULT,
 };
+
+function toFuel(row: Prisma.VehicleTelemetryStateGetPayload<object> | undefined): FuelLevelState {
+  if (!row) return { ...EMPTY_FUEL };
+  return { samples: (row.fuelSamples as [number, number][] | null) ?? [], level: row.fuelLevelL, riseFrom: row.fuelRiseFrom, dropFrom: row.fuelDropFrom };
+}
 
 /** Decoded planned routes, keyed by trip id + version (routes change only when a load is edited). */
 const routeCache = new Map<string, { lat: number; lng: number }[]>();
@@ -105,6 +114,9 @@ export class TelemetryRulesService {
     ]);
     const settingsBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).telematics]));
     const controlBy = new Map(companies.map((c) => [c.id, { settings: parseCompanySettings(c.settings).control, timezone: c.timezone }]));
+    const fuelBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).fuelControl]));
+    const diagBy = new Map(companies.map((c) => [c.id, parseCompanySettings(c.settings).diagnostics]));
+    const diagRows = new Map((await tx.vehicleDiagnostics.findMany({ where: { vehicleId: { in: batches.map((b) => b.vehicle.id) } } })).map((d) => [d.vehicleId, d]));
     const restricted = new Map(fences.filter((f) => f.category === 'RESTRICTED').map((f) => [f.id, f.name]));
     const fencesBy = new Map<string, Fence[]>();
     for (const f of fences) {
@@ -133,6 +145,13 @@ export class TelemetryRulesService {
       };
       let state = toState(stateBy.get(vehicle.id));
       let control = toControl(stateBy.get(vehicle.id));
+      let fuel = toFuel(stateBy.get(vehicle.id));
+      const tankL = vehicle.tankCapacityL == null ? null : Number(vehicle.tankCapacityL);
+      const d0 = diagRows.get(vehicle.id);
+      let diag: (Diagnostics & { at: Date; fuelLevelL: number | null }) | null = d0
+        ? { dtcCodes: d0.dtcCodes, checkEngine: d0.checkEngine, coolantTempC: d0.coolantTempC, batteryV: d0.batteryV, engineHours: d0.engineHours, at: d0.recordedAt, fuelLevelL: d0.fuelLevelL }
+        : null;
+      let diagChanged = false;
       const ctl = controlBy.get(vehicle.companyId)!;
       const driverId = driverBy.get(vehicle.id) ?? null;
       for (const fix of [...fixes].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())) {
@@ -151,6 +170,23 @@ export class TelemetryRulesService {
           control = c.state;
           r.opened.push(...c.opened);
           r.closed.push(...c.closed);
+          // Fuel level sensor and engine diagnostics (device attributes).
+          const litres = fuelLevelL(fix.attributes, tankL);
+          const f = evaluateFuelLevel(fuel, fix, litres, fuelBy.get(vehicle.companyId)!);
+          fuel = f.state;
+          r.opened.push(...f.opened);
+          const dNow = readDiagnostics(fix.attributes);
+          if (dNow) {
+            r.opened.push(...diagnosticEvents(diag, dNow, fix, diagBy.get(vehicle.companyId)!));
+            diag = { ...dNow, at: fix.recordedAt, fuelLevelL: fuel.level };
+            diagChanged = true;
+          } else if (litres != null && diag) {
+            diag = { ...diag, at: fix.recordedAt, fuelLevelL: fuel.level };
+            diagChanged = true;
+          } else if (litres != null) {
+            diag = { dtcCodes: [], checkEngine: null, coolantTempC: null, batteryV: null, engineHours: null, at: fix.recordedAt, fuelLevelL: fuel.level };
+            diagChanged = true;
+          }
         }
         events.push(
           ...r.opened.map((e) => ({
@@ -163,10 +199,46 @@ export class TelemetryRulesService {
         );
         closes.push(...r.closed);
       }
-      await this.saveState(tx, vehicle, state, control);
+      await this.saveState(tx, vehicle, state, control, fuel);
+      if (diag && diagChanged) {
+        const data = { companyId: vehicle.companyId, recordedAt: diag.at, dtcCodes: diag.dtcCodes, checkEngine: diag.checkEngine, coolantTempC: diag.coolantTempC, batteryV: diag.batteryV, engineHours: diag.engineHours, fuelLevelL: diag.fuelLevelL };
+        await tx.vehicleDiagnostics.upsert({ where: { vehicleId: vehicle.id }, create: { vehicleId: vehicle.id, ...data }, update: data });
+      }
     }
     await this.persist(tx, events, closes);
+    await this.followUps(tx, events);
     return events;
+  }
+
+  /**
+   * Side effects of S13 events: a sensor refill is compared with the fills recorded around it (missing or
+   * smaller fills are flagged), and trouble codes marked for auto-repair open a repair request.
+   */
+  private async followUps(tx: Tx, events: PersistedEvent[]) {
+    for (const e of events) {
+      if (e.type === 'FUEL_REFILL') {
+        const litres = Number((e.data as { litres?: number } | undefined)?.litres ?? 0);
+        const tol = parseCompanySettings((await tx.company.findUniqueOrThrow({ where: { id: e.companyId }, select: { settings: true } })).settings).fuelControl.refillToleranceL;
+        const recs = await tx.fuelRecord.findMany({ where: { vehicleId: e.vehicleId, filledAt: { gte: new Date(e.occurredAt.getTime() - 3 * 3_600_000), lte: new Date(e.occurredAt.getTime() + 3 * 3_600_000) } } });
+        const recorded = recs.reduce((s, r) => s + Number(r.litres), 0);
+        const verdict = !recs.length ? 'NOT_RECORDED' : recorded + tol < litres ? 'UNDER_RECORDED' : recorded > litres + tol ? 'OVER_RECORDED' : 'OK';
+        await tx.telemetryEvent.update({ where: { id: e.id }, data: { data: { ...(e.data ?? {}), recordedLitres: Math.round(recorded * 10) / 10, verdict } as Prisma.InputJsonValue } });
+        if (verdict === 'OVER_RECORDED') for (const r of recs) if (!r.flags.includes('SENSOR_MISMATCH')) await tx.fuelRecord.update({ where: { id: r.id }, data: { flags: [...r.flags, 'SENSOR_MISMATCH'] } });
+        if (verdict !== 'OK') {
+          e.notify = true;
+          (e.data as Record<string, unknown>).verdict = verdict;
+          (e.data as Record<string, unknown>).recordedLitres = Math.round(recorded * 10) / 10;
+        }
+      }
+      if (e.type === 'ENGINE_FAULT' && (e.data as { autoRepair?: boolean } | undefined)?.autoRepair) {
+        const code = String((e.data as { code?: string }).code);
+        const open = await tx.repairRequest.findFirst({ where: { vehicleId: e.vehicleId, status: 'OPEN', description: { contains: code } } });
+        if (!open)
+          await tx.repairRequest.create({
+            data: { companyId: e.companyId, vehicleId: e.vehicleId, description: `Engine fault ${code} reported by the GPS device (raised automatically).`, severity: 'HIGH' },
+          });
+      }
+    }
   }
 
   /**
@@ -266,6 +338,20 @@ export class TelemetryRulesService {
         return { severity: 'warning', title: `${e.plateNumber} used outside working hours`, body: `${e.plateNumber} was moving at ${time} UTC, outside the company's working hours.` };
       case 'NO_DRIVER':
         return { severity: 'critical', title: `${e.plateNumber} moving without a driver on duty`, body: `${e.plateNumber} was moving at ${time} UTC: ${e.data?.reason}.` };
+      case 'FUEL_DROP':
+        return { severity: 'critical', title: `${e.plateNumber} fuel level dropped ${e.data?.litres} L while parked`, body: `The fuel sensor of ${e.plateNumber} dropped from ${e.data?.from} L to ${e.data?.to} L at ${time} UTC with the vehicle stationary. Check for fuel theft or a leak.` };
+      case 'FUEL_REFILL':
+        return {
+          severity: 'warning',
+          title: `${e.plateNumber} refill of ${e.data?.litres} L ${e.data?.verdict === 'NOT_RECORDED' ? 'not recorded' : 'does not match the recorded fill'}`,
+          body: `The fuel sensor of ${e.plateNumber} shows a refill of ${e.data?.litres} L at ${time} UTC; ${e.data?.recordedLitres ?? 0} L were recorded in FMS within 3 hours.`,
+        };
+      case 'ENGINE_FAULT':
+        return {
+          severity: 'warning',
+          title: `${e.plateNumber} engine fault${e.data?.code ? ` ${e.data.code}` : e.data?.kind === 'COOLANT_HOT' ? ': engine overheating' : e.data?.kind === 'BATTERY_LOW' ? ': battery low' : ''}`,
+          body: `${e.plateNumber} reported ${e.data?.code ? `trouble code ${e.data.code}` : `${String(e.data?.kind).toLowerCase().replace('_', ' ')} (${e.data?.value} vs limit ${e.data?.limit})`} at ${time} UTC.${e.data?.autoRepair ? ' A repair request was opened.' : ''}`,
+        };
       case 'RESTRICTED_AREA':
         return { severity: 'critical', title: `${e.plateNumber} entered restricted area ${e.data?.geofence}`, body: `${e.plateNumber} entered the restricted area "${e.data?.geofence}" at ${time} UTC.` };
       default:
@@ -273,8 +359,8 @@ export class TelemetryRulesService {
     }
   }
 
-  private async saveState(tx: Tx, vehicle: VehicleRef, s: RuleState, c: ControlState) {
-    const data = { ...s, ...c, companyId: vehicle.companyId };
+  private async saveState(tx: Tx, vehicle: VehicleRef, s: RuleState, c: ControlState, f: FuelLevelState) {
+    const data = { ...s, ...c, fuelSamples: f.samples as unknown as Prisma.InputJsonValue, fuelLevelL: f.level, fuelRiseFrom: f.riseFrom, fuelDropFrom: f.dropFrom, companyId: vehicle.companyId };
     await tx.vehicleTelemetryState.upsert({ where: { vehicleId: vehicle.id }, create: { vehicleId: vehicle.id, ...data }, update: data });
   }
 

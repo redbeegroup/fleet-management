@@ -29,6 +29,15 @@ const listSchema = paginationSchema.extend({
 });
 const expiringSchema = z.object({ days: z.coerce.number().int().min(0).max(365).default(30) });
 
+const historyQuery = z.object({
+  kinds: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined)),
+  before: z.coerce.date().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
 @ApiTags('vehicles')
 @ApiBearerAuth()
 @Controller('vehicles')
@@ -133,8 +142,14 @@ export class VehiclesController {
 
   @Get(':id/history')
   @RequirePermissions(Permission.VEHICLE_READ)
-  history(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.vehicles.history(user, id);
+  history(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query(new ZodPipe(historyQuery)) q: z.infer<typeof historyQuery>) {
+    return this.vehicles.history(user, id, q);
+  }
+
+  @Get(':id/diagnostics')
+  @RequirePermissions(Permission.VEHICLE_READ)
+  diagnostics(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vehicles.diagnostics(user, id);
   }
 
   @Delete(':id/documents/:documentId')

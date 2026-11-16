@@ -205,6 +205,8 @@ export const companySettingsSchema = z.object({
   logistics: z.lazy(() => logisticsSettingsSchema).default({}),
   pod: z.lazy(() => podSettingsSchema).default({}),
   control: z.lazy(() => controlSettingsSchema).default({}),
+  fuelControl: z.lazy(() => fuelControlSettingsSchema).default({}),
+  diagnostics: z.lazy(() => diagnosticsSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -219,6 +221,8 @@ export const updateCompanySettingsSchema = z.object({
   logistics: z.lazy(() => logisticsSettingsSchema.partial()).optional(),
   pod: z.lazy(() => podSettingsSchema.partial()).optional(),
   control: z.lazy(() => controlSettingsSchema.partial()).optional(),
+  fuelControl: z.lazy(() => fuelControlSettingsSchema.partial()).optional(),
+  diagnostics: z.lazy(() => diagnosticsSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -328,6 +332,9 @@ export const createFuelRecordSchema = z
     paymentMethod: z.enum(['CASH', 'FUEL_CARD', 'CREDIT', 'OTHER']).optional().nullable(),
     receiptFileId: z.string().uuid().optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
+    /** Where the fill happened (driver phone GPS). */
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
   })
   .refine((r) => r.unitPrice != null || r.totalCost != null, { path: ['totalCost'], message: 'Provide unitPrice or totalCost' })
   .refine((r) => r.filledAt.getTime() <= Date.now() + 5 * 60_000, { path: ['filledAt'], message: 'filledAt cannot be in the future' });
@@ -715,6 +722,8 @@ export const WebhookEvent = {
   LOAD_CHECKED_IN: 'load.checked_in',
   VEHICLE_OFF_ROUTE: 'vehicle.off_route',
   VEHICLE_UNAUTHORISED_USE: 'vehicle.unauthorised_use',
+  VEHICLE_FUEL_DROP: 'vehicle.fuel_drop',
+  VEHICLE_ENGINE_FAULT: 'vehicle.engine_fault',
 } as const;
 export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
 
@@ -1028,3 +1037,78 @@ export const costQuerySchema = z.object({
   departmentId: z.string().uuid().optional(),
 });
 export type CostQuery = z.infer<typeof costQuerySchema>;
+
+// ---------------------------------------------------------------------------
+// Fuel control, fuel cards, sensors, diagnostics (Sprint 13)
+// ---------------------------------------------------------------------------
+
+export const fuelControlSettingsSchema = z.object({
+  /** Fill location vs the vehicle's GPS position at fill time. */
+  locationMaxM: z.number().int().min(100).max(20_000).default(500),
+  /** Odometer km vs GPS km between two fills. */
+  kmMismatchPct: z.number().min(5).max(100).default(15),
+  /** Fuel level sensor rules (when the GPS device reports a level). */
+  sensorEnabled: z.boolean().default(true),
+  refillMinL: z.number().min(2).max(500).default(15),
+  dropMinL: z.number().min(2).max(500).default(10),
+  /** A sensor refill this much larger than the recorded litres is flagged. */
+  refillToleranceL: z.number().min(0).max(100).default(5),
+  /** Card reconciliation tolerances. */
+  matchHours: z.number().min(0.5).max(48).default(2),
+  matchLitresPct: z.number().min(0).max(50).default(3),
+  matchAmountPct: z.number().min(0).max(50).default(2),
+  /** Fuel card provider API sync (adapter chosen by the FUEL_CARD_API environment setting). */
+  cardSyncEnabled: z.boolean().default(false),
+  cardSyncProvider: z.string().trim().max(40).default('API'),
+  /** Saved statement column mappings per provider name (filled when an import is committed). */
+  cardMappings: z.record(z.string(), z.lazy(() => fuelCardMappingSchema)).default({}),
+});
+export type FuelControlSettings = z.infer<typeof fuelControlSettingsSchema>;
+
+export const diagnosticsSettingsSchema = z.object({
+  coolantMaxC: z.number().min(60).max(150).default(105),
+  batteryMinV: z.number().min(5).max(30).default(11.5),
+  /** Trouble codes (or prefixes like "P03") that open a repair request automatically. */
+  autoRepairCodes: z.array(z.string().trim().toUpperCase().regex(/^[PBCU][0-9A-F]{1,4}$/)).max(200).default([]),
+});
+export type DiagnosticsSettings = z.infer<typeof diagnosticsSettingsSchema>;
+
+export const fuelCardSchema = z.object({
+  provider: z.string().trim().min(2).max(40),
+  /** Full number or last digits; only the last 4 are stored. */
+  number: z.string().trim().regex(/^[0-9 *-]{4,30}$/),
+  label: z.string().trim().max(80).optional().nullable(),
+  vehicleId: z.string().uuid().optional().nullable(),
+  driverId: z.string().uuid().optional().nullable(),
+  active: z.boolean().default(true),
+});
+export type FuelCardInput = z.infer<typeof fuelCardSchema>;
+export const updateFuelCardSchema = fuelCardSchema.omit({ provider: true, number: true }).partial();
+
+/** Statement column mapping: FMS field → column header in the file. */
+export const fuelCardMappingSchema = z.object({
+  provider: z.string().trim().min(2).max(40),
+  columns: z.object({
+    occurredAt: z.string().min(1),
+    card: z.string().min(1),
+    amount: z.string().min(1),
+    litres: z.string().optional().nullable(),
+    station: z.string().optional().nullable(),
+    product: z.string().optional().nullable(),
+    plate: z.string().optional().nullable(),
+    externalId: z.string().optional().nullable(),
+  }),
+  /** Day order for ambiguous dates like 03/04/2026. */
+  dateFormat: z.enum(['YMD', 'DMY', 'MDY']).default('DMY'),
+  /** Rows whose product contains one of these words are not fuel (shop, car wash…). */
+  nonFuelWords: z.array(z.string().trim().min(1)).max(50).default(['shop', 'wash', 'lubric']),
+});
+export type FuelCardMapping = z.infer<typeof fuelCardMappingSchema>;
+
+export const reviewCardTxnSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('accept'), note: z.string().trim().min(3).max(500) }),
+  z.object({ action: z.literal('create_record'), odometerKm: z.number().nonnegative(), fullTank: z.boolean().default(true) }),
+  z.object({ action: z.literal('link'), fuelRecordId: z.string().uuid() }),
+  z.object({ action: z.literal('non_fuel'), note: z.string().trim().max(500).optional() }),
+]);
+export type ReviewCardTxnInput = z.infer<typeof reviewCardTxnSchema>;

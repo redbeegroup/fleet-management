@@ -95,5 +95,9 @@ export const TelemetryEventType = {
   AFTER_HOURS: 'AFTER_HOURS',
   NO_DRIVER: 'NO_DRIVER',
   RESTRICTED_AREA: 'RESTRICTED_AREA',
+  /** Fuel level sensor and engine diagnostics (S13). */
+  FUEL_REFILL: 'FUEL_REFILL',
+  FUEL_DROP: 'FUEL_DROP',
+  ENGINE_FAULT: 'ENGINE_FAULT',
 } as const;
 export type TelemetryEventType = (typeof TelemetryEventType)[keyof typeof TelemetryEventType];

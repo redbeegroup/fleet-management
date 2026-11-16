@@ -204,36 +204,50 @@ export class VehiclesService {
    * Consolidated vehicle history: status changes, assignments and documents,
    * newest first. Trips, fuel and maintenance join this timeline as they ship.
    */
-  history(user: AuthUser, id: string) {
+  /**
+   * Everything that happened to a vehicle, newest first: status, assignments, documents, trips, fuel,
+   * maintenance, repair requests, expenses, incidents, inspections and alerts. `kinds` filters, and
+   * `before` + `limit` page through older entries.
+   */
+  history(user: AuthUser, id: string, q: { kinds?: string[]; before?: Date; limit?: number } = {}) {
+    const limit = Math.min(q.limit ?? 200, 500);
+    const want = (k: string) => !q.kinds?.length || q.kinds.includes(k);
+    const lt = q.before ? { lt: q.before } : undefined;
+    const none = Promise.resolve([] as never[]);
     return this.db.tenant(user.companyId, async (tx) => {
       await this.mustExist(tx, id);
-      const [statuses, assignments, documents, trips, fuel, workOrders] = await Promise.all([
-        tx.vehicleStatusEvent.findMany({ where: { vehicleId: id } }),
-        tx.vehicleAssignment.findMany({
-          where: { vehicleId: id },
-          include: { driver: { select: { fullName: true } } },
-        }),
-        tx.vehicleDocument.findMany({ where: { vehicleId: id } }),
-        tx.trip.findMany({
-          where: { vehicleId: id, status: 'COMPLETED' },
-          include: { driver: { select: { fullName: true } } },
-          orderBy: { actualEnd: 'desc' },
-          take: 200,
-        }),
-        tx.fuelRecord.findMany({ where: { vehicleId: id }, orderBy: { filledAt: 'desc' }, take: 200 }),
-        tx.workOrder.findMany({ where: { vehicleId: id, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take: 200 }),
+      const [statuses, assignments, documents, trips, fuel, workOrders, repairs, expenses, incidents, inspections, alerts] = await Promise.all([
+        want('status') ? tx.vehicleStatusEvent.findMany({ where: { vehicleId: id, createdAt: lt }, orderBy: { createdAt: 'desc' }, take: limit }) : none,
+        want('assignment') ? tx.vehicleAssignment.findMany({ where: { vehicleId: id, startAt: lt }, include: { driver: { select: { fullName: true } } }, orderBy: { startAt: 'desc' }, take: limit }) : none,
+        want('document') ? tx.vehicleDocument.findMany({ where: { vehicleId: id, createdAt: lt }, orderBy: { createdAt: 'desc' }, take: limit }) : none,
+        want('trip') ? tx.trip.findMany({ where: { vehicleId: id, status: 'COMPLETED', actualEnd: lt }, include: { driver: { select: { fullName: true } } }, orderBy: { actualEnd: 'desc' }, take: limit }) : none,
+        want('fuel') ? tx.fuelRecord.findMany({ where: { vehicleId: id, filledAt: lt }, orderBy: { filledAt: 'desc' }, take: limit }) : none,
+        want('maintenance') ? tx.workOrder.findMany({ where: { vehicleId: id, status: 'COMPLETED', completedAt: lt }, orderBy: { completedAt: 'desc' }, take: limit }) : none,
+        want('repair') ? tx.repairRequest.findMany({ where: { vehicleId: id, createdAt: lt }, orderBy: { createdAt: 'desc' }, take: limit }) : none,
+        want('expense') ? tx.vehicleExpense.findMany({ where: { vehicleId: id, incurredAt: lt }, orderBy: { incurredAt: 'desc' }, take: limit }) : none,
+        want('incident') ? tx.incident.findMany({ where: { vehicleId: id, occurredAt: lt }, orderBy: { occurredAt: 'desc' }, take: limit }) : none,
+        want('inspection') ? tx.inspection.findMany({ where: { vehicleId: id, performedAt: lt }, orderBy: { performedAt: 'desc' }, take: limit }) : none,
+        want('alert')
+          ? tx.telemetryEvent.findMany({
+              where: { vehicleId: id, occurredAt: lt, type: { in: ['OVERSPEED', 'GPS_OFFLINE', 'OFF_ROUTE', 'UNAUTHORISED_MOVEMENT', 'AFTER_HOURS', 'NO_DRIVER', 'RESTRICTED_AREA', 'FUEL_DROP', 'FUEL_REFILL', 'ENGINE_FAULT', 'HARSH_BRAKE', 'HARSH_ACCEL', 'HARSH_CORNER'] } },
+              orderBy: { occurredAt: 'desc' },
+              take: limit,
+            })
+          : none,
       ]);
+      const money = (v: unknown) => Number(v).toLocaleString('en-US');
       const events = [
         ...statuses.map((e) => ({
           at: e.createdAt,
           kind: 'status' as const,
           summary: `${e.fromStatus ? `${e.fromStatus} → ` : ''}${e.toStatus}${e.reason ? ` (${e.reason})` : ''}`,
           refId: e.id,
+          link: null as string | null,
         })),
         ...assignments.flatMap((a) => {
           const target = a.driver?.fullName ?? (a.branchId ? 'branch' : 'department');
-          const out = [{ at: a.startAt, kind: 'assignment' as const, summary: `Assigned to ${target}`, refId: a.id }];
-          if (a.endAt) out.push({ at: a.endAt, kind: 'assignment' as const, summary: `Released from ${target}`, refId: a.id });
+          const out = [{ at: a.startAt, kind: 'assignment' as const, summary: `Assigned to ${target}`, refId: a.id, link: null as string | null }];
+          if (a.endAt) out.push({ at: a.endAt, kind: 'assignment' as const, summary: `Released from ${target}`, refId: a.id, link: null });
           return out;
         }),
         ...documents.map((d) => ({
@@ -241,29 +255,52 @@ export class VehiclesService {
           kind: 'document' as const,
           summary: `${d.type} ${d.number ?? ''} added${d.expiresAt ? `, expires ${d.expiresAt.toISOString().slice(0, 10)}` : ''}`,
           refId: d.id,
+          link: null,
         })),
         ...trips.map((t) => ({
           at: t.actualEnd ?? t.plannedEnd,
           kind: 'trip' as const,
-          summary: `${t.tripNo} ${t.originName} → ${t.destinationName}${t.driver ? ` (${t.driver.fullName})` : ''}${
-            t.gpsDistanceKm ? `, ${Number(t.gpsDistanceKm)} km` : ''
-          }`,
+          summary: `${t.tripNo} ${t.originName} → ${t.destinationName}${t.driver ? ` (${t.driver.fullName})` : ''}${t.gpsDistanceKm ? `, ${Number(t.gpsDistanceKm)} km` : ''}`,
           refId: t.id,
+          link: `/trips/${t.id}`,
         })),
         ...fuel.map((f) => ({
           at: f.filledAt,
           kind: 'fuel' as const,
           summary: `${Number(f.litres)} L at ${Number(f.odometerKm).toLocaleString()} km${f.kmPerLitre ? ` (${Number(f.kmPerLitre)} km/L)` : ''}${f.flags.length ? ` ⚠ ${f.flags.join(', ')}` : ''}`,
           refId: f.id,
+          link: '/fuel',
         })),
         ...workOrders.map((w) => ({
           at: w.completedAt!,
           kind: 'maintenance' as const,
-          summary: `${w.woNo} ${w.title} — ${Number(w.totalCost).toLocaleString()} cost`,
+          summary: `${w.woNo} ${w.title} — ${money(w.totalCost)} cost`,
           refId: w.id,
+          link: `/maintenance/work-orders/${w.id}`,
         })),
+        ...repairs.map((r) => ({ at: r.createdAt, kind: 'repair' as const, summary: `Repair request (${r.severity.toLowerCase()}): ${r.description.slice(0, 120)} — ${r.status.toLowerCase()}`, refId: r.id, link: '/maintenance' })),
+        ...expenses.map((e) => ({ at: e.incurredAt, kind: 'expense' as const, summary: `${e.category} ${money(e.amount)}${e.description ? ` — ${e.description.slice(0, 80)}` : ''}${e.approvalStatus !== 'APPROVED' ? ` (${e.approvalStatus.toLowerCase()})` : ''}`, refId: e.id, link: null })),
+        ...incidents.map((i) => ({ at: i.occurredAt, kind: 'incident' as const, summary: `${i.incidentNo} ${i.type.toLowerCase().replace(/_/g, ' ')} (${i.severity.toLowerCase()})`, refId: i.id, link: `/incidents/${i.id}` })),
+        ...inspections.map((i) => ({ at: i.performedAt, kind: 'inspection' as const, summary: `${i.inspectionNo} ${i.kind.toLowerCase().replace(/_/g, ' ')} inspection: ${i.result.toLowerCase()}`, refId: i.id, link: `/inspections/${i.id}` })),
+        ...alerts.map((e) => {
+          const d = (e.data ?? {}) as Record<string, unknown>;
+          const extra = e.type === 'ENGINE_FAULT' ? ` ${d.code ?? String(d.kind ?? '').toLowerCase()}` : e.type.startsWith('FUEL_') ? ` ${d.litres} L` : e.speedKmh ? ` ${Math.round(e.speedKmh)} km/h` : '';
+          return { at: e.occurredAt, kind: 'alert' as const, summary: `${e.type.toLowerCase().replace(/_/g, ' ')}${extra}`, refId: e.id, link: `/vehicles/${id}/track` };
+        }),
       ];
-      return events.sort((a, b) => b.at.getTime() - a.at.getTime());
+      return events.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
+    });
+  }
+
+  /** Latest engine diagnostics and fuel level reported by the GPS device, with recent faults. */
+  diagnostics(user: AuthUser, id: string) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      await this.mustExist(tx, id);
+      const [d, faults] = await Promise.all([
+        tx.vehicleDiagnostics.findUnique({ where: { vehicleId: id } }),
+        tx.telemetryEvent.findMany({ where: { vehicleId: id, type: { in: ['ENGINE_FAULT', 'FUEL_DROP', 'FUEL_REFILL'] } }, orderBy: { occurredAt: 'desc' }, take: 20 }),
+      ]);
+      return { latest: d, events: faults };
     });
   }
 

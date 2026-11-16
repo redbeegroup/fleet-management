@@ -11,6 +11,7 @@ import { WebhooksService } from '../modules/integrations/webhooks.service';
 import { TelematicsService } from '../modules/telematics/telematics.service';
 import { ComplianceAlertsJob } from './compliance-alerts.job';
 import { CostsService } from '../modules/costs/costs.service';
+import { FuelCardsService } from '../modules/fuel/cards/fuel-cards.service';
 
 export const MAINTENANCE_QUEUE = 'fms-maintenance';
 
@@ -30,6 +31,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly incentives: IncentivesService,
     private readonly webhooks: WebhooksService,
     private readonly costs: CostsService,
+    private readonly fuelCards: FuelCardsService,
   ) {
     super();
   }
@@ -46,6 +48,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('budget-alerts', { pattern: '0 15 8 * * *', tz: 'Asia/Yangon' }, { name: 'budget-alerts' });
+    await this.queue.upsertJobScheduler('fuel-card-sync', { pattern: '0 20 * * * *' }, { name: 'fuel-card-sync' });
     await this.queue.upsertJobScheduler('daily-stats', { every: 30 * 60_000 }, { name: 'daily-stats' });
     await this.queue.upsertJobScheduler('webhook-dispatch', { every: 15_000 }, { name: 'webhook-dispatch' });
     await this.queue.upsertJobScheduler('gps-offline', { every: 5 * 60_000 }, { name: 'gps-offline' });
@@ -67,6 +70,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     switch (job.name) {
       case 'safety-alerts':
         return this.safety.lowScoreAlerts();
+      case 'fuel-card-sync':
+        return this.fuelCards.syncAll();
       case 'budget-alerts':
         return this.costs.budgetAlerts();
       case 'daily-stats':

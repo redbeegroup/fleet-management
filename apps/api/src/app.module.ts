@@ -108,6 +108,7 @@ const redisConnection = () => {
     TrainingModule,
     IncentivesModule,
     CostsModule,
+    FuelModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -122,7 +123,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule, FuelModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

@@ -42,7 +42,7 @@ export class TelematicsService {
     const { stored, latest, events } = await this.db.system(async (tx) => {
       const vehicles = await tx.vehicle.findMany({
         where: { gpsDeviceId: { in: [...new Set(fixes.map((f) => f.deviceId))] }, deletedAt: null },
-        select: { id: true, companyId: true, gpsDeviceId: true, plateNumber: true, speedLimitKmh: true, odometerKm: true },
+        select: { id: true, companyId: true, gpsDeviceId: true, plateNumber: true, speedLimitKmh: true, odometerKm: true, tankCapacityL: true },
       });
       const byDevice = new Map(vehicles.map((v) => [v.gpsDeviceId!, v]));
       const rows = fixes.flatMap((f) => {

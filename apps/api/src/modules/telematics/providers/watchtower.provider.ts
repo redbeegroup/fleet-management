@@ -1,6 +1,12 @@
 import { Logger } from '@nestjs/common';
 import type { PositionFix, TelematicsProvider } from './telematics-provider';
 
+const EXTRA_KEYS = new Set([
+  'event', 'alarm', 'fuel', 'fuelLevelL', 'fuel_level_l', 'fuelLiters', 'fuelLevelPct', 'fuel_level_pct', 'fuelPercent',
+  'dtc', 'dtcCodes', 'dtc_codes', 'troubleCodes', 'mil', 'checkEngine', 'coolantTempC', 'coolant_temp', 'engineTemp',
+  'batteryV', 'battery', 'power', 'engineHours', 'engine_hours', 'hours',
+]);
+
 interface WatchTowerPosition {
   deviceId?: string;
   imei?: string;
@@ -56,6 +62,17 @@ export class WatchTowerProvider implements TelematicsProvider {
     return fixes;
   }
 
+  /**
+   * Device attributes the rules read (events, fuel level, diagnostics). Field names are unconfirmed, so the
+   * nested `attributes` object and a set of common top-level aliases are both passed through.
+   */
+  static attributesOf(row: WatchTowerPosition): Record<string, unknown> | null {
+    const nested = row.attributes && typeof row.attributes === 'object' && !Array.isArray(row.attributes) ? (row.attributes as Record<string, unknown>) : {};
+    const top = Object.fromEntries(Object.entries(row).filter(([k, v]) => EXTRA_KEYS.has(k) && v != null));
+    const all = { ...nested, ...top };
+    return Object.keys(all).length ? all : null;
+  }
+
   static toFix(row: WatchTowerPosition): PositionFix | null {
     const deviceId = row.deviceId ?? row.imei;
     const ts = row.fixTime ?? row.timestamp;
@@ -65,6 +82,7 @@ export class WatchTowerProvider implements TelematicsProvider {
     const recordedAt = new Date(ts);
     if (Number.isNaN(recordedAt.getTime())) return null;
     if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+    const attrs = WatchTowerProvider.attributesOf(row);
     return {
       deviceId: String(deviceId),
       recordedAt,
@@ -75,6 +93,7 @@ export class WatchTowerProvider implements TelematicsProvider {
       altitudeM: row.altitude ?? null,
       ignition: row.ignition ?? null,
       odometerKm: row.odometer ?? null,
+      ...(attrs && { attributes: attrs }),
     };
   }
 }

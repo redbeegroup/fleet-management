@@ -409,6 +409,9 @@ enum TelemetryEventType {
   AFTER_HOURS
   NO_DRIVER
   RESTRICTED_AREA
+  FUEL_REFILL
+  FUEL_DROP
+  ENGINE_FAULT
 }
 
 /// Virtual boundary: branch, warehouse, customer site, restricted area…
@@ -481,6 +484,11 @@ model VehicleTelemetryState {
   noTripEventId     String?   @map("no_trip_event_id") @db.Uuid
   afterHoursEventId String?   @map("after_hours_event_id") @db.Uuid
   noDriverEventId   String?   @map("no_driver_event_id") @db.Uuid
+  /// Fuel level sensor (S13): recent raw samples [[epochMs, litres]], smoothed level and the episode in progress.
+  fuelSamples       Json?     @map("fuel_samples")
+  fuelLevelL        Float?    @map("fuel_level_l")
+  fuelRiseFrom      Float?    @map("fuel_rise_from")
+  fuelDropFrom      Float?    @map("fuel_drop_from")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([companyId])
@@ -606,32 +614,42 @@ model DutySession {
 // ---------------------------------------------------------------------------
 
 model FuelRecord {
-  id             String        @id @default(uuid()) @db.Uuid
-  companyId      String        @map("company_id") @db.Uuid
-  vehicleId      String        @map("vehicle_id") @db.Uuid
-  driverId       String?       @map("driver_id") @db.Uuid
-  filledAt       DateTime      @map("filled_at")
-  odometerKm     Decimal       @map("odometer_km") @db.Decimal(12, 1)
-  litres         Decimal       @db.Decimal(10, 2)
-  unitPrice      Decimal       @map("unit_price") @db.Decimal(12, 2)
-  totalCost      Decimal       @map("total_cost") @db.Decimal(14, 2)
-  fuelType       String?       @map("fuel_type")
-  station        String?
-  fullTank       Boolean       @default(true) @map("full_tank")
-  paymentMethod  String?       @map("payment_method")
-  receiptFileId  String?       @map("receipt_file_id") @db.Uuid
-  notes          String?
-  source         String        @default("web")
+  id               String        @id @default(uuid()) @db.Uuid
+  companyId        String        @map("company_id") @db.Uuid
+  vehicleId        String        @map("vehicle_id") @db.Uuid
+  driverId         String?       @map("driver_id") @db.Uuid
+  filledAt         DateTime      @map("filled_at")
+  odometerKm       Decimal       @map("odometer_km") @db.Decimal(12, 1)
+  litres           Decimal       @db.Decimal(10, 2)
+  unitPrice        Decimal       @map("unit_price") @db.Decimal(12, 2)
+  totalCost        Decimal       @map("total_cost") @db.Decimal(14, 2)
+  fuelType         String?       @map("fuel_type")
+  station          String?
+  fullTank         Boolean       @default(true) @map("full_tank")
+  paymentMethod    String?       @map("payment_method")
+  receiptFileId    String?       @map("receipt_file_id") @db.Uuid
+  notes            String?
+  source           String        @default("web")
+  /// Where the fill happened (S13): phone GPS of the driver, or the vehicle's GPS position at fill time.
+  latitude         Float?
+  longitude        Float?
+  locationSource   String?       @map("location_source")
+  /// Distance between the fill location and the vehicle's GPS position at fill time.
+  vehicleDistanceM Float?        @map("vehicle_distance_m")
+  /// GPS km since the previous fill (compared with the odometer distance).
+  gpsKm            Decimal?      @map("gps_km") @db.Decimal(10, 1)
+  /// Fuel card transaction this fill was reconciled with.
+  cardTxnId        String?       @map("card_txn_id") @db.Uuid
   /// Computed (full-to-full): distance since previous full fill and efficiency.
-  distanceKm     Decimal?      @map("distance_km") @db.Decimal(10, 1)
-  kmPerLitre     Decimal?      @map("km_per_litre") @db.Decimal(8, 2)
+  distanceKm       Decimal?      @map("distance_km") @db.Decimal(10, 1)
+  kmPerLitre       Decimal?      @map("km_per_litre") @db.Decimal(8, 2)
   /// Anomaly flags, e.g. ["ODOMETER_BACKWARDS", "OVER_TANK_CAPACITY", "LOW_EFFICIENCY"]
-  flags          String[]      @default([])
+  flags            String[]      @default([])
   /// APPROVED unless the cost needed approval (settings.approvals.fuelAbove).
-  approvalStatus EntryApproval @default(APPROVED) @map("approval_status")
-  createdBy      String?       @map("created_by") @db.Uuid
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  approvalStatus   EntryApproval @default(APPROVED) @map("approval_status")
+  createdBy        String?       @map("created_by") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
   driver  Driver? @relation(fields: [driverId], references: [id])
@@ -1463,4 +1481,89 @@ model SharedCost {
 
   @@index([companyId, period])
   @@map("shared_costs")
+}
+
+/// Company fuel cards (S13). Only the last digits are stored.
+model FuelCard {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  provider  String
+  /// Masked number, e.g. **** 1234 (last 4 kept for matching statements).
+  last4     String
+  label     String?
+  vehicleId String?  @map("vehicle_id") @db.Uuid
+  driverId  String?  @map("driver_id") @db.Uuid
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, provider, last4])
+  @@map("fuel_cards")
+}
+
+/// A statement upload or an API sync run.
+model FuelCardImport {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  provider   String
+  source     String // 'file' | 'api'
+  filename   String?
+  rows       Int      @default(0)
+  imported   Int      @default(0)
+  duplicates Int      @default(0)
+  errors     Json?
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, createdAt])
+  @@map("fuel_card_imports")
+}
+
+model FuelCardTransaction {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  importId     String?  @map("import_id") @db.Uuid
+  provider     String
+  /// Provider's transaction id, or a hash of the row for statements without one (dedupe).
+  externalId   String   @map("external_id")
+  cardLast4    String   @map("card_last4")
+  cardId       String?  @map("card_id") @db.Uuid
+  vehicleId    String?  @map("vehicle_id") @db.Uuid
+  occurredAt   DateTime @map("occurred_at")
+  station      String?
+  product      String?
+  litres       Decimal? @db.Decimal(10, 2)
+  amount       Decimal  @db.Decimal(14, 2)
+  plate        String?
+  /// MATCHED | MISMATCH | CARD_ONLY | ACCEPTED | NON_FUEL
+  status       String   @default("CARD_ONLY")
+  fuelRecordId String?  @map("fuel_record_id") @db.Uuid
+  differences  Json?
+  note         String?
+  reviewedBy   String?  @map("reviewed_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, provider, externalId])
+  @@index([companyId, occurredAt])
+  @@index([vehicleId, occurredAt])
+  @@map("fuel_card_transactions")
+}
+
+/// Latest engine diagnostics per vehicle (from GPS device attributes).
+model VehicleDiagnostics {
+  vehicleId    String   @id @map("vehicle_id") @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  recordedAt   DateTime @map("recorded_at")
+  /// Active trouble codes, e.g. ["P0300"].
+  dtcCodes     String[] @default([]) @map("dtc_codes")
+  checkEngine  Boolean? @map("check_engine")
+  coolantTempC Float?   @map("coolant_temp_c")
+  batteryV     Float?   @map("battery_v")
+  engineHours  Float?   @map("engine_hours")
+  fuelLevelL   Float?   @map("fuel_level_l")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@map("vehicle_diagnostics")
 }

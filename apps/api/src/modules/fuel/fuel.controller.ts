@@ -45,4 +45,10 @@ export class FuelController {
   summary(@CurrentUser() user: AuthUser, @Query(new ZodPipe(rangeSchema)) q: { from: Date; to: Date }) {
     return this.fuel.summary(user, q.from, q.to);
   }
+
+  @Get('variance')
+  @RequirePermissions(Permission.FUEL_READ)
+  variance(@CurrentUser() user: AuthUser, @Query(new ZodPipe(rangeSchema)) q: { from: Date; to: Date }) {
+    return this.fuel.variance(user, q.from, q.to);
+  }
 }
