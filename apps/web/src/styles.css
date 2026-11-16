@@ -374,3 +374,9 @@ tr.selected td { background: var(--info-bg); }
 .chip.on { background: var(--info-bg); border-color: var(--info); color: var(--text); }
 .tile-value.danger { color: var(--danger); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+
+/* Single sign-on (S15) */
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+.sso-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.card-row { align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }

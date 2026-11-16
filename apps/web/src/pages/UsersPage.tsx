@@ -16,6 +16,7 @@ interface UserRow {
   lastLoginAt: string | null;
   invitedAt: string | null;
   passwordSetAt: string | null;
+  ssoLinkedAt: string | null;
 }
 
 const ROLE_HELP: Record<string, string> = {
@@ -63,6 +64,11 @@ export function UsersPage() {
     onSuccess: ok('Invitation sent again.'),
     onError: fail,
   });
+  const unlink = useMutation({
+    mutationFn: (id: string) => api(`/users/${id}/unlink-sso`, { method: 'POST' }),
+    onSuccess: ok('Single sign-on unlinked. The next Microsoft/Google sign-in links again.'),
+    onError: fail,
+  });
   const reset = useMutation({
     mutationFn: (id: string) => api(`/users/${id}/reset-password`, { method: 'POST' }),
     onSuccess: ok('Password reset link sent.'),
@@ -84,7 +90,7 @@ export function UsersPage() {
   const status = (u: UserRow) =>
     !u.active
       ? ['inactive', 'muted']
-      : u.invitedAt && !u.passwordSetAt
+      : u.invitedAt && !u.passwordSetAt && !u.ssoLinkedAt
         ? ['invited', 'warn']
         : ['active', 'ok'];
   const roleChips = (value: string[], onChange: (v: string[]) => void) => (
@@ -137,7 +143,7 @@ export function UsersPage() {
             {roleChips(roles, setRoles)}
           </div>
           <p className="muted small span-2">
-            The user gets an e-mail with a link to choose a password (valid 72 hours). Drivers also
+            The user gets an e-mail with a link to choose a password (valid 72 hours), or signs in with Microsoft/Google if single sign-on is set up for their domain. Drivers also
             need a driver profile under Drivers, linked to this login.
           </p>
           <div className="span-2">
@@ -199,6 +205,11 @@ export function UsersPage() {
                     </td>
                     <td>
                       <span className={`badge badge-${tone}`}>{label}</span>
+                      {u.ssoLinkedAt && (
+                        <span className="badge badge-info" title={`Linked ${formatDateTime(u.ssoLinkedAt)}`}>
+                          SSO
+                        </span>
+                      )}
                     </td>
                     <td>{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'}</td>
                     {canWrite && (
@@ -212,7 +223,17 @@ export function UsersPage() {
                               {editing === u.id ? 'Done' : 'Roles'}
                             </button>
                           )}
-                          {u.active && u.invitedAt && !u.passwordSetAt && (
+                          {u.ssoLinkedAt && (
+                            <button
+                              className="link"
+                              onClick={() =>
+                                confirm(`Unlink ${u.fullName}'s Microsoft/Google sign-in?`) && unlink.mutate(u.id)
+                              }
+                            >
+                              Unlink SSO
+                            </button>
+                          )}
+                          {u.active && u.invitedAt && !u.passwordSetAt && !u.ssoLinkedAt && (
                             <button className="link" onClick={() => resend.mutate(u.id)}>
                               Resend invite
                             </button>

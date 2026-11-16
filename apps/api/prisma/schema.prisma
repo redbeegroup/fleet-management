@@ -121,6 +121,9 @@ model User {
   /// Invited by email and not yet set a password (S14).
   invitedAt     DateTime? @map("invited_at")
   passwordSetAt DateTime? @map("password_set_at")
+  /// Single sign-on (S15): issuer + subject of the linked identity, pinned on first SSO sign-in.
+  ssoSubject    String?   @unique @map("sso_subject")
+  ssoLinkedAt   DateTime? @map("sso_linked_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -1617,4 +1620,79 @@ model AuthToken {
 
   @@index([userId, kind])
   @@map("auth_tokens")
+}
+
+/// A company's own identity provider (S15). The group providers come from configuration instead.
+model SsoProvider {
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  /// 'ENTRA' | 'GOOGLE'
+  kind            String
+  /// Entra tenant id, or the Google Workspace domain (hd).
+  tenant          String
+  clientId        String   @map("client_id")
+  /// AES-256-GCM (SSO_ENCRYPTION_KEY): iv.tag.ciphertext, base64url.
+  clientSecretEnc String   @map("client_secret_enc")
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@map("sso_providers")
+}
+
+/// E-mail domain → company and identity provider (S15).
+model SsoDomain {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  domain     String    @unique
+  /// 'GROUP_ENTRA' | 'GROUP_GOOGLE' | 'COMPANY' (providerId set)
+  source     String
+  providerId String?   @map("provider_id") @db.Uuid
+  /// Group providers need a super admin's approval; a company's own provider is trusted for its domains.
+  approvedAt DateTime? @map("approved_at")
+  approvedBy String?   @map("approved_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@map("sso_domains")
+}
+
+/// Scheduled management report by e-mail (S15).
+model ReportSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  /// FLEET | BUDGET | DELIVERY | SAFETY
+  report      String
+  /// DAILY | WEEKLY | MONTHLY
+  frequency   String
+  branchId    String?  @map("branch_id") @db.Uuid
+  userIds     String[] @map("user_ids") @db.Uuid
+  extraEmails String[] @map("extra_emails")
+  enabled     Boolean  @default(true)
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@map("report_subscriptions")
+}
+
+model ReportRun {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  /// e.g. 2026-11-15 (daily), 2026-W46 (weekly), 2026-10 (monthly)
+  periodKey      String   @map("period_key")
+  /// SENT | FAILED | SKIPPED
+  status         String
+  recipients     Int      @default(0)
+  error          String?
+  attempts       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([subscriptionId, periodKey])
+  @@index([companyId, createdAt])
+  @@map("report_runs")
 }

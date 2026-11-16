@@ -122,9 +122,14 @@ export async function login(email: string, password: string): Promise<DriverSess
   if (!res.ok)
     throw new ApiError(
       res.status,
-      res.status === 401 ? 'Invalid email or password' : await errorMessage(res),
+      res.status === 401
+        ? await errorMessage(res).then((m) => (/single sign-on/i.test(m) ? m : 'Invalid email or password'))
+        : await errorMessage(res),
     );
-  const s = (await res.json()) as DriverSession;
+  return accept((await res.json()) as DriverSession);
+}
+
+async function accept(s: DriverSession): Promise<DriverSession> {
   if (!isDriver(s) && !isManager(s))
     throw new ApiError(
       403,
@@ -381,4 +386,28 @@ export async function requestPasswordReset(email: string): Promise<void> {
   if (res.status === 429) throw new ApiError(429, 'Too many requests. Try again in a minute.');
   if (!res.ok && res.status !== 202)
     throw new ApiError(res.status, 'Could not send the reset link');
+}
+
+/** Single sign-on options for an e-mail (does the domain use Microsoft / Google?). */
+export async function ssoOptions(email?: string): Promise<{ microsoft: boolean; google: boolean; sso: { provider: 'microsoft' | 'google' } | null }> {
+  const q = email ? `?email=${encodeURIComponent(email.trim())}` : '';
+  const res = await fetch(`${API_URL}/auth/sso/options${q}`);
+  return res.ok ? res.json() : { microsoft: false, google: false, sso: null };
+}
+
+/** URL that starts single sign-on in the browser; it returns to fmsdriver://sso?code=… */
+export function ssoStartUrl(by: { email?: string; provider?: 'microsoft' | 'google' }): string {
+  const q = new URLSearchParams({ app: 'mobile', ...(by.email ? { email: by.email.trim() } : { provider: by.provider! }) });
+  return `${API_URL}/auth/sso/start?${q.toString()}`;
+}
+
+/** Exchanges the one-time code from the SSO redirect for a session. */
+export async function ssoExchange(code: string): Promise<DriverSession> {
+  const res = await fetch(`${API_URL}/auth/sso/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new ApiError(res.status, 'The sign-in link expired. Please try again.');
+  return accept((await res.json()) as DriverSession);
 }

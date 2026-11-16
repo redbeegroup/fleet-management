@@ -16,6 +16,76 @@ interface CompanyRow {
   vehicles: number;
 }
 
+interface GroupDomain {
+  id: string;
+  domain: string;
+  source: string;
+  approvedAt: string | null;
+  company: { code: string; name: string } | null;
+}
+
+/** Domains that companies want to use with the group's shared Microsoft / Google sign-in. */
+function GroupSsoDomains() {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ['admin-sso-domains'], queryFn: () => api<GroupDomain[]>('/admin/sso-domains') });
+  const act = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      api(`/admin/sso-domains/${id}/${approve ? 'approve' : 'revoke'}`, { method: 'POST' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin-sso-domains'] }),
+  });
+  return (
+    <section className="card table-card">
+      <div className="card-head">
+        <h2>Group single sign-on domains</h2>
+      </div>
+      <p className="muted small">
+        Approve a domain only if it really belongs to that company: its users can then sign in with
+        the group's Microsoft or Google account.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Company</th>
+            <th>Sign-in</th>
+            <th>Status</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {list.data?.length === 0 && (
+            <tr>
+              <td colSpan={5} className="muted">
+                No company has asked for the group sign-in yet.
+              </td>
+            </tr>
+          )}
+          {list.data?.map((d) => (
+            <tr key={d.id}>
+              <td>{d.domain}</td>
+              <td>{d.company ? `${d.company.code} · ${d.company.name}` : '—'}</td>
+              <td>{d.source === 'GROUP_ENTRA' ? 'Microsoft' : 'Google'}</td>
+              <td>
+                <span className={`badge badge-${d.approvedAt ? 'ok' : 'warn'}`}>
+                  {d.approvedAt ? `approved ${formatDate(d.approvedAt)}` : 'waiting'}
+                </span>
+              </td>
+              <td>
+                <button
+                  className={d.approvedAt ? 'link danger' : 'link'}
+                  onClick={() => act.mutate({ id: d.id, approve: !d.approvedAt })}
+                >
+                  {d.approvedAt ? 'Revoke' : 'Approve'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 /** Group administration (super admins): companies of the group and their first admin. */
 export function CompaniesPage() {
   const qc = useQueryClient();
@@ -147,6 +217,7 @@ export function CompaniesPage() {
           </tbody>
         </table>
       </section>
+      <GroupSsoDomains />
     </>
   );
 }

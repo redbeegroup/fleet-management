@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { ControlSettings } from '../components/ControlSettings';
 import { FuelControlSettings } from '../components/FuelControlSettings';
 import { DepotSettings } from '../components/DepotSettings';
+import { SsoSettings } from '../components/SsoSettings';
 import { licenceShort } from '../components/LicenceFields';
 import { api, ApiError, session } from '../lib/api';
 import { humanize } from '../lib/format';
@@ -318,6 +319,7 @@ export function SettingsPage() {
       <DepotSettings settings={data} />
       <ControlSettings settings={data} />
       <FuelControlSettings settings={data} />
+      <SsoSettings settings={data} />
     </>
   );
 }

@@ -1,3 +1,4 @@
+import * as WebBrowser from 'expo-web-browser';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,6 +18,9 @@ import {
   isManager,
   login,
   requestPasswordReset,
+  ssoExchange,
+  ssoOptions,
+  ssoStartUrl,
   Me,
   restore,
   setSignedOutHandler,
@@ -90,6 +94,34 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  const [group, setGroup] = useState({ microsoft: false, google: false });
+  const [sso, setSso] = useState<'microsoft' | 'google' | null>(null);
+  useEffect(() => {
+    ssoOptions().then((o) => setGroup({ microsoft: o.microsoft, google: o.google }), () => undefined);
+  }, []);
+  const PROVIDER = { microsoft: 'Microsoft', google: 'Google' } as const;
+  async function signInWith(provider: 'microsoft' | 'google') {
+    setError(null);
+    setBusy(true);
+    try {
+      const url = ssoStartUrl(sso && email.trim() ? { email } : { provider });
+      const r = await WebBrowser.openAuthSessionAsync(url, 'fmsdriver://sso');
+      if (r.type !== 'success') return;
+      // React Native's URL has no full searchParams support: parse the query by hand.
+      const q = Object.fromEntries(
+        (r.url.split('?')[1] ?? '').split('&').filter(Boolean).map((kv) => {
+          const [k, v = ''] = kv.split('=');
+          return [decodeURIComponent(k), decodeURIComponent(v.replace(/\+/g, ' '))];
+        }),
+      );
+      if (q.error) return setError(q.error);
+      onLogin(await ssoExchange(q.code ?? ''));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <ScrollView
       contentContainerStyle={[s.screen, { marginTop: 48 }]}
@@ -103,7 +135,15 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
         autoComplete="email"
         value={email}
         onChangeText={setEmail}
+        onEndEditing={() =>
+          /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
+            ? ssoOptions(email).then((o) => setSso(o.sso?.provider ?? null), () => undefined)
+            : setSso(null)
+        }
       />
+      {sso && (
+        <Button title={`Continue with ${PROVIDER[sso]}`} busy={busy} onPress={() => signInWith(sso)} />
+      )}
       <Field
         label="Password"
         secureTextEntry
@@ -146,6 +186,12 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
       >
         <Text style={{ color: colors.primary }}>Forgot your password?</Text>
       </Pressable>
+      {!sso && group.microsoft && (
+        <Button title="Sign in with Microsoft" busy={busy} onPress={() => signInWith('microsoft')} />
+      )}
+      {!sso && group.google && (
+        <Button title="Sign in with Google" busy={busy} onPress={() => signInWith('google')} />
+      )}
     </ScrollView>
   );
 }

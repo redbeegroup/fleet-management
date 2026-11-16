@@ -1,11 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { permissionsForRoles } from '@fms/shared';
+import { permissionsForRoles, Role } from '@fms/shared';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import type { AccessTokenPayload } from '../../common/auth/auth-user';
 import { env } from '../../common/config/env';
 import { PrismaService } from '../../common/db/prisma.service';
+import { parseCompanySettings } from '../../common/settings';
 
 export interface TokenPair {
   accessToken: string;
@@ -33,6 +34,9 @@ export class AuthService {
     );
     const valid = user && user.active && user.company.active && (await argon2.verify(user.passwordHash, password));
     if (!valid) throw new UnauthorizedException('Invalid email or password');
+    if (!user.roles.includes(Role.SUPER_ADMIN) && !parseCompanySettings(user.company.settings).security.passwordLogin) {
+      throw new UnauthorizedException('Your company signs in with Microsoft or Google. Use the single sign-on button.');
+    }
 
     await this.db.system((tx) => tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }));
     return this.issue(user);
@@ -76,7 +80,8 @@ export class AuthService {
     );
   }
 
-  private async issue(
+  /** Issues an access and refresh token pair (password, refresh or SSO sign-in). */
+  async issue(
     user: { id: string; email: string; fullName: string; companyId: string; roles: string[] },
     tx?: Parameters<Parameters<PrismaService['system']>[0]>[0],
   ): Promise<TokenPair> {

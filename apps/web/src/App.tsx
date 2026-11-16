@@ -37,6 +37,7 @@ import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
 import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
+import { SsoPage } from './pages/SsoPage';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { UsersPage } from './pages/UsersPage';
 import { CompaniesPage } from './pages/CompaniesPage';
@@ -61,6 +62,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
+      <Route path="/sso" element={<SsoPage />} />
       <Route
         element={
           <RequireAuth>

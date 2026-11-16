@@ -12,7 +12,7 @@ const INVITE_HOURS = 72;
 const RESET_HOURS = 1;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-export const userSelect = { id: true, email: true, fullName: true, roles: true, branchId: true, active: true, lastLoginAt: true, invitedAt: true, passwordSetAt: true, createdAt: true } as const;
+export const userSelect = { id: true, email: true, fullName: true, roles: true, branchId: true, active: true, lastLoginAt: true, invitedAt: true, passwordSetAt: true, ssoLinkedAt: true, createdAt: true } as const;
 
 /**
  * Sends account e-mails. Without SMTP (local/test) the message is logged instead, and the last messages

@@ -44,6 +44,21 @@ const envSchema = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('FMS <no-reply@fms.local>'),
   APP_URL: z.string().default('http://localhost:8080'),
+  // Single sign-on (S15). Group providers: the group's Entra tenant and Google Workspace.
+  /** Key for client secrets of company-owned providers (any string, 32+ characters recommended). */
+  SSO_ENCRYPTION_KEY: z.string().min(16).optional(),
+  /** Defaults to APP_URL + /api/auth/sso/callback. */
+  SSO_REDIRECT_URL: z.string().url().optional(),
+  ENTRA_TENANT_ID: z.string().optional(),
+  ENTRA_CLIENT_ID: z.string().optional(),
+  ENTRA_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Overridable for tests (fake identity provider). */
+  ENTRA_AUTHORITY: z.string().default('https://login.microsoftonline.com'),
+  GOOGLE_ISSUER: z.string().default('https://accounts.google.com'),
+  /** Deep link the driver app listens on after SSO. */
+  MOBILE_SSO_REDIRECT: z.string().default('fmsdriver://sso'),
   /** Expo push service (mobile notifications). */
   PUSH_ENABLED: z
     .string()

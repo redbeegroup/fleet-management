@@ -207,6 +207,7 @@ export const companySettingsSchema = z.object({
   control: z.lazy(() => controlSettingsSchema).default({}),
   fuelControl: z.lazy(() => fuelControlSettingsSchema).default({}),
   diagnostics: z.lazy(() => diagnosticsSettingsSchema).default({}),
+  security: z.lazy(() => securitySettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -223,6 +224,7 @@ export const updateCompanySettingsSchema = z.object({
   control: z.lazy(() => controlSettingsSchema.partial()).optional(),
   fuelControl: z.lazy(() => fuelControlSettingsSchema.partial()).optional(),
   diagnostics: z.lazy(() => diagnosticsSettingsSchema.partial()).optional(),
+  security: z.lazy(() => securitySettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -1163,3 +1165,50 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
 export const forgotPasswordSchema = z.object({ email: z.string().trim().toLowerCase().email() });
 export const setPasswordSchema = z.object({ token: z.string().min(20).max(200), password: passwordSchema });
+
+// ---------------------------------------------------------------------------
+// SSO, BI access, scheduled reports (Sprint 15)
+// ---------------------------------------------------------------------------
+
+export const securitySettingsSchema = z.object({
+  /** false: users of this company must sign in with SSO (super admins keep password sign-in). */
+  passwordLogin: z.boolean().default(true),
+});
+
+export const ssoProviderSchema = z.object({
+  kind: z.enum(['ENTRA', 'GOOGLE']),
+  /** Entra: tenant id (GUID); Google: Workspace domain (hd). */
+  tenant: z.string().trim().min(3).max(100),
+  clientId: z.string().trim().min(3).max(200),
+  clientSecret: z.string().min(3).max(500),
+  enabled: z.boolean().default(true),
+});
+export type SsoProviderInput = z.infer<typeof ssoProviderSchema>;
+export const updateSsoProviderSchema = ssoProviderSchema.partial();
+
+export const ssoDomainSchema = z
+  .object({
+    domain: z.string().trim().toLowerCase().regex(/^([a-z0-9-]+\.)+[a-z]{2,}$/, 'A domain like example.com'),
+    source: z.enum(['GROUP_ENTRA', 'GROUP_GOOGLE', 'COMPANY']),
+    providerId: z.string().uuid().optional().nullable(),
+  })
+  .refine((d) => d.source !== 'COMPANY' || !!d.providerId, { path: ['providerId'], message: 'Choose the company provider' });
+export type SsoDomainInput = z.infer<typeof ssoDomainSchema>;
+
+export const ReportKind = { FLEET: 'FLEET', BUDGET: 'BUDGET', DELIVERY: 'DELIVERY', SAFETY: 'SAFETY' } as const;
+export type ReportKind = (typeof ReportKind)[keyof typeof ReportKind];
+
+export const reportSubscriptionSchema = z.object({
+  report: z.nativeEnum(ReportKind),
+  frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
+  branchId: z.string().uuid().optional().nullable(),
+  userIds: z.array(z.string().uuid()).max(100).default([]),
+  extraEmails: z.array(z.string().trim().toLowerCase().email()).max(50).default([]),
+  enabled: z.boolean().default(true),
+});
+export type ReportSubscriptionInput = z.infer<typeof reportSubscriptionSchema>;
+
+export const biLoginSchema = z.object({
+  /** null = the group login (all companies). */
+  companyId: z.string().uuid().nullable(),
+});

@@ -4,10 +4,12 @@ import { AccountAuthController, CompaniesAdminController, UsersAdminController }
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { OrganizationController } from './organization.controller';
+import { SsoAdminController, SsoAuthController, SsoSettingsController, SsoUsersController } from './sso/sso.controller';
+import { SsoService } from './sso/sso.service';
 
 @Module({
-  controllers: [AuthController, OrganizationController, AccountAuthController, UsersAdminController, CompaniesAdminController],
-  providers: [AuthService, AccountsService, AccountMailer],
+  controllers: [AuthController, OrganizationController, AccountAuthController, UsersAdminController, CompaniesAdminController, SsoAuthController, SsoSettingsController, SsoAdminController, SsoUsersController],
+  providers: [AuthService, AccountsService, AccountMailer, SsoService],
   exports: [AuthService, AccountsService],
 })
 export class IamModule {}

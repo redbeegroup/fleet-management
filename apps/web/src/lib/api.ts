@@ -110,6 +110,13 @@ export async function login(email: string, password: string): Promise<SessionUse
   return pair.user;
 }
 
+/** Exchanges the one-time code from single sign-on for a session. */
+export async function ssoExchange(code: string): Promise<SessionUser> {
+  const pair = await api<TokenPair>('/auth/sso/exchange', { method: 'POST', body: JSON.stringify({ code }) }, false);
+  session.save(pair);
+  return pair.user;
+}
+
 export async function logout(): Promise<void> {
   const refreshToken = storage.get(REFRESH);
   if (refreshToken) {

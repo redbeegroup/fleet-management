@@ -72,6 +72,7 @@ export class OrganizationController {
         control: { ...current.control, ...body.control },
         fuelControl: { ...current.fuelControl, ...body.fuelControl },
         diagnostics: { ...current.diagnostics, ...body.diagnostics },
+        security: { ...current.security, ...body.security },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;
