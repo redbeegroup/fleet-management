@@ -1,5 +1,4 @@
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -15,6 +14,7 @@ import {
 import { Stop, Trip, TripStops } from '../api';
 import { cachedGet, items as outboxItems, keepPhoto, localUri, submit, subscribe } from '../outbox';
 import { stopAction } from '../outbox-core';
+import { position } from '../location';
 import { SignaturePad, Strokes } from '../SignaturePad';
 import { Badge, Button, Card, Chips, colors, Field, s } from '../ui';
 
@@ -29,34 +29,6 @@ const money = (n: number) => n.toLocaleString('en-US');
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const RETURN_REASONS = ['Damaged', 'Expired', 'Wrong item', 'Unsold', 'Empty containers'];
-
-/** Current position for the proof of delivery; null when denied or unavailable (the stop gets a NO_GPS flag). */
-async function position(): Promise<{
-  latitude: number;
-  longitude: number;
-  accuracyM: number | null;
-} | null> {
-  try {
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (perm.status !== 'granted') return null;
-    const p = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
-      new Promise<null>((r) => setTimeout(() => r(null), 15_000)),
-    ]);
-    return pick(p ?? (await Location.getLastKnownPositionAsync({ maxAge: 120_000 })));
-  } catch {
-    return null;
-  }
-}
-function pick(p: Location.LocationObject | null) {
-  return p
-    ? {
-        latitude: p.coords.latitude,
-        longitude: p.coords.longitude,
-        accuracyM: p.coords.accuracy != null ? Math.round(p.coords.accuracy) : null,
-      }
-    : null;
-}
 
 /** Stop-by-stop delivery for one trip. */
 export function StopsScreen({ trip, onBack }: { trip: Trip; onBack: () => void }) {

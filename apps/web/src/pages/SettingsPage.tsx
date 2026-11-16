@@ -2,6 +2,7 @@ import { Permission } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { ControlSettings } from '../components/ControlSettings';
+import { FuelControlSettings } from '../components/FuelControlSettings';
 import { DepotSettings } from '../components/DepotSettings';
 import { licenceShort } from '../components/LicenceFields';
 import { api, ApiError, session } from '../lib/api';
@@ -316,6 +317,7 @@ export function SettingsPage() {
       </section>
       <DepotSettings settings={data} />
       <ControlSettings settings={data} />
+      <FuelControlSettings settings={data} />
     </>
   );
 }

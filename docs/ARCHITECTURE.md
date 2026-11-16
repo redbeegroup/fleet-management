@@ -169,6 +169,12 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - **Control rules** (`telematics/rules/control.ts`) run after the core rules for each fix. `TelemetryRulesService` loads per batch the ongoing trip (its decoded OSRM route, cached by trip id + updatedAt), the current driver and open duty sessions, and persists the episode state in `vehicle_telemetry_state` (`off_route_*`, `no_trip_*`, `after_hours_event_id`, `no_driver_event_id`, last position).
 - **Idempotency for apps:** `IdempotencyInterceptor` (global) applies to routes marked `@Idempotent()` when the request carries `Idempotency-Key`; it reuses the integrations `Idempotency` service (Redis, 24 h) with the key scoped to company + user. The driver app's outbox uses its item id as the key and `<id>-f<n>` for photo uploads, so a resend after a lost response never applies twice.
 
+## Fuel control, cards, sensors (S13)
+
+- Fill checks: `fuel/checks.ts` (pure) for location, km and consumption variance; `FuelService` stores `latitude/longitude/location_source`, `vehicle_distance_m` and `gps_km` and merges the persisted flags (`VEHICLE_ELSEWHERE`, `CARD_MISMATCH`, `SENSOR_MISMATCH`) with the chain flags on every recompute.
+- Fuel cards: `fuel/cards/statement.ts` reads CSV (`csv-parse`, delimiter sniffed) and XLSX (`exceljs`) and applies the column mapping; `fuel/reconcile.ts` (pure) matches one-to-one, greedy by time, closest amount first. `FuelCardsService` stores transactions with a unique `(company, provider, external_id)`, so re-imports and overlapping API syncs never double. Provider adapters implement `FuelCardProvider` (`FUEL_CARD_API` = none / mock / rest).
+- Sensors and diagnostics: `telematics/rules/fuel-level.ts` (pure) runs after the control rules for each fix; its state (last 5 samples, smoothed level, rise/drop start) lives in `vehicle_telemetry_state`, the latest diagnostics in `vehicle_diagnostics`. Follow-ups after persisting: refill vs recorded fills, auto repair requests.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -180,6 +186,7 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |
 | `webhook-dispatch` | every 15 s | send due webhook deliveries (retries with backoff) |
+| `fuel-card-sync` | hourly | pull card transactions from the provider API for companies with sync enabled |
 | `budget-alerts` | daily 08:15 Asia/Yangon | current-month budget lines reaching 90 % / 100 % (once per level) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 

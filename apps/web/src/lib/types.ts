@@ -86,9 +86,10 @@ export interface Driver {
 
 export interface HistoryEvent {
   at: string;
-  kind: 'status' | 'assignment' | 'document';
+  kind: 'status' | 'assignment' | 'document' | 'trip' | 'fuel' | 'maintenance' | 'repair' | 'expense' | 'incident' | 'inspection' | 'alert';
   summary: string;
   refId: string;
+  link: string | null;
 }
 
 export interface AppNotification {
@@ -165,6 +166,8 @@ export interface TrackResponse {
 }
 
 export interface CompanySettings {
+  fuelControl: { locationMaxM: number; kmMismatchPct: number; sensorEnabled: boolean; refillMinL: number; dropMinL: number; refillToleranceL: number; matchHours: number; matchLitresPct: number; matchAmountPct: number; cardSyncEnabled: boolean; cardSyncProvider: string };
+  diagnostics: { coolantMaxC: number; batteryMinV: number; autoRepairCodes: string[] };
   control: ControlSettings;
   dispatch: { enforceLicenceClass: boolean; licenceRules: Record<string, string[]> };
   telematics: {

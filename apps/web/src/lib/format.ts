@@ -35,6 +35,9 @@ export const EVENT_LABELS: Record<string, { label: string; tone: 'ok' | 'info' |
   AFTER_HOURS: { label: 'Outside working hours', tone: 'warn' },
   NO_DRIVER: { label: 'No driver on duty', tone: 'danger' },
   RESTRICTED_AREA: { label: 'Restricted area', tone: 'danger' },
+  FUEL_REFILL: { label: 'Fuel refill (sensor)', tone: 'info' },
+  FUEL_DROP: { label: 'Fuel drop while parked', tone: 'danger' },
+  ENGINE_FAULT: { label: 'Engine fault', tone: 'danger' },
 };
 
 /** One-line description of a telemetry event. */
@@ -93,6 +96,10 @@ export const FLAG_LABELS: Record<string, string> = {
   ODOMETER_BACKWARDS: 'Odometer went backwards',
   OVER_TANK_CAPACITY: 'More litres than the tank holds',
   LOW_EFFICIENCY: 'Unusually low km/L',
+  VEHICLE_ELSEWHERE: 'Vehicle was not at the fill location',
+  KM_MISMATCH: 'Odometer km differ from GPS km',
+  CARD_MISMATCH: 'Differs from the fuel card statement',
+  SENSOR_MISMATCH: 'More litres than the tank sensor saw',
 };
 
 export const DUE_TONE = { OK: 'ok', DUE_SOON: 'warn', OVERDUE: 'danger' } as const;

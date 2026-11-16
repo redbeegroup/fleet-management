@@ -367,3 +367,10 @@ tr.selected td { background: var(--info-bg); }
 .segmented { display: inline-flex; gap: 4px; }
 .hours-grid { display: flex; flex-direction: column; gap: 6px; }
 .hours-row { display: grid; grid-template-columns: 150px 130px auto 130px; justify-content: start; gap: 8px; align-items: center; }
+
+/* Filter chips (S13) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--border); background: none; color: var(--muted); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.chip.on { background: var(--info-bg); border-color: var(--info); color: var(--text); }
+.tile-value.danger { color: var(--danger); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }

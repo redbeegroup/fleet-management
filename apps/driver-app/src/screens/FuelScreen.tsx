@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Alert, Image, ScrollView, Switch, Text, View } from 'react-native';
+import { position } from '../location';
 import { keepPhoto, submit as queueAction } from '../outbox';
 import { Button, Chips, Field, s } from '../ui';
 
@@ -32,11 +33,14 @@ export function FuelScreen({ vehicles }: { vehicles: MyVehicle[] }) {
     setBusy(true);
     try {
       const receiptFileId = photo ? await keepPhoto(photo) : null;
+      // Where the fill happened: checked against the vehicle's GPS position by the server.
+      const gps = await position();
       const r = await queueAction<{ kmPerLitre: string | null; flags: string[] }>(
         '/me/fuel',
         {
           vehicleId,
           filledAt: new Date().toISOString(),
+          ...(gps && { latitude: gps.latitude, longitude: gps.longitude }),
           odometerKm: Number(odometer),
           litres: Number(litres),
           totalCost: Number(total),

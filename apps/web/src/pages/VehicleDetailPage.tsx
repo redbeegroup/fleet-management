@@ -1,4 +1,10 @@
-import { DocumentType, Paginated, Permission, VEHICLE_STATUS_TRANSITIONS, VehicleStatus } from '@fms/shared';
+import {
+  DocumentType,
+  Paginated,
+  Permission,
+  VEHICLE_STATUS_TRANSITIONS,
+  VehicleStatus,
+} from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -7,6 +13,20 @@ import { StatusBadge } from '../components/StatusBadge';
 import { api, session, uploadFile } from '../lib/api';
 import { daysUntil, expiryTone, formatDate, humanize } from '../lib/format';
 import type { Driver, HistoryEvent, VehicleDetail } from '../lib/types';
+
+const HISTORY_TONE: Record<string, string> = {
+  status: 'info',
+  assignment: 'info',
+  document: 'muted',
+  trip: 'ok',
+  fuel: 'ok',
+  maintenance: 'ok',
+  repair: 'warn',
+  expense: 'muted',
+  incident: 'danger',
+  inspection: 'info',
+  alert: 'warn',
+};
 
 export function VehicleDetailPage() {
   const { id } = useParams();
@@ -17,10 +37,45 @@ export function VehicleDetailPage() {
     queryKey: ['vehicle', id],
     queryFn: () => api<VehicleDetail>(`/vehicles/${id}`),
   });
+  const [kinds, setKinds] = useState<string[]>([]);
+  const [older, setOlder] = useState<HistoryEvent[]>([]);
   const history = useQuery({
-    queryKey: ['vehicle', id, 'history'],
-    queryFn: () => api<HistoryEvent[]>(`/vehicles/${id}/history`),
+    queryKey: ['vehicle', id, 'history', kinds],
+    queryFn: () =>
+      api<HistoryEvent[]>(
+        `/vehicles/${id}/history?limit=100${kinds.length ? `&kinds=${kinds.join(',')}` : ''}`,
+      ),
   });
+  const diag = useQuery({
+    queryKey: ['vehicle', id, 'diagnostics'],
+    queryFn: () =>
+      api<{
+        latest: {
+          recordedAt: string;
+          dtcCodes: string[];
+          checkEngine: boolean | null;
+          coolantTempC: number | null;
+          batteryV: number | null;
+          engineHours: number | null;
+          fuelLevelL: number | null;
+        } | null;
+        events: {
+          id: string;
+          type: string;
+          occurredAt: string;
+          data: Record<string, unknown> | null;
+        }[];
+      }>(`/vehicles/${id}/diagnostics`),
+  });
+  const timeline = [...(history.data ?? []), ...older];
+  async function loadOlder() {
+    const last = timeline[timeline.length - 1];
+    if (!last) return;
+    const more = await api<HistoryEvent[]>(
+      `/vehicles/${id}/history?limit=100&before=${encodeURIComponent(last.at)}${kinds.length ? `&kinds=${kinds.join(',')}` : ''}`,
+    );
+    setOlder((o) => [...o, ...more]);
+  }
   const drivers = useQuery({
     queryKey: ['drivers', 'active'],
     queryFn: () => api<Paginated<Driver>>('/drivers?active=true&pageSize=200'),
@@ -35,12 +90,14 @@ export function VehicleDetailPage() {
   };
   const onError = (e: Error) => setError(e.message);
   const changeStatus = useMutation({
-    mutationFn: (status: VehicleStatus) => api(`/vehicles/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+    mutationFn: (status: VehicleStatus) =>
+      api(`/vehicles/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
     onSuccess: refresh,
     onError,
   });
   const assign = useMutation({
-    mutationFn: (driverId: string) => api(`/vehicles/${id}/assignments`, { method: 'POST', body: JSON.stringify({ driverId }) }),
+    mutationFn: (driverId: string) =>
+      api(`/vehicles/${id}/assignments`, { method: 'POST', body: JSON.stringify({ driverId }) }),
     onSuccess: refresh,
     onError,
   });
@@ -52,7 +109,10 @@ export function VehicleDetailPage() {
   const addDoc = useMutation({
     mutationFn: async (input: { body: Record<string, unknown>; file: File | null }) => {
       const fileId = input.file ? (await uploadFile(input.file)).id : null;
-      return api(`/vehicles/${id}/documents`, { method: 'POST', body: JSON.stringify({ ...input.body, fileId }) });
+      return api(`/vehicles/${id}/documents`, {
+        method: 'POST',
+        body: JSON.stringify({ ...input.body, fileId }),
+      });
     },
     onSuccess: refresh,
     onError,
@@ -94,7 +154,8 @@ export function VehicleDetailPage() {
             {v.plateNumber} <StatusBadge status={v.status} />
           </h1>
           <p className="muted">
-            {v.make} {v.model} {v.year ?? ''} · {humanize(v.vehicleClass)} · {v.branch?.name ?? 'No branch'}
+            {v.make} {v.model} {v.year ?? ''} · {humanize(v.vehicleClass)} ·{' '}
+            {v.branch?.name ?? 'No branch'}
           </p>
         </div>
         {canWrite && (
@@ -144,7 +205,8 @@ export function VehicleDetailPage() {
           <p>
             {currentDriver ? (
               <>
-                Assigned to <Link to={`/drivers/${currentDriver.id}`}>{currentDriver.fullName}</Link>{' '}
+                Assigned to{' '}
+                <Link to={`/drivers/${currentDriver.id}`}>{currentDriver.fullName}</Link>{' '}
                 <span className="muted">({currentDriver.employeeNo})</span>
               </>
             ) : (
@@ -166,7 +228,8 @@ export function VehicleDetailPage() {
                 </option>
                 {drivers.data?.items.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.fullName} ({d.employeeNo}){d.assignments[0] ? ` — has ${d.assignments[0].vehicle.plateNumber}` : ''}
+                    {d.fullName} ({d.employeeNo})
+                    {d.assignments[0] ? ` — has ${d.assignments[0].vehicle.plateNumber}` : ''}
                   </option>
                 ))}
               </select>
@@ -252,7 +315,13 @@ export function VehicleDetailPage() {
               Expires
               <input name="expiresAt" type="date" />
             </label>
-            <input name="amount" type="number" min={0} step="any" placeholder="Amount (premium, fee)" />
+            <input
+              name="amount"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="Amount (premium, fee)"
+            />
             <label className="mini">
               Scan (PDF/photo)
               <input name="file" type="file" accept="application/pdf,image/*" />
@@ -263,22 +332,116 @@ export function VehicleDetailPage() {
           </form>
         )}
       </section>
+      {diag.data?.latest && (
+        <section className="card">
+          <h2>Engine & fuel sensor</h2>
+          <p className="muted small">
+            Reported by the GPS device ·{' '}
+            {new Date(diag.data.latest.recordedAt).toLocaleString('en-GB', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })}
+          </p>
+          <div className="tiles">
+            {[
+              [
+                'Trouble codes',
+                diag.data.latest.dtcCodes.length ? diag.data.latest.dtcCodes.join(', ') : 'none',
+              ],
+              [
+                'Check engine',
+                diag.data.latest.checkEngine == null
+                  ? '—'
+                  : diag.data.latest.checkEngine
+                    ? 'ON'
+                    : 'off',
+              ],
+              [
+                'Fuel level',
+                diag.data.latest.fuelLevelL != null
+                  ? `${Math.round(diag.data.latest.fuelLevelL)} L`
+                  : '—',
+              ],
+              [
+                'Coolant',
+                diag.data.latest.coolantTempC != null ? `${diag.data.latest.coolantTempC} °C` : '—',
+              ],
+              [
+                'Battery',
+                diag.data.latest.batteryV != null ? `${diag.data.latest.batteryV} V` : '—',
+              ],
+              [
+                'Engine hours',
+                diag.data.latest.engineHours != null
+                  ? Math.round(diag.data.latest.engineHours)
+                  : '—',
+              ],
+            ].map(([k, val]) => (
+              <div className="tile" key={k as string}>
+                <span className="tile-label">{k}</span>
+                <span
+                  className={`tile-value small${k === 'Trouble codes' && diag.data!.latest!.dtcCodes.length ? ' danger' : ''}`}
+                >
+                  {val}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="card">
-        <h2>History</h2>
-        {history.data?.length === 0 && <p className="muted">No history yet.</p>}
+        <div className="card-head">
+          <h2>History</h2>
+          <div className="chips">
+            {[
+              'trip',
+              'fuel',
+              'maintenance',
+              'repair',
+              'expense',
+              'incident',
+              'inspection',
+              'alert',
+              'status',
+              'assignment',
+              'document',
+            ].map((k) => (
+              <button
+                key={k}
+                className={kinds.includes(k) ? 'chip on' : 'chip'}
+                aria-pressed={kinds.includes(k)}
+                onClick={() => {
+                  setOlder([]);
+                  setKinds((x) => (x.includes(k) ? x.filter((y) => y !== k) : [...x, k]));
+                }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+        {timeline.length === 0 && !history.isLoading && <p className="muted">No history yet.</p>}
         <ul className="timeline">
-          {history.data?.map((e) => (
+          {timeline.map((e) => (
             <li key={`${e.kind}-${e.refId}-${e.at}`}>
-              <span>{new Date(e.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
               <span>
-                <span className={`badge badge-${e.kind === 'status' ? 'info' : e.kind === 'document' ? 'muted' : 'ok'}`}>
-                  {e.kind}
-                </span>{' '}
-                {e.summary}
+                {new Date(e.at).toLocaleString('en-GB', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </span>
+              <span>
+                <span className={`badge badge-${HISTORY_TONE[e.kind] ?? 'muted'}`}>{e.kind}</span>{' '}
+                {e.link ? <Link to={e.link}>{e.summary}</Link> : e.summary}
               </span>
             </li>
           ))}
         </ul>
+        {(history.data?.length ?? 0) >= 100 && (
+          <button className="btn" onClick={() => void loadOlder()}>
+            Older entries
+          </button>
+        )}
       </section>
     </>
   );

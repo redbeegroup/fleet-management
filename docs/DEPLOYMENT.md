@@ -58,7 +58,7 @@ docker build --secret id=extra_ca,src=/path/to/corp-ca.crt -f deploy/docker/api.
 
 **Files** (documents, photos, receipts) go to the bundled **SeaweedFS** S3 service (`seaweedfs`, data in the `s3data` volume). Everything is set in `.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (and `S3_ENDPOINT` to use another S3 service instead). `STORAGE_DRIVER=local` stores files on the `files` volume as a fallback. The bucket is created automatically on first upload.
 
-**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `incentives-monthly`, `webhook-dispatch`, `gps-offline`, `position-partitions`, `budget-alerts`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
+**Run a background job on demand** (`compliance-alerts`, `maintenance-due`, `safety-alerts`, `incentives-monthly`, `webhook-dispatch`, `gps-offline`, `position-partitions`, `budget-alerts`, `fuel-card-sync`, `daily-stats` — the latter accepts `JOB_FROM`/`JOB_TO` days for a backfill):
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env run --rm -e MODE=job -e JOB=compliance-alerts api
@@ -173,6 +173,10 @@ Migrations are forward-only. Ship schema changes as expand → migrate → contr
 ### 2.6a Road routing
 
 Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/routing.yaml`). A PVC (`routing.persistence`, 5 Gi) holds the prepared map; the OSRM pod's init containers download the extract (`routing.osmUrl`, Geofabrik Myanmar by default) and prepare it only when the files are missing, so the first rollout takes several minutes and needs ~3 Gi memory; `osrm-routed` then needs ~1.5 Gi and VROOM ~256 Mi. The API gets `OSRM_URL`/`VROOM_URL` automatically. Egress to the download host is needed on first start; the ~280 MB transfer resumes after interruptions and pod restarts (partial file on the PVC). Until the data is ready the API uses straight-line estimates. To refresh the data (e.g. monthly), upgrade once with `--set routing.refresh=true`, then again with `false`. Check with `GET /api/routing/status` (`source: osrm`).
+
+### 2.6b Fuel card provider API
+
+`FUEL_CARD_API` selects the adapter used by companies that enable card sync (Settings → Fuel checks): `none` (default), `mock` (demo/test: mirrors recorded fills) or `rest` (`FUEL_CARD_API_URL`, key in the secret `FUEL_CARD_API_KEY`; contract to confirm with the chosen provider). Statements can always be imported as CSV/XLSX without it.
 
 ### 2.7 Mobile push
 

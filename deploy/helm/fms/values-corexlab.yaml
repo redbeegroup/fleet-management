@@ -15,6 +15,7 @@ config:
   CORS_ORIGINS: https://fms.corexlab.net
   APP_URL: https://fms.corexlab.net
   TELEMATICS_PROVIDER: mock          # until the Watch Tower API is connected
+  FUEL_CARD_API: mock                # until a fuel card provider is chosen
   S3_ENDPOINT: https://s3.corexlab.net
   S3_BUCKET: cannopy-fms
   PUSH_ENABLED: "false"

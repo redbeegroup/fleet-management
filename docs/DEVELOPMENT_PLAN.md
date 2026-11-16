@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered — Phase 2 complete**; next: Phase 2 UAT, then Phase 3. Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) delivered**; next: S14 (geofence dwell, group company admin, Phase 2 UAT pack), then Phase 3. Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -76,7 +76,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle status | P1 | 1 / S1 | ✅ state machine + status history |
 | Document management | P1 | 1 / S2 | ✅ metadata, scans/photos (PDF, JPEG, PNG, WebP, HEIC) via S3-compatible storage |
 | Document expiry alerts | P1 | 1 / S2 | ✅ daily scan, 30/14/7/1-day + expired thresholds, renewal-aware, in-app + email |
-| Vehicle history | P1 | 1 / S2–S5 | 🟡 consolidated timeline (status, assignments, documents); trips, fuel and maintenance join as they ship |
+| Vehicle history | P1 | 1 / S2–S13 | ✅ one timeline: status, assignments, documents, trips, fuel, maintenance, repairs, expenses, incidents, inspections, alerts; filters + paging |
 | Vehicle lifecycle (acquisition → disposal) | P2 | 3 | ⏳ (acquired/disposed dates already stored) |
 | Asset & equipment tracking (trailers, containers) | P2 | 3 | ⏳ |
 | Vehicle replacement planning | P3 | 4 | ⏳ |
@@ -95,7 +95,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | GPS offline alerts | P1 | 1 / S3 | ✅ worker check every 5 min, restored event |
 | Route deviation | P2 | 2 / S12 | ✅ off the planned road route (OSRM) for N m during M min |
 | Unauthorized vehicle usage | P2 | 2 / S12 | ✅ moving without a trip (opt-in), outside working hours, without a driver on duty, restricted geofences |
-| Engine diagnostics (OBD/CAN) | P2 | 2 | ⏳ via Watch Tower where devices support it |
+| Engine diagnostics (OBD/CAN) | P2 | 2 / S13 | ✅ trouble codes, check-engine, coolant, battery, engine hours from device data; ENGINE_FAULT alerts, auto repair requests (Watch Tower field names to confirm) |
 | Remote immobilization (with safety controls) | P3 | 4 | ⏳ dual approval + audit, only when stationary |
 
 ### Module 3 — Fleet Scheduling & Dispatch (`dispatch`)
@@ -109,9 +109,9 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle & driver availability | P1 | 1 / S4 | ✅ overlap, vehicle status, licence validity/class, with reasons; row locks prevent double booking |
 | Trip status | P1 | 1 / S4 | ✅ state machine + status history |
 | Trip completion (actuals) | P1 | 1 / S4 | ✅ actual times, odometer, GPS distance; vehicle odometer/status updated |
-| Vehicle capacity | P2 | 2 | 🟡 kg / m³ stored on vehicle |
-| Multi-stop routing | P2 | 2 | ⏳ |
-| Route optimization | P2 | 2 | ⏳ OSRM + VROOM containers |
+| Vehicle capacity | P2 | 2 / S10 | ✅ kg, m³, cases, pallets, max stops; checked when planning loads |
+| Multi-stop routing | P2 | 2 / S10–S11 | ✅ delivery loads with ordered stops |
+| Route optimization | P2 | 2 / S11 | ✅ self-hosted OSRM + VROOM |
 | Dynamic dispatch | P3 | 4 | ⏳ |
 | AI dispatch recommendation | P3 | 4 | ⏳ |
 
@@ -123,11 +123,11 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Fuel expense tracking | P1 | 1 / S5 | ✅ per vehicle and fleet, per period |
 | Fuel efficiency (km/L, L/100 km) | P1 | 1 / S5 | ✅ full-to-full method, recomputed on back-dated entries |
 | Fuel refill history | P1 | 1 / S5 | ✅ date, odometer, litres, price, station, driver |
-| Fuel budget | P2 | 2 | ⏳ |
-| Consumption variance | P2 | 2 | ⏳ |
-| Fuel fraud detection (rules) | P2 | 2 | 🟡 rules live: odometer backwards, refill > tank, low km/L vs median; GPS-location check in Phase 2 |
-| Fuel card integration | P2 | 2 | ⏳ `FuelCardProvider` adapter |
-| Fuel sensor integration | P2 | 2 | ⏳ via Watch Tower (GPS odometer already used) |
+| Fuel budget | P2 | 2 / S12–S13 | ✅ FUEL budgets (branch/department/company) shown on the Fuel page |
+| Consumption variance | P2 | 2 / S13 | ✅ km/L vs the vehicle's 90-day median (else class), excess litres and cost |
+| Fuel fraud detection (rules) | P2 | 2 / S5–S13 | ✅ odometer backwards, refill > tank, low km/L, vehicle not at the fill location, odometer vs GPS km, card and sensor mismatches |
+| Fuel card integration | P2 | 2 / S13 | ✅ CSV/Excel statements with saved column mapping, `FuelCardProvider` API adapter (mock + generic REST until a provider is chosen), reconciliation |
+| Fuel sensor integration | P2 | 2 / S13 | ✅ tank level from device data: refills checked against recorded fills, drops while parked alerted |
 | AI fuel optimization | P3 | 4 | ⏳ |
 
 ### Module 5 — Maintenance & Repair (`maintenance`, `inventory`)
@@ -223,7 +223,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Insurance management | P1 | 1 / S2 | ✅ policy number, issuer, expiry, premium amount, policy scan |
 | Driving licence compliance | P1 | 1 / S2–S4 | ✅ expiry alerts; licence class vs vehicle class enforced at dispatch (configurable) |
 | Vehicle inspection checklist | P2 | 2 / S8 | ✅ configurable pre-trip / post-trip / periodic checklists per vehicle class, critical items |
-| Accident management | P2 | 2 | ⏳ |
+| Accident management | P2 | 2 / S7 | ✅ incidents & accidents, investigation, insurance claims |
 | Insurance claims | P2 | 2 / S7 | ✅ per incident; insurer/policy from the vehicle's insurance document; SUBMITTED → APPROVED/REJECTED → SETTLED |
 | Regulatory compliance (country config) | P2 | 3 | ⏳ |
 | Safety audit | P2 | 3 | ⏳ |
@@ -436,4 +436,14 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Driver app offline mode:** every action goes through a SQLite outbox and is sent in order with an `Idempotency-Key` (server: `@Idempotent()` on driver routes, file upload and approval decisions; 24 h, per user). Photos are kept on the phone until uploaded; trips, stops, profile and approvals are cached for offline viewing; actions waiting to be sent show as done with a "not sent" badge; rejected actions can be retried or discarded. Stop arrival/completion and duty start/end keep the time they happened (`occurredAt`, at most 7 days old).
 - **Manager mode** in the same mobile app (company admins and fleet managers): Fleet summary (`GET /mobile/manager-summary`: approvals waiting, trips, vehicles, control alerts of the last 24 h, budgets at risk), Approvals with the record's key facts and photos/receipts (`GET /approvals/:id` → `details`), approve/reject with a note, push notification opens the request. Users with both roles can switch.
 - Web: Costs & TCO, Budgets, vehicle cost of ownership and department, control rules in Settings, new event types.
+
+### Phase 2 — Sprint 13 (fuel control, fuel cards, sensors, diagnostics) delivered
+
+- **Fill location and km checks:** the driver app sends the phone position with a fill; the server compares it with the vehicle's GPS fix nearest the fill time (±15 min). `VEHICLE_ELSEWHERE` when more than `locationMaxM` (500 m) apart or the vehicle was driving; `KM_MISMATCH` when odometer km and GPS km since the previous fill differ by more than 15 %. Web entries without a location take the vehicle's position.
+- **Consumption variance** (`/fuel?tab=variance`, `GET /fuel/variance`): actual km/L per vehicle vs its own 90-day median (else its class), excess litres and cost; the month's FUEL budget beside it.
+- **Fuel cards** (`/fuel?tab=cards`): cards store only the last 4 digits. Statements (CSV/XLSX) are mapped column by column once per provider (remembered), previewed, then imported; duplicates are skipped by transaction id or row hash. A `FuelCardProvider` adapter pulls transactions hourly (`fuel-card-sync`) when enabled — mock and a generic REST adapter until a provider is chosen. Reconciliation matches each transaction to one fill of the card's vehicle (±2 h, amount ±2 %, litres ±3 %): matched, mismatch (fill flagged `CARD_MISMATCH`, managers notified), not recorded in FMS (record the fill from it, or accept with a note), not fuel.
+- **Fuel level sensor** (device attributes `fuelLevelL` / `fuelLevelPct`): median-smoothed level; `FUEL_REFILL` compared with fills recorded within 3 h (not recorded / under / over-recorded → alert, `SENSOR_MISMATCH` flag); `FUEL_DROP` when the level falls while parked or idling (possible theft).
+- **Engine diagnostics** (`dtc`, `mil`, coolant, battery, engine hours): latest values per vehicle on the vehicle page; `ENGINE_FAULT` for new trouble codes, overheating and low battery (engine off); configured codes open a repair request. Webhooks `vehicle.fuel_drop` and `vehicle.engine_fault`.
+- **Watch Tower:** the adapter now passes device attributes through; field names stay unconfirmed until API access exists. The mock provider simulates a fuel curve and an occasional trouble code.
+- **Vehicle history** now covers repairs, expenses, incidents, inspections and alerts, with kind filters and paging.
 

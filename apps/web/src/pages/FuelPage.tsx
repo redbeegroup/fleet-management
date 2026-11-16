@@ -1,13 +1,46 @@
 import { Paginated, Permission } from '@fms/shared';
+import { FuelCards } from '../components/FuelCards';
+import { FuelVariance } from '../components/FuelVariance';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FileLink } from '../components/FileLink';
 import { api, ApiError, session, uploadFile } from '../lib/api';
 import { FLAG_LABELS, formatDateTime, money, monthRange, toLocalInput } from '../lib/format';
 import type { Driver, FuelRecord, FuelSummary, Vehicle } from '../lib/types';
 
+/** Fuel: records, consumption variance and fuel card reconciliation, as tabs (?tab=). */
 export function FuelPage() {
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get('tab') ?? 'records';
+  const bar = (
+    <nav className="tabs" role="tablist" aria-label="Fuel">
+      {[
+        ['records', 'Fill records'],
+        ['variance', 'Consumption'],
+        ['cards', 'Fuel cards'],
+      ].map(([k, label]) => (
+        <button
+          key={k}
+          role="tab"
+          aria-selected={tab === k}
+          className={tab === k ? 'active' : ''}
+          onClick={() => setSp(k === 'records' ? {} : { tab: k })}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+  return (
+    <>
+      {bar}
+      {tab === 'variance' ? <FuelVariance /> : tab === 'cards' ? <FuelCards /> : <FuelRecords />}
+    </>
+  );
+}
+
+function FuelRecords() {
   const qc = useQueryClient();
   const canWrite = session.can(Permission.FUEL_WRITE);
   const [range, setRange] = useState(monthRange());
