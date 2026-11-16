@@ -370,3 +370,15 @@ export interface ManagerSummary {
     status: 'AT_RISK' | 'OVER';
   }[];
 }
+
+/** Asks the server to e-mail a password reset link (same answer whether the e-mail exists or not). */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (res.status === 429) throw new ApiError(429, 'Too many requests. Try again in a minute.');
+  if (!res.ok && res.status !== 202)
+    throw new ApiError(res.status, 'Could not send the reset link');
+}

@@ -16,6 +16,7 @@ import {
   isDriver,
   isManager,
   login,
+  requestPasswordReset,
   Me,
   restore,
   setSignedOutHandler,
@@ -88,6 +89,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   return (
     <ScrollView
       contentContainerStyle={[s.screen, { marginTop: 48 }]}
@@ -110,6 +112,7 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
         onChangeText={setPassword}
       />
       {error && <Text style={s.error}>{error}</Text>}
+      {info && <Text style={s.muted}>{info}</Text>}
       <Button
         title="Sign in"
         busy={busy}
@@ -125,6 +128,24 @@ function LoginScreen({ onLogin }: { onLogin: (s: DriverSession) => void }) {
           }
         }}
       />
+      <Pressable
+        accessibilityRole="button"
+        style={{ alignSelf: 'center', padding: 8 }}
+        onPress={async () => {
+          if (!email.trim()) return setError('Enter your e-mail first');
+          setError(null);
+          try {
+            await requestPasswordReset(email.trim());
+            setInfo(
+              'If this e-mail belongs to an account, a reset link has been sent. Open it on this phone, then sign in here.',
+            );
+          } catch (e) {
+            setError((e as Error).message);
+          }
+        }}
+      >
+        <Text style={{ color: colors.primary }}>Forgot your password?</Text>
+      </Pressable>
     </ScrollView>
   );
 }

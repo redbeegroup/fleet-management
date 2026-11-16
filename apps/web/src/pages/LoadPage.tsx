@@ -186,6 +186,7 @@ export function LoadPage() {
                 {s.address ?? 'No address'}
                 {s.contactPhone && ` · ${s.contactName ?? ''} ${s.contactPhone}`}
                 {s.latitude == null && ' · no coordinates'}
+                {s.arrivedAt && !s.completedAt && ` · arrived ${formatDateTime(s.arrivedAt)}${s.arrivalSource === 'gps' ? ' (GPS)' : ''}`}
                 {s.completedAt && ` · ${formatDateTime(s.completedAt)}`}
                 {s.failureReason && ` · ${s.failureReason}`}
               </span>

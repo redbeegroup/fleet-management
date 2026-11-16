@@ -28,6 +28,7 @@ const sections: {
       { to: '/orders', label: 'Delivery orders', perm: Permission.ORDER_READ },
       { to: '/customers', label: 'Customers', perm: Permission.LOGISTICS_READ },
       { to: '/delivery-kpis', label: 'Delivery KPIs', perm: Permission.LOGISTICS_READ },
+      { to: '/site-visits', label: 'Loading & unloading', perm: Permission.TRACKING_READ },
       {
         to: '/vehicle-requests',
         label: 'Booking requests',
@@ -55,6 +56,8 @@ const sections: {
     title: 'Admin',
     items: [
       { to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ },
+      { to: '/users', label: 'Users', perm: Permission.USER_READ },
+      { to: '/admin/companies', label: 'Group companies', perm: Permission.COMPANY_MANAGE },
       { to: '/integrations', label: 'Integrations', perm: Permission.INTEGRATION_MANAGE },
     ],
   },

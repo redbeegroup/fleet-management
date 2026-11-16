@@ -78,6 +78,7 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
       serviceMinutesPerStop: Number(f.get('serviceMinutesPerStop')),
       avgSpeedKmh: Number(f.get('avgSpeedKmh')),
       driverCostPerDay: f.get('driverCostPerDay') ? Number(f.get('driverCostPerDay')) : null,
+      arrivalRadiusM: f.get('arrivalRadiusM') ? Number(f.get('arrivalRadiusM')) : null,
       failureReasons: String(f.get('failureReasons'))
         .split('\n')
         .map((x) => x.trim())
@@ -206,6 +207,18 @@ export function DepotSettings({ settings }: { settings: CompanySettings }) {
             min={5}
             max={120}
             defaultValue={l.avgSpeedKmh}
+            disabled={!canSettings}
+          />
+        </label>
+        <label>
+          GPS arrival radius at stops (m)
+          <input
+            name="arrivalRadiusM"
+            type="number"
+            min={30}
+            max={2000}
+            defaultValue={l.arrivalRadiusM ?? ''}
+            placeholder="off"
             disabled={!canSettings}
           />
         </label>

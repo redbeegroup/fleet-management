@@ -175,6 +175,11 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - Fuel cards: `fuel/cards/statement.ts` reads CSV (`csv-parse`, delimiter sniffed) and XLSX (`exceljs`) and applies the column mapping; `fuel/reconcile.ts` (pure) matches one-to-one, greedy by time, closest amount first. `FuelCardsService` stores transactions with a unique `(company, provider, external_id)`, so re-imports and overlapping API syncs never double. Provider adapters implement `FuelCardProvider` (`FUEL_CARD_API` = none / mock / rest).
 - Sensors and diagnostics: `telematics/rules/fuel-level.ts` (pure) runs after the control rules for each fix; its state (last 5 samples, smoothed level, rise/drop start) lives in `vehicle_telemetry_state`, the latest diagnostics in `vehicle_diagnostics`. Follow-ups after persisting: refill vs recorded fills, auto repair requests.
 
+## Site visits and accounts (S14)
+
+- Site visits are written in the same system transaction as the GPS rules pass: geofence visits from `GEOFENCE_ENTER`/`EXIT` events, stop visits from the pure `telematics/rules/stop-arrival.ts` (state `at_stop_id` / `stop_visit_id` in `vehicle_telemetry_state`). Durations are stored on close; open visits are not reported.
+- Account e-mails (`AccountsService`): one-time tokens in `auth_tokens` (only a SHA-256 hash is stored; INVITE 72 h, RESET 1 h; claiming is a conditional update so a link works once). `AccountMailer` sends through `SMTP_URL`; without SMTP it logs, and outside production keeps the last messages in memory (used by the e2e tests). `/api/auth/forgot-password`, `token-info` and `set-password` are public and rate-limited.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |

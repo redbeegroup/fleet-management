@@ -123,7 +123,7 @@ Create the Secret with your secret tooling (External Secrets, Vault, sealed-secr
 | `JWT_ACCESS_SECRET` | 64+ random characters |
 | `WATCHTOWER_API_KEY` | issued by Watch Tower |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object storage credentials (bucket from `config.S3_BUCKET`) |
-| `SMTP_URL` | `smtps://user:***@smtp.example.com:465` (optional; email alerts) |
+| `SMTP_URL` | `smtps://user:***@smtp.example.com:465` — needed for invitations and password resets (and warning/critical alerts); without it the e-mails are only logged |
 
 Manual example (for a first test only):
 
@@ -177,6 +177,14 @@ Set `routing.enabled=true` to deploy OSRM and VROOM next to the API (`templates/
 ### 2.6b Fuel card provider API
 
 `FUEL_CARD_API` selects the adapter used by companies that enable card sync (Settings → Fuel checks): `none` (default), `mock` (demo/test: mirrors recorded fills) or `rest` (`FUEL_CARD_API_URL`, key in the secret `FUEL_CARD_API_KEY`; contract to confirm with the chosen provider). Statements can always be imported as CSV/XLSX without it.
+
+### 2.6c Demo data for UAT
+
+`deploy/demo/seed-demo.cjs` loads Phase 2 demo data through the API (idempotent; see `docs/UAT_PHASE2.md`):
+
+```bash
+FMS_URL=https://<host>/api FMS_EMAIL=admin@fms.local FMS_PASSWORD='<admin password>' node deploy/demo/seed-demo.cjs
+```
 
 ### 2.7 Mobile push
 

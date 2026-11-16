@@ -180,7 +180,7 @@ export interface CompanySettings {
   inspections: { requirePreTrip: boolean; preTripValidHours: number };
   incentives: { safetyBonusEnabled: boolean; safetyBonusMinScore: number; safetyBonusAmount: number; trainingAlertDays: number };
   approvals: { workOrderAbove: number | null; expenseAbove: number | null; fuelAbove: number | null; claimAbove: number | null; secondApproverAbove: number | null };
-  logistics: { defaultBranchId: string | null; defaultMaxStops: number | null; failureReasons: string[]; departureTime: string; serviceMinutesPerStop: number; avgSpeedKmh: number; driverCostPerDay: number | null };
+  logistics: { defaultBranchId: string | null; defaultMaxStops: number | null; failureReasons: string[]; departureTime: string; serviceMinutesPerStop: number; avgSpeedKmh: number; driverCostPerDay: number | null; arrivalRadiusM: number | null };
   pod: { requirePhoto: boolean; requireSignature: boolean; maxDistanceM: number; requireCodEntry: boolean };
 }
 
@@ -750,6 +750,7 @@ export interface LoadDetail {
     failureReason: string | null;
     notes: string | null;
     plannedArrival: string | null;
+    arrivalSource?: string | null;
     pod: {
       photoFileIds: string[];
       signature: { name: string; strokes: [number, number][][] } | null;

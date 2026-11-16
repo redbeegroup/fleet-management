@@ -365,6 +365,7 @@ export class LogisticsService {
           contactName: s.contactName,
           contactPhone: s.contactPhone,
           arrivedAt: s.arrivedAt,
+          arrivalSource: s.arrivalSource,
           completedAt: s.completedAt,
           failureReason: s.failureReason,
           notes: s.notes,

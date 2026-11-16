@@ -37,6 +37,10 @@ import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
 import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
+import { SetPasswordPage } from './pages/SetPasswordPage';
+import { UsersPage } from './pages/UsersPage';
+import { CompaniesPage } from './pages/CompaniesPage';
+import { SiteVisitsPage } from './pages/SiteVisitsPage';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { VehicleFormPage } from './pages/VehicleFormPage';
 import { VehiclesPage } from './pages/VehiclesPage';
@@ -56,6 +60,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/set-password" element={<SetPasswordPage />} />
       <Route
         element={
           <RequireAuth>
@@ -93,6 +98,9 @@ export function App() {
         <Route path="loads/:id/manifest" element={<ManifestPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="delivery-kpis" element={<DeliveryKpisPage />} />
+        <Route path="site-visits" element={<SiteVisitsPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="admin/companies" element={<CompaniesPage />} />
         <Route path="costs" element={<CostsPage />} />
         <Route path="budgets" element={<BudgetsPage />} />
         <Route path="vehicles" element={<VehiclesPage />} />

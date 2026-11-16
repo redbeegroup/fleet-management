@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) delivered**; next: S14 (geofence dwell, group company admin, Phase 2 UAT pack), then Phase 3. Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 in progress: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**; next: Phase 3 (S15 SSO + BI + scheduled reports). Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -176,7 +176,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Failed delivery management | P2 | 2 / S10–S11 | ✅ reasons, re-planning, check-in of undelivered goods |
 | Return goods management | P2 | 2 / S11 | ✅ customer returns at the stop; warehouse check-in with differences |
 | Digital cargo manifest | P2 | 2 / S10 | ✅ printable manifest |
-| Loading/unloading time | P2 | 2 / S11 | 🟡 dwell time from arrive→complete; geofence-based dwell later |
+| Loading/unloading time | P2 | 2 / S14 | ✅ GPS site visits: depot/warehouse geofences (loading) and delivery-stop radius (unloading), avg/p90 per vehicle, driver, site; GPS auto-arrive at stops |
 | Delivery route optimization | P2 | 2 / S11 | ✅ self-hosted OSRM + VROOM (straight-line fallback) |
 | AI load consolidation | P3 | 4 | ⏳ |
 
@@ -274,7 +274,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | REST APIs & webhooks | P2 | 2 / S9 | ✅ scoped API keys, integration API v1 (separate OpenAPI), signed webhooks with retries ([INTEGRATION_API.md](INTEGRATION_API.md)) |
 | SSO (Entra ID / OIDC) | P2 | 3 | ⏳ |
 | Workflow & approval engine | P2 | 2 / S9 | ✅ work orders, expenses, fuel and claims above configurable limits, vehicle booking requests; two approvers above a second limit; no self-approval |
-| Multi-tenant SaaS architecture | P2 | 2 | 🟡 tenant isolation done; onboarding/billing in Phase 2 |
+| Multi-tenant SaaS architecture | P2 | 2 / S14 | ✅ group companies: tenant isolation, super-admin company onboarding with invited first admin, user invitations and password reset (no self-signup or billing: group use only) |
 
 ## 5. KPIs
 
@@ -446,4 +446,12 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Engine diagnostics** (`dtc`, `mil`, coolant, battery, engine hours): latest values per vehicle on the vehicle page; `ENGINE_FAULT` for new trouble codes, overheating and low battery (engine off); configured codes open a repair request. Webhooks `vehicle.fuel_drop` and `vehicle.engine_fault`.
 - **Watch Tower:** the adapter now passes device attributes through; field names stay unconfirmed until API access exists. The mock provider simulates a fuel curve and an occasional trouble code.
 - **Vehicle history** now covers repairs, expenses, incidents, inspections and alerts, with kind filters and paging.
+
+### Phase 2 — Sprint 14 (site visits, group administration, UAT pack) delivered — Phase 2 complete
+
+- **Site visits** (`site_visits`): the GPS rules pass opens a visit when a vehicle enters a geofence and closes it on exit; during a delivery trip it also detects arrival at a stop (vehicle at ≤ 10 km/h within `logistics.arrivalRadiusM`, default 150 m) and departure beyond twice the radius. A GPS arrival sets the stop to *arrived* (`arrival_source = gps`) unless the driver already did. *Loading & unloading* (`/site-visits`, `GET /analytics/site-visits`): average and p90 minutes for depots/warehouses (loading) and customers (unloading) per vehicle, driver and site. Delivery KPIs use GPS dwell when it exists.
+- **Users:** invite by e-mail (one-time link, 72 h) instead of setting passwords; change roles and branch; deactivate (signs the user out everywhere); resend invitations; send password resets. Only super admins grant or change super admins; nobody can deactivate themselves or change their own roles.
+- **Password reset** on the web and in the mobile app: the same answer whether the e-mail exists or not, at most 3 e-mails per hour per account, links valid for 1 hour and usable once; setting a password signs out existing sessions. Passwords need 10+ characters with letters and a digit.
+- **Group companies** (`/admin/companies`, super admins, `company:manage`): list with users and vehicles, create a company with its first admin (invited), rename, deactivate (all its users are signed out and cannot sign in).
+- **UAT pack:** `docs/UAT_PHASE2.md` (44 checks across S7–S14) and the idempotent demo seed `deploy/demo/seed-demo.cjs`, which loads Phase 2 demo data through the public API.
 
