@@ -1,6 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  IssuePartInput,
+  issuePartSchema,
+  WorkOrderGarageInput,
+  workOrderGarageSchema,
   BulkMaintenancePlanInput,
   bulkMaintenancePlanSchema,
   CompleteWorkOrderInput,
@@ -126,6 +130,20 @@ export class MaintenanceController {
     return this.svc.requestWorkOrderApproval(user, id);
   }
 
+  /** Garage, quote and invoice (outside garages). */
+  @Patch('work-orders/:id/garage')
+  @RequirePermissions(Permission.MAINTENANCE_WRITE)
+  garage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(workOrderGarageSchema)) body: WorkOrderGarageInput) {
+    return this.svc.updateGarage(user, id, body);
+  }
+
+  /** Issue a part from a branch store to the work order (storekeepers and managers). */
+  @Post('work-orders/:id/parts')
+  @RequirePermissions(Permission.INVENTORY_WRITE)
+  issuePart(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(issuePartSchema)) body: IssuePartInput) {
+    return this.svc.issuePart(user, id, body);
+  }
+
   @Post('work-orders/:id/lines')
   @RequirePermissions(Permission.MAINTENANCE_WRITE)
   addLine(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodPipe(workOrderLineSchema)) body: WorkOrderLineInput) {
@@ -156,5 +174,11 @@ export class MaintenanceController {
   @RequirePermissions(Permission.MAINTENANCE_READ)
   report(@CurrentUser() user: AuthUser, @Query(new ZodPipe(rangeSchema)) q: { from: Date; to: Date }) {
     return this.svc.report(user, q.from, q.to);
+  }
+
+  @Get('garages')
+  @RequirePermissions(Permission.MAINTENANCE_READ)
+  garages(@CurrentUser() user: AuthUser, @Query(new ZodPipe(rangeSchema)) q: { from: Date; to: Date }) {
+    return this.svc.garages(user, q.from, q.to);
   }
 }

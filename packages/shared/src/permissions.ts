@@ -52,6 +52,10 @@ export const Permission = {
   BUDGET_READ: 'budget:read',
   BUDGET_WRITE: 'budget:write',
   SETTINGS_WRITE: 'settings:write',
+  /** Spare parts catalogue and stock (S16). */
+  INVENTORY_READ: 'inventory:read',
+  /** Receive, issue, transfer and count stock; parts catalogue and suppliers. */
+  INVENTORY_WRITE: 'inventory:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -65,6 +69,8 @@ export const Role = {
   VIEWER: 'VIEWER',
   /** General staff: may only request vehicles and follow their requests. */
   REQUESTER: 'REQUESTER',
+  /** Parts store: stock, receipts, issues to work orders. */
+  STOREKEEPER: 'STOREKEEPER',
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
@@ -85,6 +91,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.FUEL_WRITE,
     Permission.MAINTENANCE_WRITE,
     Permission.REPAIR_REQUEST,
+    Permission.INVENTORY_WRITE,
     Permission.COST_WRITE,
     Permission.SAFETY_WRITE,
     Permission.INCIDENT_REPORT,
@@ -122,6 +129,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   EXECUTIVE: [...READ_ONLY, Permission.VEHICLE_REQUEST_CREATE],
   VIEWER: [Permission.VEHICLE_READ, Permission.DRIVER_READ, Permission.TRACKING_READ, Permission.TRIP_READ, Permission.VEHICLE_REQUEST_CREATE],
   REQUESTER: [Permission.VEHICLE_REQUEST_CREATE],
+  STOREKEEPER: [Permission.INVENTORY_READ, Permission.INVENTORY_WRITE, Permission.MAINTENANCE_READ, Permission.VEHICLE_READ, Permission.BRANCH_READ, Permission.FILE_UPLOAD],
 };
 
 export function permissionsForRoles(roles: readonly string[]): Permission[] {

@@ -9,7 +9,7 @@ import { alertLevel, allocateByKm, assetCost, bookValue, dayCount, documentCateg
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v == null ? 0 : Number(v));
 
-export type CostSource = 'fuel' | 'maintenance' | 'expense' | 'document' | 'asset' | 'shared';
+export type CostSource = 'fuel' | 'maintenance' | 'expense' | 'document' | 'asset' | 'shared' | 'tire' | 'warranty';
 export interface LedgerRow {
   vehicleId: string;
   month: string;
@@ -70,9 +70,9 @@ export class CostsService {
       },
       orderBy: { plateNumber: 'asc' },
     });
-    const [fuel, workOrders, expenses, documents, stats, shared] = await Promise.all([
+    const [fuel, workOrders, expenses, documents, stats, shared, tires, warranty] = await Promise.all([
       tx.fuelRecord.findMany({ where: { filledAt: { gte: start, lt: end }, approvalStatus: 'APPROVED' }, select: { vehicleId: true, filledAt: true, totalCost: true } }),
-      tx.workOrder.findMany({ where: { status: 'COMPLETED', completedAt: { gte: start, lt: end } }, select: { vehicleId: true, completedAt: true, totalCost: true } }),
+      tx.workOrder.findMany({ where: { status: 'COMPLETED', completedAt: { gte: start, lt: end } }, select: { vehicleId: true, completedAt: true, totalCost: true, lines: { where: { kind: 'TIRE' }, select: { total: true } } } }),
       tx.vehicleExpense.findMany({ where: { incurredAt: { gte: start, lt: end }, approvalStatus: 'APPROVED' }, select: { vehicleId: true, incurredAt: true, amount: true, category: true, tripId: true } }),
       tx.vehicleDocument.findMany({
         where: { amount: { gt: 0 }, issuedAt: { lte: new Date(q.to) }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date(q.from) } }] },
@@ -80,6 +80,9 @@ export class CostsService {
       }),
       tx.vehicleDailyStat.findMany({ where: { day: { gte: new Date(fullFrom), lte: new Date(fullTo) } }, select: { vehicleId: true, day: true, distanceKm: true } }),
       tx.sharedCost.findMany({ where: { period: { in: months } }, orderBy: { createdAt: 'asc' } }),
+      // Tire changes outside a work order (inside one they are TIRE lines).
+      tx.tireChange.findMany({ where: { workOrderId: null, cost: { gt: 0 }, changedAt: { gte: start, lt: end } }, select: { vehicleId: true, changedAt: true, cost: true } }),
+      tx.warrantyClaim.findMany({ where: { status: 'RECOVERED', recoveredAt: { gte: start, lt: end }, amountRecovered: { gt: 0 } }, select: { vehicleId: true, recoveredAt: true, amountRecovered: true, basis: true } }),
     ]);
 
     const rows: LedgerRow[] = [];
@@ -88,7 +91,15 @@ export class CostsService {
       if (known.has(r.vehicleId) && r.amount) rows.push({ ...r, amount: r2(r.amount) });
     };
     for (const f of fuel) push({ vehicleId: f.vehicleId, month: monthOf(localDate(f.filledAt, tz)), category: CostCategory.FUEL, source: 'fuel', amount: n(f.totalCost) });
-    for (const w of workOrders) push({ vehicleId: w.vehicleId, month: monthOf(localDate(w.completedAt!, tz)), category: CostCategory.MAINTENANCE, source: 'maintenance', amount: n(w.totalCost) });
+    for (const w of workOrders) {
+      const month = monthOf(localDate(w.completedAt!, tz));
+      const tire = w.lines.reduce((a, l) => a + n(l.total), 0);
+      push({ vehicleId: w.vehicleId, month, category: CostCategory.MAINTENANCE, source: 'maintenance', amount: n(w.totalCost) - tire });
+      push({ vehicleId: w.vehicleId, month, category: CostCategory.TIRES, source: 'maintenance', amount: tire });
+    }
+    for (const t of tires) push({ vehicleId: t.vehicleId, month: monthOf(localDate(t.changedAt, tz)), category: CostCategory.TIRES, source: 'tire', amount: n(t.cost) });
+    // Recovered warranty claims reduce the cost in the month the money came back.
+    for (const c of warranty) push({ vehicleId: c.vehicleId, month: monthOf(localDate(c.recoveredAt!, tz)), category: c.basis === 'TIRE' ? CostCategory.TIRES : CostCategory.MAINTENANCE, source: 'warranty', amount: -n(c.amountRecovered) });
     for (const e of expenses) push({ vehicleId: e.vehicleId, month: monthOf(localDate(e.incurredAt, tz)), category: e.category, source: 'expense', amount: n(e.amount), tripId: e.tripId });
 
     // Period costs, split per month inside the range.

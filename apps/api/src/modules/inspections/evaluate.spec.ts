@@ -37,3 +37,23 @@ describe('preTripBlock', () => {
     expect(preTripBlock({ performedAt: new Date('2026-11-12T08:00:00Z'), result: 'DEFECTS', inspectionNo: 'I3' }, now, 12)).toBeNull();
   });
 });
+
+describe('numeric (tire) items', () => {
+  const items = [
+    { key: 'tread_1l', label: 'Tread 1L', critical: true, type: 'number' as const, unit: 'mm', min: 3, tirePosition: '1L', measure: 'TREAD' as const },
+    { key: 'press_1l', label: 'Pressure 1L', critical: false, type: 'number' as const, unit: 'psi', min: 90, max: 110, tirePosition: '1L', measure: 'PRESSURE' as const },
+  ];
+  it('decides ok from min/max and requires a value', () => {
+    const r = evaluateInspection(items, [
+      { key: 'tread_1l', ok: true, value: 2.5 },
+      { key: 'press_1l', ok: false, value: 100 },
+    ]);
+    if ('errors' in r) throw new Error(r.errors.join());
+    expect(r.items.map((i) => [i.key, i.ok, i.note])).toEqual([
+      ['tread_1l', false, '2.5 mm is below 3'],
+      ['press_1l', true, null],
+    ]);
+    expect(r.result).toBe('FAIL');
+    expect(evaluateInspection(items, [{ key: 'tread_1l', ok: true }, { key: 'press_1l', ok: true, value: 95 }])).toEqual({ errors: ['tread_1l: enter a value'] });
+  });
+});

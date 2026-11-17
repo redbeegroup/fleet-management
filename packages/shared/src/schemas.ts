@@ -208,6 +208,7 @@ export const companySettingsSchema = z.object({
   fuelControl: z.lazy(() => fuelControlSettingsSchema).default({}),
   diagnostics: z.lazy(() => diagnosticsSettingsSchema).default({}),
   security: z.lazy(() => securitySettingsSchema).default({}),
+  tires: z.lazy(() => tireSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -225,6 +226,7 @@ export const updateCompanySettingsSchema = z.object({
   fuelControl: z.lazy(() => fuelControlSettingsSchema.partial()).optional(),
   diagnostics: z.lazy(() => diagnosticsSettingsSchema.partial()).optional(),
   security: z.lazy(() => securitySettingsSchema.partial()).optional(),
+  tires: z.lazy(() => tireSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -386,6 +388,10 @@ export const createWorkOrderSchema = z.object({
   priority: z.nativeEnum(RepairSeverity).default('MEDIUM'),
   workshop: z.string().max(200).optional().nullable(),
   assignedTo: z.string().max(200).optional().nullable(),
+  /** Outside garage (S16). */
+  supplierId: z.string().uuid().optional().nullable(),
+  quoteAmount: z.number().nonnegative().optional().nullable(),
+  quoteFileId: z.string().uuid().optional().nullable(),
   offRoad: z.boolean().default(true),
   odometerKm: z.number().nonnegative().optional().nullable(),
   planId: z.string().uuid().optional().nullable(),
@@ -396,7 +402,7 @@ export const createWorkOrderSchema = z.object({
 export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
 
 export const workOrderLineSchema = z.object({
-  kind: z.enum(['LABOUR', 'PART', 'EXTERNAL', 'OTHER']),
+  kind: z.enum(['LABOUR', 'PART', 'EXTERNAL', 'TIRE', 'OTHER']),
   description: z.string().trim().min(1).max(300),
   quantity: z.number().positive().max(100_000),
   unitCost: z.number().nonnegative(),
@@ -407,6 +413,11 @@ export const completeWorkOrderSchema = z.object({
   resolution: z.string().trim().min(3).max(4000),
   completedAt: z.coerce.date().optional(),
   odometerKm: z.number().nonnegative().optional(),
+  /** Garage invoice (S16): required when the work order has a garage. */
+  invoiceNo: z.string().trim().max(60).optional().nullable(),
+  invoiceDate: z.coerce.date().optional().nullable(),
+  invoiceAmount: z.number().nonnegative().optional().nullable(),
+  invoiceFileId: z.string().uuid().optional().nullable(),
 });
 export type CompleteWorkOrderInput = z.infer<typeof completeWorkOrderSchema>;
 
@@ -571,6 +582,14 @@ export const checklistItemSchema = z.object({
   key: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lowercase letters, digits and _'),
   label: z.string().trim().min(1).max(200),
   critical: z.boolean().default(false),
+  /** 'number': a measured value (S16 tires); outside min/max counts as a defect. */
+  type: z.enum(['check', 'number']).optional(),
+  unit: z.string().max(10).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  /** Tire readings feed tire_checks. */
+  tirePosition: z.string().max(10).optional(),
+  measure: z.enum(['TREAD', 'PRESSURE']).optional(),
 });
 export type ChecklistItem = z.infer<typeof checklistItemSchema>;
 
@@ -592,6 +611,8 @@ export type UpdateInspectionTemplateInput = z.infer<typeof updateInspectionTempl
 export const inspectionAnswerSchema = z.object({
   key: z.string(),
   ok: z.boolean(),
+  /** For 'number' items; ok is then decided from min/max. */
+  value: z.number().optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
   photoFileId: z.string().uuid().optional().nullable(),
 });
@@ -726,6 +747,8 @@ export const WebhookEvent = {
   VEHICLE_UNAUTHORISED_USE: 'vehicle.unauthorised_use',
   VEHICLE_FUEL_DROP: 'vehicle.fuel_drop',
   VEHICLE_ENGINE_FAULT: 'vehicle.engine_fault',
+  STOCK_LOW: 'stock.low',
+  WARRANTY_CLAIM_UPDATED: 'warranty_claim.updated',
 } as const;
 export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent];
 
@@ -964,6 +987,7 @@ export const CostCategory = {
   DOCUMENTS: 'DOCUMENTS',
   DEPRECIATION: 'DEPRECIATION',
   SHARED: 'SHARED',
+  TIRES: 'TIRES',
 } as const;
 export type CostCategory = (typeof CostCategory)[keyof typeof CostCategory];
 
@@ -1212,3 +1236,201 @@ export const biLoginSchema = z.object({
   /** null = the group login (all companies). */
   companyId: z.string().uuid().nullable(),
 });
+
+// ---------------------------------------------------------------------------
+// Workshop depth (Sprint 16): suppliers, parts & stock, tires, warranty
+// ---------------------------------------------------------------------------
+
+export const SupplierKind = { GARAGE: 'GARAGE', PARTS: 'PARTS', TIRES: 'TIRES', OTHER: 'OTHER' } as const;
+export const supplierSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  kinds: z.array(z.nativeEnum(SupplierKind)).min(1).default(['GARAGE']),
+  phone: z.string().trim().max(40).optional().nullable(),
+  email: z.string().trim().toLowerCase().email().optional().nullable().or(z.literal('').transform(() => null)),
+  address: z.string().trim().max(300).optional().nullable(),
+  taxId: z.string().trim().max(40).optional().nullable(),
+  paymentTermsDays: z.number().int().min(0).max(365).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  externalRef: z.string().trim().max(40).optional().nullable(),
+  active: z.boolean().default(true),
+});
+export type SupplierInput = z.infer<typeof supplierSchema>;
+
+/** Garage, quote and invoice of a work order (outside garages). */
+export const workOrderGarageSchema = z.object({
+  supplierId: z.string().uuid().nullable().optional(),
+  quoteAmount: z.number().nonnegative().nullable().optional(),
+  quoteFileId: z.string().uuid().nullable().optional(),
+  invoiceNo: z.string().trim().max(60).nullable().optional(),
+  invoiceDate: z.coerce.date().nullable().optional(),
+  invoiceAmount: z.number().nonnegative().nullable().optional(),
+  invoiceFileId: z.string().uuid().nullable().optional(),
+});
+export type WorkOrderGarageInput = z.infer<typeof workOrderGarageSchema>;
+
+export const partSchema = z.object({
+  partNo: z.string().trim().min(1).max(60),
+  name: z.string().trim().min(2).max(200),
+  category: z.string().trim().max(60).optional().nullable(),
+  unit: z.string().trim().min(1).max(10).default('pcs'),
+  supplierId: z.string().uuid().optional().nullable(),
+  minQty: z.number().nonnegative().max(1_000_000).default(0),
+  reorderQty: z.number().nonnegative().max(1_000_000).default(0),
+  warrantyMonths: z.number().int().min(0).max(240).optional().nullable(),
+  warrantyKm: z.number().int().min(0).max(2_000_000).optional().nullable(),
+  externalRef: z.string().trim().max(40).optional().nullable(),
+  active: z.boolean().default(true),
+});
+export type PartInput = z.infer<typeof partSchema>;
+
+const qty = z.number().positive().max(1_000_000);
+export const receiveStockSchema = z.object({
+  branchId: z.string().uuid(),
+  supplierId: z.string().uuid().optional().nullable(),
+  reference: z.string().trim().max(60).optional().nullable(),
+  fileId: z.string().uuid().optional().nullable(),
+  occurredAt: z.coerce.date().optional(),
+  lines: z.array(z.object({ partId: z.string().uuid(), qty, unitCost: z.number().nonnegative().max(1e10) })).min(1).max(200),
+});
+export type ReceiveStockInput = z.infer<typeof receiveStockSchema>;
+
+export const transferStockSchema = z
+  .object({
+    fromBranchId: z.string().uuid(),
+    toBranchId: z.string().uuid(),
+    reference: z.string().trim().max(60).optional().nullable(),
+    lines: z.array(z.object({ partId: z.string().uuid(), qty })).min(1).max(200),
+  })
+  .refine((t) => t.fromBranchId !== t.toBranchId, { path: ['toBranchId'], message: 'Choose another store' });
+export type TransferStockInput = z.infer<typeof transferStockSchema>;
+
+export const stockCountSchema = z.object({
+  branchId: z.string().uuid(),
+  reason: z.string().trim().min(2).max(200),
+  lines: z.array(z.object({ partId: z.string().uuid(), countedQty: z.number().min(0).max(1_000_000) })).min(1).max(1000),
+});
+export type StockCountInput = z.infer<typeof stockCountSchema>;
+
+/** Issue a part from a store to a work order (creates a PART line). */
+export const issuePartSchema = z.object({
+  partId: z.string().uuid(),
+  branchId: z.string().uuid(),
+  qty,
+  warrantyMonths: z.number().int().min(0).max(240).optional().nullable(),
+  warrantyKm: z.number().int().min(0).max(2_000_000).optional().nullable(),
+});
+export type IssuePartInput = z.infer<typeof issuePartSchema>;
+
+/**
+ * Tire positions per layout. Codes: axle number + side (L/R) + O/I for dual wheels;
+ * SPARE is the spare wheel. Motorcycles: F/R.
+ */
+export const TIRE_LAYOUTS: Record<string, { label: string; positions: string[] }> = {
+  'moto-2': { label: 'Motorcycle', positions: ['F', 'R'] },
+  'tri-3': { label: 'Three-wheeler', positions: ['F', '2L', '2R'] },
+  'car-4': { label: 'Car / van / pickup (4 + spare)', positions: ['1L', '1R', '2L', '2R', 'SPARE'] },
+  '4x2-6': { label: 'Truck / bus 4×2, dual rear (6 + spare)', positions: ['1L', '1R', '2LO', '2LI', '2RI', '2RO', 'SPARE'] },
+  '6x4-10': { label: 'Truck 6×4, dual rear (10 + spare)', positions: ['1L', '1R', '2LO', '2LI', '2RI', '2RO', '3LO', '3LI', '3RI', '3RO', 'SPARE'] },
+  'trailer-8': { label: 'Trailer, 2 axles dual (8)', positions: ['1LO', '1LI', '1RI', '1RO', '2LO', '2LI', '2RI', '2RO'] },
+  'trailer-12': { label: 'Trailer, 3 axles dual (12)', positions: ['1LO', '1LI', '1RI', '1RO', '2LO', '2LI', '2RI', '2RO', '3LO', '3LI', '3RI', '3RO'] },
+};
+export const DEFAULT_TIRE_LAYOUT: Record<string, string> = {
+  TRUCK: '4x2-6',
+  BUS: '4x2-6',
+  TRACTOR: '6x4-10',
+  TRAILER: 'trailer-8',
+  MOTORCYCLE: 'moto-2',
+  THREE_WHEELER: 'tri-3',
+};
+export const tireLayoutOf = (vehicleClass: string, layout?: string | null) =>
+  layout && TIRE_LAYOUTS[layout] ? layout : (DEFAULT_TIRE_LAYOUT[vehicleClass] ?? 'car-4');
+
+export const TireReason = { NEW_FIT: 'NEW_FIT', WORN: 'WORN', PUNCTURE: 'PUNCTURE', DAMAGE: 'DAMAGE', ROTATION: 'ROTATION', OTHER: 'OTHER' } as const;
+export const tireChangeSchema = z.object({
+  position: z.string().trim().min(1).max(10),
+  changedAt: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional(),
+  reason: z.nativeEnum(TireReason),
+  brand: z.string().trim().max(60).optional().nullable(),
+  model: z.string().trim().max(60).optional().nullable(),
+  size: z.string().trim().max(40).optional().nullable(),
+  condition: z.enum(['NEW', 'RETREAD', 'USED']).default('NEW'),
+  cost: z.number().nonnegative().max(1e10).default(0),
+  supplierId: z.string().uuid().optional().nullable(),
+  workOrderId: z.string().uuid().optional().nullable(),
+  removedTreadMm: z.number().min(0).max(40).optional().nullable(),
+  warrantyMonths: z.number().int().min(0).max(120).optional().nullable(),
+  warrantyKm: z.number().int().min(0).max(1_000_000).optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+});
+export type TireChangeInput = z.infer<typeof tireChangeSchema>;
+
+export const tireRotateSchema = z
+  .object({ a: z.string().max(10), b: z.string().max(10), changedAt: z.coerce.date().optional(), odometerKm: z.number().nonnegative().optional() })
+  .refine((r) => r.a !== r.b, { path: ['b'], message: 'Choose two different positions' });
+export type TireRotateInput = z.infer<typeof tireRotateSchema>;
+
+export const tireCheckSchema = z.object({
+  checkedAt: z.coerce.date().optional(),
+  odometerKm: z.number().nonnegative().optional().nullable(),
+  readings: z
+    .array(z.object({ position: z.string().max(10), treadMm: z.number().min(0).max(40).optional().nullable(), pressure: z.number().min(0).max(250).optional().nullable() }))
+    .min(1)
+    .max(30),
+});
+export type TireCheckInput = z.infer<typeof tireCheckSchema>;
+
+export const tireSettingsSchema = z.object({
+  /** Legal / safe minimum tread (mm): below it a tire must be replaced. */
+  minTreadMm: z.number().min(0.5).max(10).default(3),
+  /** Warn this many mm above the minimum. */
+  warnTreadMm: z.number().min(0).max(10).default(1),
+  /** Pressure unit shown to users. */
+  pressureUnit: z.enum(['psi', 'kPa', 'bar']).default('psi'),
+  /** Target pressure per vehicle class (in pressureUnit); none = pressure not judged. */
+  pressureTargets: z.record(z.string(), z.number().positive()).default({}),
+  tolerancePct: z.number().min(1).max(50).default(10),
+  /** Expected km of a tire, for "beyond expected life" alerts and cost forecasts. */
+  expectedLifeKm: z.number().int().min(1000).max(1_000_000).default(80_000),
+});
+export type TireSettings = z.infer<typeof tireSettingsSchema>;
+
+export const WarrantyComponent = { WHOLE_VEHICLE: 'WHOLE_VEHICLE', ENGINE: 'ENGINE', GEARBOX: 'GEARBOX', BATTERY: 'BATTERY', BODY: 'BODY', OTHER: 'OTHER' } as const;
+export const vehicleWarrantySchema = z
+  .object({
+    component: z.nativeEnum(WarrantyComponent),
+    label: z.string().trim().max(120).optional().nullable(),
+    supplierId: z.string().uuid().optional().nullable(),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date().optional().nullable(),
+    endKm: z.number().nonnegative().optional().nullable(),
+    terms: z.string().max(2000).optional().nullable(),
+    fileId: z.string().uuid().optional().nullable(),
+  })
+  .refine((w) => w.endDate || w.endKm != null, { path: ['endDate'], message: 'Give an end date and/or an end km' });
+export type VehicleWarrantyInput = z.infer<typeof vehicleWarrantySchema>;
+
+export const WarrantyClaimStatus = { DRAFT: 'DRAFT', SUBMITTED: 'SUBMITTED', APPROVED: 'APPROVED', REJECTED: 'REJECTED', RECOVERED: 'RECOVERED' } as const;
+export const createWarrantyClaimSchema = z.object({
+  vehicleId: z.string().uuid(),
+  workOrderId: z.string().uuid().optional().nullable(),
+  supplierId: z.string().uuid().optional().nullable(),
+  basis: z.enum(['VEHICLE', 'PART', 'TIRE']),
+  basisRef: z.string().uuid().optional().nullable(),
+  description: z.string().trim().min(3).max(2000),
+  amountClaimed: z.number().nonnegative().max(1e10),
+  notes: z.string().max(2000).optional().nullable(),
+  fileIds: z.array(z.string().uuid()).max(10).default([]),
+});
+export type CreateWarrantyClaimInput = z.infer<typeof createWarrantyClaimSchema>;
+
+export const updateWarrantyClaimSchema = z.object({
+  action: z.enum(['SUBMIT', 'APPROVE', 'REJECT', 'RECOVER', 'EDIT']),
+  amountClaimed: z.number().nonnegative().max(1e10).optional(),
+  amountApproved: z.number().nonnegative().max(1e10).optional(),
+  amountRecovered: z.number().nonnegative().max(1e10).optional(),
+  at: z.coerce.date().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+  fileIds: z.array(z.string().uuid()).max(10).optional(),
+});
+export type UpdateWarrantyClaimInput = z.infer<typeof updateWarrantyClaimSchema>;

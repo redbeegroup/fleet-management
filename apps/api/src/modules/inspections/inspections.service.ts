@@ -164,6 +164,20 @@ export class InspectionsService {
         },
         include,
       });
+      // Measured tire items become tire checks (tread / pressure per position).
+      const readings = new Map<string, { treadMm?: number; pressure?: number }>();
+      for (const it of ev.items) {
+        if (it.type !== 'number' || !it.tirePosition || !it.measure || it.value == null) continue;
+        const r = readings.get(it.tirePosition) ?? {};
+        if (it.measure === 'TREAD') r.treadMm = it.value;
+        else r.pressure = it.value;
+        readings.set(it.tirePosition, r);
+      }
+      if (readings.size) {
+        await tx.tireCheck.createMany({
+          data: [...readings.entries()].map(([position, r]) => ({ companyId: user.companyId, vehicleId: vehicle.id, position, checkedAt: performedAt, odometerKm: input.odometerKm ?? null, treadMm: r.treadMm ?? null, pressure: r.pressure ?? null, source: 'INSPECTION', inspectionId: created.id, createdBy: user.userId })),
+        });
+      }
       if (created.result === 'FAIL') {
         await this.webhooks.emit(tx, user.companyId, WebhookEvent.INSPECTION_FAILED, {
           id: created.id,

@@ -1,4 +1,7 @@
 import { ReportsService } from './modules/reports/reports.service';
+import { InventoryService } from './modules/inventory/inventory.service';
+import { TiresService } from './modules/tires/tires.service';
+import { WarrantyService } from './modules/warranty/warranty.service';
 import { FuelCardsService } from './modules/fuel/cards/fuel-cards.service';
 import { CostsService } from './modules/costs/costs.service';
 import 'reflect-metadata';
@@ -84,6 +87,9 @@ async function runJob(name: string | undefined) {
     'safety-alerts': () => app.get(SafetyService).lowScoreAlerts(),
     'budget-alerts': () => app.get(CostsService).budgetAlerts(),
     'report-dispatch': () => app.get(ReportsService).dispatch(),
+    'stock-alerts': () => app.get(InventoryService).lowStockAlerts(),
+    'tire-alerts': () => app.get(TiresService).alerts(),
+    'warranty-alerts': () => app.get(WarrantyService).alerts(),
     'fuel-card-sync': () => app.get(FuelCardsService).syncAll(),
     'daily-stats': () => app.get(AnalyticsService).rollup(process.env.JOB_FROM, process.env.JOB_TO),
   };

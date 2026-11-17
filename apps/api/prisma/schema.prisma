@@ -204,6 +204,8 @@ model Vehicle {
   monthlyLeaseCost Decimal?      @map("monthly_lease_cost") @db.Decimal(14, 2)
   /// Depreciation / lease start (defaults to acquiredAt).
   inServiceAt      DateTime?     @map("in_service_at") @db.Date
+  /// Tire layout key (shared TIRE_LAYOUTS); null = default for the vehicle class (S16).
+  tireLayout       String?       @map("tire_layout")
   notes            String?
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
@@ -223,6 +225,9 @@ model Vehicle {
   expenses        VehicleExpense[]
   incidents       Incident[]
   inspections     Inspection[]
+  tireChanges     TireChange[]
+  tireChecks      TireCheck[]
+  warranties      VehicleWarranty[]
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -760,10 +765,20 @@ model WorkOrder {
   totalCost     Decimal         @default(0) @map("total_cost") @db.Decimal(14, 2)
   /// Planned cost; above settings.approvals.workOrderAbove the WO needs approval before it starts.
   estimatedCost Decimal?        @map("estimated_cost") @db.Decimal(14, 2)
+  /// Outside garage (S16).
+  supplierId    String?         @map("supplier_id") @db.Uuid
+  quoteAmount   Decimal?        @map("quote_amount") @db.Decimal(14, 2)
+  quoteFileId   String?         @map("quote_file_id") @db.Uuid
+  quotedAt      DateTime?       @map("quoted_at")
+  invoiceNo     String?         @map("invoice_no")
+  invoiceDate   DateTime?       @map("invoice_date") @db.Date
+  invoiceAmount Decimal?        @map("invoice_amount") @db.Decimal(14, 2)
+  invoiceFileId String?         @map("invoice_file_id") @db.Uuid
   createdBy     String?         @map("created_by") @db.Uuid
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  supplier       Supplier?        @relation(fields: [supplierId], references: [id])
   vehicle        Vehicle          @relation(fields: [vehicleId], references: [id])
   plan           MaintenancePlan? @relation(fields: [planId], references: [id])
   lines          WorkOrderLine[]
@@ -776,17 +791,25 @@ model WorkOrder {
 }
 
 model WorkOrderLine {
-  id          String   @id @default(uuid()) @db.Uuid
-  companyId   String   @map("company_id") @db.Uuid
-  workOrderId String   @map("work_order_id") @db.Uuid
-  kind        String
-  description String
-  quantity    Decimal  @db.Decimal(10, 2)
-  unitCost    Decimal  @map("unit_cost") @db.Decimal(14, 2)
-  total       Decimal  @db.Decimal(14, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  workOrderId     String    @map("work_order_id") @db.Uuid
+  kind            String
+  description     String
+  quantity        Decimal   @db.Decimal(10, 2)
+  unitCost        Decimal   @map("unit_cost") @db.Decimal(14, 2)
+  total           Decimal   @db.Decimal(14, 2)
+  /// PART lines issued from a store (S16).
+  partId          String?   @map("part_id") @db.Uuid
+  branchId        String?   @map("branch_id") @db.Uuid
+  warrantyUntil   DateTime? @map("warranty_until") @db.Date
+  warrantyKmUntil Decimal?  @map("warranty_km_until") @db.Decimal(12, 1)
+  /// TIRE lines created from a tire change.
+  tireChangeId    String?   @map("tire_change_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  part      Part?     @relation(fields: [partId], references: [id])
 
   @@index([workOrderId])
   @@map("work_order_lines")
@@ -1695,4 +1718,218 @@ model ReportRun {
   @@unique([subscriptionId, periodKey])
   @@index([companyId, createdAt])
   @@map("report_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Workshop depth (S16): suppliers, parts & stock, tires, warranty
+// ---------------------------------------------------------------------------
+
+/// Outside garages and parts / tire suppliers.
+model Supplier {
+  id               String   @id @default(uuid()) @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  name             String
+  /// GARAGE | PARTS | TIRES | OTHER
+  kinds            String[]
+  phone            String?
+  email            String?
+  address          String?
+  taxId            String?  @map("tax_id")
+  paymentTermsDays Int?     @map("payment_terms_days")
+  notes            String?
+  /// SAP vendor number (later integration).
+  externalRef      String?  @map("external_ref")
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  workOrders WorkOrder[]
+
+  @@unique([companyId, name])
+  @@map("suppliers")
+}
+
+model Part {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  partNo         String   @map("part_no")
+  name           String
+  category       String?
+  unit           String   @default("pcs")
+  supplierId     String?  @map("supplier_id") @db.Uuid
+  minQty         Decimal  @default(0) @map("min_qty") @db.Decimal(12, 2)
+  reorderQty     Decimal  @default(0) @map("reorder_qty") @db.Decimal(12, 2)
+  warrantyMonths Int?     @map("warranty_months")
+  warrantyKm     Int?     @map("warranty_km")
+  /// SAP material number (later integration).
+  externalRef    String?  @map("external_ref")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  stocks    PartStock[]
+  movements StockMovement[]
+  lines     WorkOrderLine[]
+
+  @@unique([companyId, partNo])
+  @@map("parts")
+}
+
+/// Stock of a part in a branch store (moving average cost).
+model PartStock {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  partId    String    @map("part_id") @db.Uuid
+  branchId  String    @map("branch_id") @db.Uuid
+  qtyOnHand Decimal   @default(0) @map("qty_on_hand") @db.Decimal(12, 2)
+  avgCost   Decimal   @default(0) @map("avg_cost") @db.Decimal(14, 4)
+  /// Overrides the part's minimum in this store.
+  minQty    Decimal?  @map("min_qty") @db.Decimal(12, 2)
+  bin       String?
+  alertedAt DateTime? @map("alerted_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  part Part @relation(fields: [partId], references: [id])
+
+  @@unique([partId, branchId])
+  @@index([companyId, branchId])
+  @@map("part_stocks")
+}
+
+model StockMovement {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  partId      String   @map("part_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  /// RECEIPT | ISSUE | RETURN | ADJUST | TRANSFER_OUT | TRANSFER_IN
+  kind        String
+  /// Signed: + into the store, - out of it.
+  qty         Decimal  @db.Decimal(12, 2)
+  unitCost    Decimal  @map("unit_cost") @db.Decimal(14, 4)
+  value       Decimal  @db.Decimal(14, 2)
+  qtyAfter    Decimal  @map("qty_after") @db.Decimal(12, 2)
+  workOrderId String?  @map("work_order_id") @db.Uuid
+  lineId      String?  @map("line_id") @db.Uuid
+  supplierId  String?  @map("supplier_id") @db.Uuid
+  reference   String?
+  reason      String?
+  fileId      String?  @map("file_id") @db.Uuid
+  createdBy   String?  @map("created_by") @db.Uuid
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+
+  part Part @relation(fields: [partId], references: [id])
+
+  @@index([companyId, occurredAt])
+  @@index([partId, branchId, occurredAt])
+  @@map("stock_movements")
+}
+
+/// Tire fitted at a vehicle position (no individual tire history).
+model TireChange {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  vehicleId      String   @map("vehicle_id") @db.Uuid
+  position       String
+  changedAt      DateTime @map("changed_at")
+  odometerKm     Decimal  @map("odometer_km") @db.Decimal(12, 1)
+  /// NEW_FIT | WORN | PUNCTURE | DAMAGE | ROTATION | OTHER
+  reason         String
+  /// ROTATION: the position the tire came from (its km continue).
+  fromPosition   String?  @map("from_position")
+  brand          String?
+  model          String?
+  size           String?
+  /// NEW | RETREAD | USED
+  condition      String   @default("NEW")
+  cost           Decimal  @default(0) @db.Decimal(14, 2)
+  supplierId     String?  @map("supplier_id") @db.Uuid
+  workOrderId    String?  @map("work_order_id") @db.Uuid
+  /// Tread of the tire taken off (mm).
+  removedTreadMm Decimal? @map("removed_tread_mm") @db.Decimal(5, 1)
+  warrantyMonths Int?     @map("warranty_months")
+  warrantyKm     Int?     @map("warranty_km")
+  notes          String?
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId, position, changedAt])
+  @@index([companyId, changedAt])
+  @@map("tire_changes")
+}
+
+model TireCheck {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  vehicleId    String   @map("vehicle_id") @db.Uuid
+  position     String
+  checkedAt    DateTime @map("checked_at")
+  odometerKm   Decimal? @map("odometer_km") @db.Decimal(12, 1)
+  treadMm      Decimal? @map("tread_mm") @db.Decimal(5, 1)
+  pressure     Decimal? @db.Decimal(6, 1)
+  /// WEB | INSPECTION
+  source       String   @default("WEB")
+  inspectionId String?  @map("inspection_id") @db.Uuid
+  createdBy    String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId, position, checkedAt])
+  @@map("tire_checks")
+}
+
+model VehicleWarranty {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  vehicleId  String    @map("vehicle_id") @db.Uuid
+  /// WHOLE_VEHICLE | ENGINE | GEARBOX | BATTERY | BODY | OTHER
+  component  String
+  label      String?
+  supplierId String?   @map("supplier_id") @db.Uuid
+  startDate  DateTime  @map("start_date") @db.Date
+  endDate    DateTime? @map("end_date") @db.Date
+  endKm      Decimal?  @map("end_km") @db.Decimal(12, 1)
+  terms      String?
+  fileId     String?   @map("file_id") @db.Uuid
+  alertedAt  DateTime? @map("alerted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([companyId, vehicleId])
+  @@map("vehicle_warranties")
+}
+
+model WarrantyClaim {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  claimNo         String    @map("claim_no")
+  vehicleId       String    @map("vehicle_id") @db.Uuid
+  workOrderId     String?   @map("work_order_id") @db.Uuid
+  supplierId      String?   @map("supplier_id") @db.Uuid
+  /// VEHICLE | PART | TIRE
+  basis           String
+  /// vehicle_warranties.id, work_order_lines.id or tire_changes.id
+  basisRef        String?   @map("basis_ref") @db.Uuid
+  description     String
+  /// DRAFT | SUBMITTED | APPROVED | REJECTED | RECOVERED
+  status          String    @default("DRAFT")
+  amountClaimed   Decimal   @default(0) @map("amount_claimed") @db.Decimal(14, 2)
+  amountApproved  Decimal?  @map("amount_approved") @db.Decimal(14, 2)
+  amountRecovered Decimal?  @map("amount_recovered") @db.Decimal(14, 2)
+  submittedAt     DateTime? @map("submitted_at")
+  decidedAt       DateTime? @map("decided_at")
+  recoveredAt     DateTime? @map("recovered_at")
+  notes           String?
+  fileIds         String[]  @map("file_ids") @db.Uuid
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@unique([companyId, claimNo])
+  @@index([companyId, status])
+  @@map("warranty_claims")
 }

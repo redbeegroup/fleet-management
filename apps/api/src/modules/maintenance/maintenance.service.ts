@@ -5,8 +5,10 @@ import {
   CompleteWorkOrderInput,
   CreateRepairRequestInput,
   CreateWorkOrderInput,
+  IssuePartInput,
   MaintenancePlanInput,
   Role,
+  WorkOrderGarageInput,
   WorkOrderLineInput,
 } from '@fms/shared';
 import type { AuthUser } from '../../common/auth/auth-user';
@@ -17,10 +19,15 @@ import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { minutesInStatus, planDue } from './due';
 import { ApprovalsService } from '../approvals/approvals.service';
+import { InventoryService } from '../inventory/inventory.service';
+import { partWarrantyEnd } from '../warranty/coverage';
+import { WarrantyService } from '../warranty/warranty.service';
+import { garagePerformance } from './garages';
 
 const woInclude = {
   vehicle: { select: { id: true, plateNumber: true, status: true } },
   plan: { select: { id: true, name: true } },
+  supplier: { select: { id: true, name: true } },
 } satisfies Prisma.WorkOrderInclude;
 
 const MANAGERS = [Role.SUPER_ADMIN, Role.COMPANY_ADMIN, Role.FLEET_MANAGER];
@@ -33,6 +40,8 @@ export class MaintenanceService implements OnModuleInit {
     private readonly db: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
+    private readonly inventory: InventoryService,
+    private readonly warranty: WarrantyService,
   ) {}
 
   onModuleInit() {
@@ -247,6 +256,9 @@ export class MaintenanceService implements OnModuleInit {
         if (!plan) throw new BadRequestException('Plan not found for this vehicle');
       }
       const { repairRequestIds, ...data } = input;
+      if (input.supplierId && !(await tx.supplier.findFirst({ where: { id: input.supplierId, active: true } }))) throw new BadRequestException('Garage not found');
+      // A garage quote is the planned cost (approval limit).
+      if (input.quoteAmount != null) Object.assign(data, { estimatedCost: input.estimatedCost ?? input.quoteAmount, quotedAt: new Date() });
       const year = new Date().getUTCFullYear();
       const woNo = `WO-${year}-${String(await nextNumber(tx, user.companyId, `wo:${year}`)).padStart(6, '0')}`;
       let wo;
@@ -268,13 +280,15 @@ export class MaintenanceService implements OnModuleInit {
         if (count !== repairRequestIds.length) throw new BadRequestException('Some repair requests are not open or belong to another vehicle');
       }
       let req = null;
-      if (input.estimatedCost != null && (await this.approvals.need(tx, 'WORK_ORDER', input.estimatedCost)).needed) {
+      const planned = wo.estimatedCost != null ? Number(wo.estimatedCost) : null;
+      if (planned != null && (await this.approvals.need(tx, 'WORK_ORDER', planned)).needed) {
         await tx.workOrder.update({ where: { id: wo.id }, data: { status: 'AWAITING_APPROVAL' } });
-        req = await this.approvals.request(tx, user.companyId, user.userId, { kind: 'WORK_ORDER', entityId: wo.id, title: `${woNo}: ${input.title}`, amount: input.estimatedCost });
+        req = await this.approvals.request(tx, user.companyId, user.userId, { kind: 'WORK_ORDER', entityId: wo.id, title: `${woNo}: ${input.title}`, amount: planned });
       }
       return { wo: await tx.workOrder.findUniqueOrThrow({ where: { id: wo.id }, include: woInclude }), req };
     });
     await this.approvals.announce(res.req);
+    await this.warranty.noticeForWorkOrder(user, res.wo.id);
     return res.wo;
   }
 
@@ -309,16 +323,36 @@ export class MaintenanceService implements OnModuleInit {
     return this.db.tenant(user.companyId, async (tx) => {
       const wo = await this.lock(tx, id);
       this.assertEditable(wo.status);
-      const { count } = await tx.workOrderLine.deleteMany({ where: { id: lineId, workOrderId: id } });
-      if (!count) throw new NotFoundException('Line not found');
+      const line = await tx.workOrderLine.findFirst({ where: { id: lineId, workOrderId: id } });
+      if (!line) throw new NotFoundException('Line not found');
+      if (line.partId && line.branchId) {
+        await this.inventory.returnTx(tx, user, { partId: line.partId, branchId: line.branchId, qty: Number(line.quantity), unitCost: Number(line.unitCost), workOrderId: id, lineId, reference: wo.woNo });
+      }
+      // A tire change whose line is removed counts on its own again.
+      if (line.tireChangeId) await tx.tireChange.updateMany({ where: { id: line.tireChangeId }, data: { workOrderId: null } });
+      await tx.workOrderLine.delete({ where: { id: lineId } });
       return this.retotal(tx, id);
     });
   }
 
   completeWorkOrder(user: AuthUser, id: string, input: CompleteWorkOrderInput) {
     return this.db.tenant(user.companyId, async (tx) => {
-      const wo = await this.lock(tx, id);
+      let wo = await this.lock(tx, id);
       if (wo.status !== 'OPEN' && wo.status !== 'IN_PROGRESS') throw new BadRequestException(`Cannot complete a ${wo.status.toLowerCase()} work order`);
+      // Outside garage: the invoice closes the job; without lines it becomes the cost.
+      const invoiceNo = input.invoiceNo ?? wo.invoiceNo;
+      const invoiceAmount = input.invoiceAmount ?? (wo.invoiceAmount != null ? Number(wo.invoiceAmount) : null);
+      if (wo.supplierId && (!invoiceNo || invoiceAmount == null)) throw new BadRequestException('Enter the garage invoice number and amount');
+      if (invoiceNo || invoiceAmount != null) {
+        await tx.workOrder.update({ where: { id }, data: { invoiceNo, invoiceAmount, invoiceDate: input.invoiceDate ?? wo.invoiceDate ?? new Date(), ...(input.invoiceFileId && { invoiceFileId: input.invoiceFileId }) } });
+        const lines = await tx.workOrderLine.count({ where: { workOrderId: id } });
+        if (!lines && invoiceAmount) {
+          const garage = wo.supplierId ? (await tx.supplier.findUnique({ where: { id: wo.supplierId }, select: { name: true } }))?.name : null;
+          await tx.workOrderLine.create({ data: { companyId: user.companyId, workOrderId: id, kind: 'EXTERNAL', description: `Invoice ${invoiceNo ?? ''}${garage ? ` (${garage})` : ''}`.trim(), quantity: 1, unitCost: invoiceAmount, total: invoiceAmount } });
+          await this.retotal(tx, id);
+        }
+        wo = await tx.workOrder.findUniqueOrThrow({ where: { id } });
+      }
       await this.assertCostApproved(tx, wo);
       const completedAt = input.completedAt ?? new Date();
       const vehicle = await tx.vehicle.findUniqueOrThrow({ where: { id: wo.vehicleId } });
@@ -376,6 +410,7 @@ export class MaintenanceService implements OnModuleInit {
           labour: byKind('LABOUR'),
           parts: byKind('PART'),
           external: byKind('EXTERNAL'),
+          tires: byKind('TIRE'),
         };
       });
       return {
@@ -388,6 +423,73 @@ export class MaintenanceService implements OnModuleInit {
         },
         vehicles: rows.sort((a, b) => b.cost - a.cost || b.downtimeMinutes - a.downtimeMinutes),
       };
+    });
+  }
+
+  // ---------------------------------------------------------------- garages & parts (S16)
+
+  /** Garage, quote and invoice. A changed quote becomes the planned cost (approval limit). */
+  updateGarage(user: AuthUser, id: string, input: WorkOrderGarageInput) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const wo = await this.lock(tx, id);
+      this.assertEditable(wo.status);
+      if (input.supplierId && !(await tx.supplier.findFirst({ where: { id: input.supplierId } }))) throw new BadRequestException('Garage not found');
+      const quoteChanged = input.quoteAmount !== undefined && Number(wo.quoteAmount ?? -1) !== (input.quoteAmount ?? -1);
+      await tx.workOrder.update({
+        where: { id },
+        data: { ...input, ...(quoteChanged && input.quoteAmount != null && { estimatedCost: input.quoteAmount, quotedAt: new Date() }) },
+      });
+      return tx.workOrder.findUniqueOrThrow({ where: { id }, include: { ...woInclude, lines: { orderBy: { createdAt: 'asc' } } } });
+    });
+  }
+
+  /** Issues a part from a branch store to the work order: a PART line at the store's average cost. */
+  issuePart(user: AuthUser, id: string, input: IssuePartInput) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const wo = await this.lock(tx, id);
+      this.assertEditable(wo.status);
+      const line = await tx.workOrderLine.create({
+        data: { companyId: user.companyId, workOrderId: id, kind: 'PART', description: 'part', quantity: input.qty, unitCost: 0, total: 0, partId: input.partId, branchId: input.branchId },
+      });
+      const r = await this.inventory.issueTx(tx, user, { partId: input.partId, branchId: input.branchId, qty: input.qty, workOrderId: id, lineId: line.id, reference: wo.woNo });
+      const vehicle = await tx.vehicle.findUniqueOrThrow({ where: { id: wo.vehicleId }, select: { odometerKm: true } });
+      const w = partWarrantyEnd(new Date(), Number(wo.odometerKm ?? vehicle.odometerKm), input.warrantyMonths ?? r.part.warrantyMonths, input.warrantyKm ?? r.part.warrantyKm);
+      await tx.workOrderLine.update({
+        where: { id: line.id },
+        data: { description: `${r.part.partNo} ${r.part.name}`, unitCost: r.unitCost, total: r.value, warrantyUntil: w.warrantyUntil, warrantyKmUntil: w.warrantyKmUntil },
+      });
+      return this.retotal(tx, id);
+    });
+  }
+
+  /** Adds the cost of a tire change as a TIRE line (inside the caller's transaction). */
+  async addTireLineTx(tx: Tx, user: AuthUser, workOrderId: string, vehicleId: string, a: { description: string; cost: number; tireChangeId: string }) {
+    const wo = await this.lock(tx, workOrderId);
+    if (wo.vehicleId !== vehicleId) throw new BadRequestException('The work order is for another vehicle');
+    this.assertEditable(wo.status);
+    await tx.workOrderLine.create({ data: { companyId: user.companyId, workOrderId, kind: 'TIRE', description: a.description, quantity: 1, unitCost: a.cost, total: a.cost, tireChangeId: a.tireChangeId } });
+    await this.retotal(tx, workOrderId);
+  }
+
+  /** Per garage: jobs, cost, turnaround, repeat repairs, invoice vs quote, warranty recovered. */
+  garages(user: AuthUser, from: Date, to: Date) {
+    return this.db.tenant(user.companyId, async (tx) => {
+      const [suppliers, wos, claims] = await Promise.all([
+        tx.supplier.findMany({ where: { kinds: { has: 'GARAGE' } }, select: { id: true, name: true, active: true } }),
+        // Jobs up to 30 days after the period too, to see repeat repairs.
+        tx.workOrder.findMany({
+          where: { status: { not: 'CANCELLED' }, openedAt: { lt: new Date(to.getTime() + 30 * 86_400_000) }, OR: [{ completedAt: { gte: from } }, { completedAt: null }] },
+          select: { supplierId: true, vehicleId: true, openedAt: true, completedAt: true, totalCost: true, quoteAmount: true, invoiceAmount: true },
+        }),
+        tx.warrantyClaim.findMany({ where: { status: 'RECOVERED', recoveredAt: { gte: from, lt: to }, supplierId: { not: null } }, select: { supplierId: true, amountRecovered: true } }),
+      ]);
+      const recovered = new Map<string, number>();
+      for (const c of claims) recovered.set(c.supplierId!, (recovered.get(c.supplierId!) ?? 0) + Number(c.amountRecovered ?? 0));
+      const jobs = wos.map((w) => ({ supplierId: w.supplierId ?? '', vehicleId: w.vehicleId, openedAt: w.openedAt, completedAt: w.completedAt, totalCost: Number(w.totalCost), quoteAmount: w.quoteAmount != null ? Number(w.quoteAmount) : null, invoiceAmount: w.invoiceAmount != null ? Number(w.invoiceAmount) : null }));
+      const name = new Map(suppliers.map((x) => [x.id, x.name]));
+      return garagePerformance(jobs.filter((j) => j.supplierId), recovered, { from, to })
+        .map((g) => ({ ...g, name: name.get(g.supplierId) ?? 'Garage' }))
+        .sort((a, b) => b.cost - a.cost);
     });
   }
 

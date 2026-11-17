@@ -1,4 +1,7 @@
 import { ReportsService } from '../modules/reports/reports.service';
+import { InventoryService } from '../modules/inventory/inventory.service';
+import { TiresService } from '../modules/tires/tires.service';
+import { WarrantyService } from '../modules/warranty/warranty.service';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
@@ -34,6 +37,9 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly costs: CostsService,
     private readonly fuelCards: FuelCardsService,
     private readonly reports: ReportsService,
+    private readonly inventory: InventoryService,
+    private readonly tires: TiresService,
+    private readonly warranty: WarrantyService,
   ) {
     super();
   }
@@ -50,6 +56,9 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('incentives-monthly', { pattern: '0 0 8 1 * *', tz: 'Asia/Yangon' }, { name: 'incentives-monthly' });
     await this.queue.upsertJobScheduler('safety-alerts', { pattern: '0 30 7 * * *', tz: 'Asia/Yangon' }, { name: 'safety-alerts' });
     await this.queue.upsertJobScheduler('budget-alerts', { pattern: '0 15 8 * * *', tz: 'Asia/Yangon' }, { name: 'budget-alerts' });
+    await this.queue.upsertJobScheduler('stock-alerts', { pattern: '0 45 7 * * *', tz: 'Asia/Yangon' }, { name: 'stock-alerts' });
+    await this.queue.upsertJobScheduler('tire-alerts', { pattern: '0 50 7 * * *', tz: 'Asia/Yangon' }, { name: 'tire-alerts' });
+    await this.queue.upsertJobScheduler('warranty-alerts', { pattern: '0 55 7 * * *', tz: 'Asia/Yangon' }, { name: 'warranty-alerts' });
     // Hourly at :05; each company's reports go out from 07:00 local time.
     await this.queue.upsertJobScheduler('report-dispatch', { pattern: '0 5 * * * *' }, { name: 'report-dispatch' });
     await this.queue.upsertJobScheduler('fuel-card-sync', { pattern: '0 20 * * * *' }, { name: 'fuel-card-sync' });
@@ -74,6 +83,12 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     switch (job.name) {
       case 'safety-alerts':
         return this.safety.lowScoreAlerts();
+      case 'stock-alerts':
+        return this.inventory.lowStockAlerts();
+      case 'tire-alerts':
+        return this.tires.alerts();
+      case 'warranty-alerts':
+        return this.warranty.alerts();
       case 'report-dispatch':
         return this.reports.dispatch();
       case 'fuel-card-sync':

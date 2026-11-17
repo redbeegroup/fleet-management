@@ -4,6 +4,8 @@ export interface EvaluatedItem extends ChecklistItem {
   ok: boolean;
   note: string | null;
   photoFileId: string | null;
+  /** Measured value of a 'number' item. */
+  value?: number | null;
 }
 
 export interface Evaluation {
@@ -32,6 +34,19 @@ export function evaluateInspection(checklist: ChecklistItem[], answers: Inspecti
     const a = byKey.get(item.key);
     if (!a) {
       errors.push(`${item.key}: not answered`);
+      continue;
+    }
+    if (item.type === 'number') {
+      // Measured items: the value decides; outside min/max is a defect described by the value itself.
+      if (a.value == null || !Number.isFinite(a.value)) {
+        errors.push(`${item.key}: enter a value`);
+        continue;
+      }
+      const low = item.min != null && a.value < item.min;
+      const high = item.max != null && a.value > item.max;
+      const ok = !low && !high;
+      const auto = ok ? null : `${a.value}${item.unit ? ` ${item.unit}` : ''} is ${low ? `below ${item.min}` : `above ${item.max}`}`;
+      items.push({ ...item, ok, value: a.value, note: [auto, a.note?.trim()].filter(Boolean).join(' — ') || null, photoFileId: a.photoFileId ?? null });
       continue;
     }
     if (!a.ok && !a.note?.trim() && !a.photoFileId) errors.push(`${item.key}: describe the defect or add a photo`);
