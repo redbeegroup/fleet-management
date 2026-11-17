@@ -91,8 +91,8 @@ export class MeController {
   @RequirePermissions(Permission.TRIP_READ)
   async myTrips(@CurrentUser() user: AuthUser, @Query(new ZodPipe(scopeSchema)) q: { scope: 'active' | 'recent' }) {
     const driverId = await this.driverId(user);
-    return this.db.tenant(user.companyId, (tx) =>
-      tx.trip.findMany({
+    return this.db.tenant(user.companyId, async (tx) => {
+      const trips = await tx.trip.findMany({
         where:
           q.scope === 'active'
             ? { driverId, status: { in: ['ASSIGNED', 'ONGOING'] } }
@@ -100,8 +100,12 @@ export class MeController {
         include: tripInclude,
         orderBy: { plannedStart: q.scope === 'active' ? 'asc' : 'desc' },
         take: 50,
-      }),
-    );
+      });
+      // The trailer to hitch (trailers are vehicles with assetKind TRAILER).
+      const ids = trips.map((t) => t.trailerId).filter((x): x is string => !!x);
+      const trailers = new Map(ids.length ? (await tx.vehicle.findMany({ where: { id: { in: ids } }, select: { id: true, plateNumber: true, make: true, model: true } })).map((v) => [v.id, v]) : []);
+      return trips.map((t) => ({ ...t, trailer: t.trailerId ? (trailers.get(t.trailerId) ?? null) : null }));
+    });
   }
 
   @Post('trips/:id/start')

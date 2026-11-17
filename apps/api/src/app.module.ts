@@ -37,6 +37,9 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { TiresModule } from './modules/tires/tires.module';
 import { WarrantyModule } from './modules/warranty/warranty.module';
 import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
+import { AuditsModule } from './modules/audits/audits.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
@@ -83,6 +86,9 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     TiresModule,
     WarrantyModule,
     LifecycleModule,
+    AssetsModule,
+    ComplianceModule,
+    AuditsModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [
@@ -125,6 +131,8 @@ const redisConnection = () => {
     InventoryModule,
     TiresModule,
     WarrantyModule,
+    ComplianceModule,
+    AuditsModule,
   ],
   providers: [ComplianceAlertsJob, WorkerProcessor],
 })
@@ -139,7 +147,7 @@ export class IngestAppModule {}
 
 /** One-shot job runner (MODE=job JOB=<name>): ops tooling and Kubernetes CronJobs. */
 @Module({
-  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule, FuelModule, ReportsModule, InventoryModule, TiresModule, WarrantyModule],
+  imports: [...core, TelematicsModule, MaintenanceModule, AnalyticsModule, SafetyModule, TrainingModule, IncentivesModule, CostsModule, FuelModule, ReportsModule, InventoryModule, TiresModule, WarrantyModule, ComplianceModule, AuditsModule],
   providers: [ComplianceAlertsJob],
 })
 export class JobAppModule {}

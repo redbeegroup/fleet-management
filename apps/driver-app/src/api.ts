@@ -181,6 +181,7 @@ export interface Trip {
   gpsDistanceKm: string | null;
   kind: 'GENERAL' | 'DELIVERY';
   vehicle: { id: string; plateNumber: string; make: string; model: string } | null;
+  trailer?: { id: string; plateNumber: string; make: string; model: string } | null;
 }
 
 export interface Me {

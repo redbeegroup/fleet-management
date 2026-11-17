@@ -37,6 +37,10 @@ export const createVehicleSchema = z.object({
   usefulLifeMonths: z.number().int().min(1).max(600).optional().nullable(),
   monthlyLeaseCost: z.number().nonnegative().max(1e12).optional().nullable(),
   inServiceAt: optionalDate,
+  /** S18: trailers and equipment are vehicles of another asset kind. */
+  assetKind: z.enum(['VEHICLE', 'TRAILER', 'CONTAINER', 'GENERATOR', 'FORKLIFT', 'EQUIPMENT']).default('VEHICLE'),
+  meterType: z.enum(['KM', 'HOURS', 'NONE']).default('KM'),
+  hourMeter: z.number().nonnegative().max(1_000_000).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
@@ -210,6 +214,7 @@ export const companySettingsSchema = z.object({
   security: z.lazy(() => securitySettingsSchema).default({}),
   tires: z.lazy(() => tireSettingsSchema).default({}),
   lifecycle: z.lazy(() => lifecycleSettingsSchema).default({}),
+  compliance: z.lazy(() => complianceSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -229,6 +234,7 @@ export const updateCompanySettingsSchema = z.object({
   security: z.lazy(() => securitySettingsSchema.partial()).optional(),
   tires: z.lazy(() => tireSettingsSchema.partial()).optional(),
   lifecycle: z.lazy(() => lifecycleSettingsSchema.partial()).optional(),
+  compliance: z.lazy(() => complianceSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -354,9 +360,12 @@ export const maintenancePlanSchema = z
     intervalDays: z.number().int().min(1).max(3650).optional().nullable(),
     lastDoneAt: z.coerce.date().optional().nullable(),
     lastDoneOdometerKm: z.number().nonnegative().optional().nullable(),
+    /** S18: engine hours (equipment). */
+    intervalHours: z.number().int().min(10).max(100_000).optional().nullable(),
+    lastDoneHours: z.number().nonnegative().optional().nullable(),
     active: z.boolean().default(true),
   })
-  .refine((p) => p.intervalKm || p.intervalDays, { path: ['intervalKm'], message: 'Set intervalKm and/or intervalDays' });
+  .refine((p) => p.intervalKm || p.intervalDays || p.intervalHours, { path: ['intervalKm'], message: 'Set intervalKm, intervalDays and/or intervalHours' });
 export type MaintenancePlanInput = z.infer<typeof maintenancePlanSchema>;
 
 /** Create the same plan for many vehicles at once (e.g. all trucks). */
@@ -365,6 +374,7 @@ export const bulkMaintenancePlanSchema = z.object({
   name: z.string().trim().min(1).max(128),
   intervalKm: z.number().int().min(100).max(1_000_000).optional().nullable(),
   intervalDays: z.number().int().min(1).max(3650).optional().nullable(),
+  intervalHours: z.number().int().min(10).max(100_000).optional().nullable(),
 });
 export type BulkMaintenancePlanInput = z.infer<typeof bulkMaintenancePlanSchema>;
 
@@ -1497,3 +1507,120 @@ export const replacementPlanSchema = z.object({
   replacementNote: z.string().trim().max(500).optional().nullable(),
 });
 export type ReplacementPlanInput = z.infer<typeof replacementPlanSchema>;
+
+// ---------------------------------------------------------------------------
+// Trailers & equipment, compliance, safety audits (Sprint 18)
+// ---------------------------------------------------------------------------
+
+export const AssetKind = { VEHICLE: 'VEHICLE', TRAILER: 'TRAILER', CONTAINER: 'CONTAINER', GENERATOR: 'GENERATOR', FORKLIFT: 'FORKLIFT', EQUIPMENT: 'EQUIPMENT' } as const;
+export type AssetKind = (typeof AssetKind)[keyof typeof AssetKind];
+
+export const meterReadingSchema = z.object({
+  kind: z.enum(['KM', 'HOURS']),
+  value: z.number().nonnegative().max(5_000_000),
+  readAt: z.coerce.date().optional(),
+  note: z.string().trim().max(300).optional().nullable(),
+});
+export type MeterReadingInput = z.infer<typeof meterReadingSchema>;
+
+export const tripTrailerSchema = z.object({ trailerId: z.string().uuid().nullable() });
+
+/** A document a vehicle must hold (country rule pack). */
+export const requiredDocumentSchema = z.object({
+  type: z.enum(['REGISTRATION', 'INSURANCE', 'ROAD_TAX', 'PERMIT', 'INSPECTION', 'OTHER']),
+  label: z.string().trim().min(2).max(120),
+  /** Vehicle classes it applies to; empty = all classes. */
+  vehicleClasses: z.array(z.string()).default([]),
+  /** Asset kinds it applies to (trailers have their own registration). */
+  assetKinds: z.array(z.string()).default(['VEHICLE']),
+  /** Usual validity (months), used when a document has no expiry date. */
+  renewMonths: z.number().int().min(1).max(120).nullable().default(12),
+  /** Missing or expired → the vehicle cannot be assigned or start a trip. */
+  blockDispatch: z.boolean().default(true),
+});
+export type RequiredDocument = z.infer<typeof requiredDocumentSchema>;
+
+/**
+ * Myanmar default pack. The values are a starting point: check them against the current
+ * RTAD / Ministry of Transport rules and edit them in Settings → Compliance.
+ */
+export const MYANMAR_PACK: RequiredDocument[] = [
+  { type: 'REGISTRATION', label: 'Vehicle licence (RTAD registration, annual renewal)', vehicleClasses: [], assetKinds: ['VEHICLE', 'TRAILER'], renewMonths: 12, blockDispatch: true },
+  { type: 'INSURANCE', label: 'Third-party liability insurance', vehicleClasses: [], assetKinds: ['VEHICLE'], renewMonths: 12, blockDispatch: true },
+  { type: 'INSPECTION', label: 'Roadworthiness inspection', vehicleClasses: ['TRUCK', 'TRACTOR', 'BUS', 'VAN', 'PICKUP', 'TRAILER'], assetKinds: ['VEHICLE', 'TRAILER'], renewMonths: 12, blockDispatch: true },
+  { type: 'PERMIT', label: 'Transport permit (goods / passenger carriage)', vehicleClasses: ['TRUCK', 'TRACTOR', 'BUS'], assetKinds: ['VEHICLE'], renewMonths: 12, blockDispatch: false },
+];
+
+export const complianceSettingsSchema = z.object({
+  /** Rule pack the requirements came from (MM = Myanmar). */
+  country: z.string().max(10).default('MM'),
+  requirements: z.array(requiredDocumentSchema).max(50).default(MYANMAR_PACK),
+  /**
+   * Master switch: when on, requirements with blockDispatch stop assignment and trip start.
+   * Off by default so that turning on the pack never blocks a fleet before its documents are entered.
+   */
+  enforceDispatch: z.boolean().default(false),
+  /** "Expiring" this many days before the end. */
+  warnDays: z.number().int().min(1).max(180).default(30),
+  /** Legal maximum payload per vehicle class (kg); with a trailer the trailer's own limit is added. */
+  maxPayloadKg: z.record(z.string(), z.number().positive().max(200_000)).default({}),
+});
+export type ComplianceSettings = z.infer<typeof complianceSettingsSchema>;
+
+export const auditQuestionSchema = z.object({
+  key: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/),
+  section: z.string().trim().max(80).default('General'),
+  label: z.string().trim().min(2).max(300),
+  weight: z.number().int().min(1).max(5).default(1),
+  critical: z.boolean().default(false),
+});
+export type AuditQuestion = z.infer<typeof auditQuestionSchema>;
+
+export const auditTemplateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  target: z.enum(['BRANCH', 'VEHICLE']),
+  questions: z
+    .array(auditQuestionSchema)
+    .min(1)
+    .max(200)
+    .refine((q) => new Set(q.map((x) => x.key)).size === q.length, 'Question keys must be unique'),
+  passMark: z.number().int().min(1).max(100).default(80),
+  active: z.boolean().default(true),
+});
+export type AuditTemplateInput = z.infer<typeof auditTemplateSchema>;
+
+export const createAuditSchema = z
+  .object({
+    templateId: z.string().uuid(),
+    branchId: z.string().uuid().optional().nullable(),
+    vehicleId: z.string().uuid().optional().nullable(),
+    performedAt: z.coerce.date().optional(),
+    auditorName: z.string().trim().max(120).optional().nullable(),
+    answers: z
+      .array(z.object({ key: z.string(), result: z.enum(['PASS', 'FAIL', 'NA']), note: z.string().trim().max(1000).optional().nullable(), photoFileId: z.string().uuid().optional().nullable() }))
+      .min(1)
+      .max(200),
+    /** Corrective actions for failed items (others can be added later). */
+    actions: z
+      .array(z.object({ questionKey: z.string().optional().nullable(), description: z.string().trim().min(3).max(1000), ownerUserId: z.string().uuid().optional().nullable(), dueDate: z.coerce.date() }))
+      .max(200)
+      .default([]),
+    notes: z.string().trim().max(2000).optional().nullable(),
+  })
+  .refine((a) => !!a.branchId !== !!a.vehicleId, { path: ['branchId'], message: 'Choose a branch or a vehicle' });
+export type CreateAuditInput = z.infer<typeof createAuditSchema>;
+
+export const correctiveActionSchema = z.object({
+  description: z.string().trim().min(3).max(1000),
+  ownerUserId: z.string().uuid().optional().nullable(),
+  dueDate: z.coerce.date(),
+  questionKey: z.string().optional().nullable(),
+});
+export const updateCorrectiveActionSchema = z.object({
+  action: z.enum(['DONE', 'VERIFY', 'REOPEN', 'EDIT']),
+  closureNote: z.string().trim().max(1000).optional().nullable(),
+  evidenceFileId: z.string().uuid().optional().nullable(),
+  ownerUserId: z.string().uuid().optional().nullable(),
+  dueDate: z.coerce.date().optional(),
+});
+export type UpdateCorrectiveActionInput = z.infer<typeof updateCorrectiveActionSchema>;

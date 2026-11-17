@@ -56,6 +56,9 @@ export const Permission = {
   INVENTORY_READ: 'inventory:read',
   /** Receive, issue, transfer and count stock; parts catalogue and suppliers. */
   INVENTORY_WRITE: 'inventory:write',
+  /** Safety audits and corrective actions (S18). */
+  AUDIT_SAFETY_READ: 'safety-audit:read',
+  AUDIT_SAFETY_WRITE: 'safety-audit:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -92,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.MAINTENANCE_WRITE,
     Permission.REPAIR_REQUEST,
     Permission.INVENTORY_WRITE,
+    Permission.AUDIT_SAFETY_WRITE,
     Permission.COST_WRITE,
     Permission.SAFETY_WRITE,
     Permission.INCIDENT_REPORT,

@@ -12,6 +12,7 @@ import { FileLink } from '../components/FileLink';
 import { StatusBadge } from '../components/StatusBadge';
 import { VehicleTires, VehicleWarranties } from '../components/VehicleTires';
 import { VehicleLifecycle } from '../components/VehicleLifecycle';
+import { VehicleCompliance, VehicleMeters } from '../components/VehicleAssets';
 import { api, session, uploadFile } from '../lib/api';
 import { daysUntil, expiryTone, formatDate, humanize } from '../lib/format';
 import type { Driver, HistoryEvent, VehicleDetail } from '../lib/types';
@@ -192,8 +193,10 @@ export function VehicleDetailPage() {
               {v.capacityKg ? `${Number(v.capacityKg).toLocaleString()} kg` : '—'}
               {v.capacityM3 ? ` · ${Number(v.capacityM3)} m³` : ''}
             </dd>
-            <dt>Odometer</dt>
-            <dd>{Number(v.odometerKm).toLocaleString()} km</dd>
+            <dt>Asset kind</dt>
+            <dd>{humanize(v.assetKind ?? 'VEHICLE')}</dd>
+            <dt>{v.meterType === 'HOURS' ? 'Hour meter' : 'Odometer'}</dt>
+            <dd>{v.meterType === 'HOURS' ? `${Number(v.hourMeter ?? 0).toLocaleString()} h` : `${Number(v.odometerKm).toLocaleString()} km`}</dd>
             <dt>GPS device</dt>
             <dd>{v.gpsDeviceId ?? '—'}</dd>
             <dt>Speed limit</dt>
@@ -445,6 +448,8 @@ export function VehicleDetailPage() {
           </button>
         )}
       </section>
+      <VehicleCompliance vehicleId={v.id} />
+      <VehicleMeters v={v} />
       <VehicleLifecycle vehicleId={v.id} />
       <VehicleTires vehicleId={v.id} />
       <VehicleWarranties vehicleId={v.id} />

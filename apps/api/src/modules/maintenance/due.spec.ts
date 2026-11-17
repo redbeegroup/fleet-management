@@ -34,3 +34,14 @@ describe('minutesInStatus', () => {
     expect(minutesInStatus(events, 'UNDER_REPAIR', h(-5), h(24), h(2))).toBe(120);
   });
 });
+
+describe('planDue by engine hours (S18)', () => {
+  const s = { dueSoonKm: 500, dueSoonDays: 14 };
+  const p = { intervalKm: null, intervalDays: null, lastDoneAt: null, lastDoneOdometerKm: null, intervalHours: 250, lastDoneHours: 1000 };
+  it('OK, due soon within 10 % and overdue', () => {
+    expect(planDue(p, 0, new Date(), s, 1100)).toMatchObject({ status: 'OK', nextDueHours: 1250, remainingHours: 150 });
+    expect(planDue(p, 0, new Date(), s, 1230).status).toBe('DUE_SOON');
+    expect(planDue(p, 0, new Date(), s, 1260)).toMatchObject({ status: 'OVERDUE', remainingHours: -10 });
+    expect(planDue(p, 0, new Date(), s).remainingHours).toBeNull();
+  });
+});

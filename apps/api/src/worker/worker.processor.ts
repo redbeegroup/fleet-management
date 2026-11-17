@@ -2,6 +2,8 @@ import { ReportsService } from '../modules/reports/reports.service';
 import { InventoryService } from '../modules/inventory/inventory.service';
 import { TiresService } from '../modules/tires/tires.service';
 import { WarrantyService } from '../modules/warranty/warranty.service';
+import { ComplianceService } from '../modules/compliance/compliance.service';
+import { AuditsService } from '../modules/audits/audits.service';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
@@ -40,6 +42,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly inventory: InventoryService,
     private readonly tires: TiresService,
     private readonly warranty: WarrantyService,
+    private readonly compliancePack: ComplianceService,
+    private readonly audits: AuditsService,
   ) {
     super();
   }
@@ -59,6 +63,8 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('stock-alerts', { pattern: '0 45 7 * * *', tz: 'Asia/Yangon' }, { name: 'stock-alerts' });
     await this.queue.upsertJobScheduler('tire-alerts', { pattern: '0 50 7 * * *', tz: 'Asia/Yangon' }, { name: 'tire-alerts' });
     await this.queue.upsertJobScheduler('warranty-alerts', { pattern: '0 55 7 * * *', tz: 'Asia/Yangon' }, { name: 'warranty-alerts' });
+    await this.queue.upsertJobScheduler('compliance-pack', { pattern: '0 0 8 * * *', tz: 'Asia/Yangon' }, { name: 'compliance-pack' });
+    await this.queue.upsertJobScheduler('audit-actions', { pattern: '0 5 8 * * *', tz: 'Asia/Yangon' }, { name: 'audit-actions' });
     // Hourly at :05; each company's reports go out from 07:00 local time.
     await this.queue.upsertJobScheduler('report-dispatch', { pattern: '0 5 * * * *' }, { name: 'report-dispatch' });
     await this.queue.upsertJobScheduler('fuel-card-sync', { pattern: '0 20 * * * *' }, { name: 'fuel-card-sync' });
@@ -89,6 +95,10 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
         return this.tires.alerts();
       case 'warranty-alerts':
         return this.warranty.alerts();
+      case 'compliance-pack':
+        return this.compliancePack.alerts();
+      case 'audit-actions':
+        return this.audits.overdueAlerts();
       case 'report-dispatch':
         return this.reports.dispatch();
       case 'fuel-card-sync':

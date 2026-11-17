@@ -29,7 +29,7 @@ describe('Sprint 16 workshop: garages, parts, tires, warranty (e2e)', () => {
     const r = await http().get(`/api/inventory/stock?branchId=${branchId}`).set(auth('a')).expect(200);
     return r.body.items.find((x: { part: { id: string } }) => x.part.id === id.part);
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date(Date.now() + 6.5 * 3_600_000).toISOString().slice(0, 10); // company date (Asia/Yangon)
   const monthStart = `${today.slice(0, 7)}-01`;
 
   beforeAll(async () => {

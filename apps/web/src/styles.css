@@ -405,3 +405,9 @@ tr.selected td { background: var(--info-bg); }
 .bad-text { color: var(--danger); }
 .tile-button { text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .tile-button.sel { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* S18 */
+.req-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.audit-q { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.audit-q .seg button { min-width: 52px; }
+.audit-q .span-all { grid-column: 1 / -1; }

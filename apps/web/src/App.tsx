@@ -39,6 +39,8 @@ import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
 import { BenchmarkPage } from './pages/BenchmarkPage';
 import { LifecyclePage } from './pages/LifecyclePage';
+import { CompliancePage } from './pages/CompliancePage';
+import { AuditDetailPage, PerformAuditPage, SafetyAuditsPage } from './pages/SafetyAuditsPage';
 import { PartsPage } from './pages/PartsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { TiresPage } from './pages/TiresPage';
@@ -112,6 +114,10 @@ export function App() {
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="tires" element={<TiresPage />} />
         <Route path="lifecycle" element={<LifecyclePage />} />
+        <Route path="compliance" element={<CompliancePage />} />
+        <Route path="audits" element={<SafetyAuditsPage />} />
+        <Route path="audits/new" element={<PerformAuditPage />} />
+        <Route path="audits/:id" element={<AuditDetailPage />} />
         <Route path="benchmark" element={<BenchmarkPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="admin/companies" element={<CompaniesPage />} />

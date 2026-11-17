@@ -215,6 +215,12 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
   - Advice is pure (`lifecycle/replacement.ts`). Disposal locks the vehicle row, records `vehicle_disposals` with the book value from `costs/calc.bookValue`, and moves the status through INACTIVE to DISPOSED.
 - `AnalyticsService.benchmark` reuses `overview` (per-vehicle KPIs) and the pure `analytics/benchmark.ts`.
 
+## Trailers, compliance and safety audits (S18)
+
+- Trailers and equipment reuse `vehicles` with `asset_kind` and `meter_type`; `AssetsService` handles meter readings, the trip trailer (`trips.trailer_id`, re-checked against `logistics.withLimits`) and `trailer_couplings`. `TripsService` refuses non-VEHICLE assets, couples on start, adds km to the trailer on completion and uncouples on cancel.
+- `compliance/rules.ts` (pure) evaluates the company's required documents against `vehicle_documents`; `compliance/check.ts` is called from assignment and start when `compliance.enforceDispatch` is on.
+- `audits/scoring.ts` (pure) scores answers; `AuditsService` numbers audits from `company_counters`, creates corrective actions, notifies owners and raises a repair request for a failed vehicle audit.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -222,6 +228,8 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `compliance-alerts` | daily 01:30 Asia/Yangon | documents and licences expiring within `DOC_EXPIRY_ALERT_DAYS`; mandatory training certificates expiring within `incentives.trainingAlertDays` |
 | `position-partitions` | daily 02:00 UTC | ensure the current and next monthly partitions |
 | `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
+| `compliance-pack` | daily 08:00 Asia/Yangon | vehicles missing required documents (deduplicated per week) |
+| `audit-actions` | daily 08:05 Asia/Yangon | overdue corrective actions to owners and safety managers |
 | `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
 | `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |

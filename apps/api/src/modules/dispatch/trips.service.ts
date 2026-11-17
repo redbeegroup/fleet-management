@@ -19,6 +19,7 @@ import { parseCompanySettings } from '../../common/settings';
 import { NotificationsService } from '../notifications/notifications.service';
 import { trackDistanceKm } from '../telematics/rules/geo';
 import { blocks, BLOCKING_VEHICLE_STATUSES, checkLicence } from './eligibility';
+import { complianceBlocks } from '../compliance/check';
 
 export interface TripListQuery {
   from?: Date;
@@ -187,6 +188,8 @@ export class TripsService {
         throw new BadRequestException(`Vehicle is ${vehicle.status.toLowerCase().replace('_', ' ')}`);
       }
       const at = input.at ?? new Date();
+      const compliance = await complianceBlocks(tx, [vehicle.id, trip.trailerId], at);
+      if (compliance.length) throw new ConflictException({ message: 'Documents required by the compliance rules are missing or expired', reasons: compliance });
       await this.inspections.assertPreTrip(tx, vehicle.id, at);
       if (trip.kind === 'DELIVERY' && !(await tx.tripStop.count({ where: { tripId: id } }))) throw new BadRequestException('This delivery trip has no stops');
       await this.event(tx, user, id, trip.status, 'ONGOING', 'Started');
@@ -196,6 +199,11 @@ export class TripsService {
         data: { status: 'ONGOING', actualStart: at, startOdometerKm: input.odometerKm ?? vehicle.odometerKm },
         include: tripInclude,
       });
+      if (trip.trailerId) {
+        // The trailer leaves any other tractor it was still coupled to.
+        await tx.trailerCoupling.updateMany({ where: { trailerId: trip.trailerId, uncoupledAt: null }, data: { uncoupledAt: at } });
+        await tx.trailerCoupling.create({ data: { companyId: user.companyId, trailerId: trip.trailerId, tractorId: vehicle.id, tripId: id, coupledAt: at, createdBy: user.userId } });
+      }
       if (trip.kind === 'DELIVERY') {
         await tx.deliveryOrder.updateMany({ where: { tripId: id, status: 'PLANNED' }, data: { status: 'DISPATCHED', version: { increment: 1 } } });
         await this.orderHooks(tx, user.companyId, id, WebhookEvent.ORDER_DISPATCHED, { status: 'DISPATCHED' });
@@ -235,6 +243,11 @@ export class TripsService {
         const held = await tx.vehicleAssignment.count({ where: { vehicleId: vehicle.id, endAt: null, driverId: { not: null } } });
         await this.setVehicleStatus(tx, user, vehicle.id, 'OPERATING', held ? 'ASSIGNED' : 'AVAILABLE', `Trip ${trip.tripNo} completed`);
       }
+      if (trip.trailerId) {
+        // The trailer travelled the same distance; it stays coupled until uncoupled or the next trip.
+        const km = endOdo !== null && startOdo !== null ? endOdo - startOdo : gpsKm;
+        if (km && km > 0) await tx.vehicle.update({ where: { id: trip.trailerId }, data: { odometerKm: { increment: Math.round(km * 10) / 10 } } });
+      }
       await this.event(tx, user, id, trip.status, 'COMPLETED', input.notes ?? 'Completed');
       const done = await tx.trip.update({
         where: { id },
@@ -263,6 +276,7 @@ export class TripsService {
           data: { status: 'RECEIVED', tripId: null, stopId: null, version: { increment: 1 } },
         });
       }
+      if (trip.trailerId && trip.status === 'ONGOING') await tx.trailerCoupling.updateMany({ where: { tripId: id, uncoupledAt: null }, data: { uncoupledAt: new Date() } });
       const cancelled = await tx.trip.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: input.reason }, include: tripInclude });
       return this.hook(tx, user.companyId, WebhookEvent.TRIP_CANCELLED, cancelled);
     });
@@ -274,7 +288,7 @@ export class TripsService {
       const [company, vehicles, drivers, trips] = await Promise.all([
         tx.company.findFirst({ select: { settings: true } }),
         tx.vehicle.findMany({
-          where: { deletedAt: null, status: { not: 'DISPOSED' } },
+          where: { deletedAt: null, status: { not: 'DISPOSED' }, assetKind: 'VEHICLE' },
           select: { id: true, plateNumber: true, vehicleClass: true, status: true, make: true, model: true, capacityKg: true },
           orderBy: { plateNumber: 'asc' },
         }),
@@ -345,6 +359,9 @@ export class TripsService {
     if ((BLOCKING_VEHICLE_STATUSES as readonly string[]).includes(vehicle.status)) {
       reasons.push(`Vehicle is ${vehicle.status.toLowerCase().replace('_', ' ')}`);
     }
+    if (vehicle.assetKind !== 'VEHICLE') reasons.push(`${vehicle.plateNumber} is a ${vehicle.assetKind.toLowerCase()}, not a vehicle that can be driven; couple it as the trailer instead`);
+    const trip = await tx.trip.findUnique({ where: { id: excludeTripId }, select: { trailerId: true } });
+    reasons.push(...(await complianceBlocks(tx, [vehicleId, trip?.trailerId])));
     reasons.push(...checkLicence(vehicle.vehicleClass, driver.licenses, to, parseCompanySettings(company?.settings).dispatch).reasons);
     const others = await tx.trip.findMany({
       where: { id: { not: excludeTripId }, status: { in: ACTIVE }, OR: [{ vehicleId }, { driverId }], plannedStart: { lt: to } },

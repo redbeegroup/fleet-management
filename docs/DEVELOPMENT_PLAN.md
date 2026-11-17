@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) S16 (parts, tires, outside garages, warranty) and S17 (lifecycle, replacement advice, benchmarking) delivered.** Next: S18 trailers & equipment, compliance rules, safety audits. Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) S16 (parts, tires, outside garages, warranty) S17 (lifecycle, replacement advice, benchmarking) and S18 (trailers & equipment, Myanmar compliance pack, safety audits) delivered — Phase 3 scope complete, UAT pack [UAT_PHASE3.md](UAT_PHASE3.md).** Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -78,7 +78,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Document expiry alerts | P1 | 1 / S2 | ✅ daily scan, 30/14/7/1-day + expired thresholds, renewal-aware, in-app + email |
 | Vehicle history | P1 | 1 / S2–S13 | ✅ one timeline: status, assignments, documents, trips, fuel, maintenance, repairs, expenses, incidents, inspections, alerts; filters + paging |
 | Vehicle lifecycle (acquisition → disposal) | P2 | 3 | ✅ S17: lifetime view, replacement advice and plans, disposal with book value and gain / loss |
-| Asset & equipment tracking (trailers, containers) | P2 | 3 | ⏳ |
+| Asset & equipment tracking (trailers, containers) | P2 | 3 | ✅ S18: asset kinds (trailer, container, generator, forklift, equipment), km / hour meters, trip trailers and couplings |
 | Vehicle replacement planning | P3 | 4 | ⏳ |
 
 ### Module 2 — GPS Tracking & Telematics (`telematics`)
@@ -225,8 +225,8 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Vehicle inspection checklist | P2 | 2 / S8 | ✅ configurable pre-trip / post-trip / periodic checklists per vehicle class, critical items |
 | Accident management | P2 | 2 / S7 | ✅ incidents & accidents, investigation, insurance claims |
 | Insurance claims | P2 | 2 / S7 | ✅ per incident; insurer/policy from the vehicle's insurance document; SUBMITTED → APPROVED/REJECTED → SETTLED |
-| Regulatory compliance (country config) | P2 | 3 | ⏳ |
-| Safety audit | P2 | 3 | ⏳ |
+| Regulatory compliance (country config) | P2 | 3 | ✅ S18: editable Myanmar pack (required documents, renewal, dispatch blocking) and legal payload per class |
+| Safety audit | P2 | 3 | ✅ S18: site and vehicle audit templates, scoring, corrective actions with owner / due date / verification, branch trend |
 
 ### Module 11 — Mobile Applications (`apps/driver-app`)
 
@@ -532,3 +532,23 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Tests:**
   - Unit: limits, plan window, cost vs class, economic life incl. projection, percentiles / ties / ranks / branches.
   - e2e (`sprint17`): advice incl. settings override, lifetime view and plan, disposal (blocked by an open work order, book value → gain), benchmark, isolation.
+
+### Phase 3 — Sprint 18 (trailers & equipment, compliance, safety audits) delivered
+
+- **Trailers and equipment** are vehicles with an `asset_kind` (TRAILER, CONTAINER, GENERATOR, FORKLIFT, EQUIPMENT), so documents, maintenance, tires, costs, TCO and lifecycle apply to them unchanged.
+  - Meter type km / engine hours / none; manual **meter readings** (`meter_readings`, never backwards) update the odometer or hour meter.
+  - Maintenance plans can be due by **engine hours** (`interval_hours`), alone or with km / days.
+  - Only asset kind VEHICLE can be dispatched. The dispatcher sets a **trailer on a trip** (planned / assigned; no double booking).
+  - Delivery loads are checked against tractor + trailer capacity and the **legal payload** per class (`compliance.maxPayloadKg`, tractor + trailer limits added).
+  - Starting the trip couples the trailer (`trailer_couplings`); completing adds the trip km to the trailer odometer; manual couple / uncouple in the yard.
+  - The driver app shows the trailer on the trip card.
+- **Compliance rule pack** (*Compliance* page, settings `compliance`): an editable **Myanmar** pack of required documents (vehicle licence, insurance, roadworthiness inspection, transport permit), per asset kind and vehicle class, with the usual renewal period.
+  - Status per vehicle (OK / expiring / expired / missing), weekly alerts (`compliance-pack` job).
+  - With *dispatch blocking* on, a vehicle or trailer missing a blocking document cannot be assigned or start a trip (off by default).
+  - The values are a starting point to check against current RTAD / Ministry of Transport rules.
+- **Safety audits** (*Safety audits* page): templates for sites / branches and vehicles (starter templates seeded on first use), weighted items, critical items, pass mark.
+  - Result PASS / NEEDS_ACTION / FAIL; a failed vehicle audit raises a repair request.
+  - **Corrective actions** with owner, due date, closure note and verification by someone other than the owner; owners see their own actions; overdue alerts (`audit-actions` job).
+  - Average score per branch and month, open / overdue actions.
+  - BI views `reporting.trailer_couplings`, `reporting.safety_audits`, `reporting.corrective_actions`.
+- **Tests:** unit (requirement evaluation, payload limits, audit scoring, hour-based due); e2e (`sprint18`): hour meter and plan, trailer booking and combined / legal limits, compliance blocking and couplings, audits / actions / trend, isolation.

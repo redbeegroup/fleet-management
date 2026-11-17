@@ -9,6 +9,9 @@ export interface PlanLike {
   intervalDays: number | null;
   lastDoneAt: Date | null;
   lastDoneOdometerKm: number | null;
+  /** S18: engine-hour interval (equipment). */
+  intervalHours?: number | null;
+  lastDoneHours?: number | null;
 }
 
 export interface DueInfo {
@@ -17,13 +20,15 @@ export interface DueInfo {
   nextDueAt: Date | null;
   remainingKm: number | null;
   remainingDays: number | null;
+  nextDueHours?: number | null;
+  remainingHours?: number | null;
 }
 
 const DAY = 86_400_000;
 const rank: Record<DueStatus, number> = { OK: 0, DUE_SOON: 1, OVERDUE: 2 };
 
 /** Whichever limit (distance or time) comes first decides the status. */
-export function planDue(p: PlanLike, odometerKm: number, now: Date, s: Pick<MaintenanceSettings, 'dueSoonKm' | 'dueSoonDays'>): DueInfo {
+export function planDue(p: PlanLike, odometerKm: number, now: Date, s: Pick<MaintenanceSettings, 'dueSoonKm' | 'dueSoonDays'>, hourMeter?: number | null): DueInfo {
   let status: DueStatus = 'OK';
   const bump = (x: DueStatus) => {
     if (rank[x] > rank[status]) status = x;
@@ -42,7 +47,15 @@ export function planDue(p: PlanLike, odometerKm: number, now: Date, s: Pick<Main
     remainingDays = Math.ceil((nextDueAt.getTime() - now.getTime()) / DAY);
     bump(remainingDays <= 0 ? 'OVERDUE' : remainingDays <= s.dueSoonDays ? 'DUE_SOON' : 'OK');
   }
-  return { status, nextDueKm, nextDueAt, remainingKm, remainingDays };
+  // Engine hours: "due soon" within 10 % of the interval (at least 10 h).
+  let nextDueHours: number | null = null;
+  let remainingHours: number | null = null;
+  if (p.intervalHours && p.lastDoneHours != null && hourMeter != null) {
+    nextDueHours = p.lastDoneHours + p.intervalHours;
+    remainingHours = Math.round((nextDueHours - hourMeter) * 10) / 10;
+    bump(remainingHours <= 0 ? 'OVERDUE' : remainingHours <= Math.max(10, p.intervalHours * 0.1) ? 'DUE_SOON' : 'OK');
+  }
+  return { status, nextDueKm, nextDueAt, remainingKm, remainingDays, nextDueHours, remainingHours };
 }
 
 export interface StatusEventLike {

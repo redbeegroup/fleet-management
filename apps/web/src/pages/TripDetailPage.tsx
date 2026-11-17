@@ -152,6 +152,10 @@ export function TripDetailPage() {
             <dd>{formatDateTime(t.plannedEnd)}</dd>
             <dt>Vehicle</dt>
             <dd>{t.vehicle ? <Link to={`/vehicles/${t.vehicle.id}`}>{t.vehicle.plateNumber}</Link> : <span className="muted">not assigned</span>}</dd>
+            <dt>Trailer</dt>
+            <dd>
+              <TripTrailer trip={t} canWrite={canWrite} onError={setError} />
+            </dd>
             <dt>Driver</dt>
             <dd>
               {t.driver ? (
@@ -221,5 +225,43 @@ export function TripDetailPage() {
         )}
       </section>
     </>
+  );
+}
+
+interface TrailerRow {
+  id: string;
+  plateNumber: string;
+  status: string;
+  capacityKg: number | null;
+  trips: { id: string; tripNo: string }[];
+}
+
+/** The trailer pulled on the trip; changeable while the trip is planned or assigned. */
+function TripTrailer({ trip, canWrite, onError }: { trip: Trip; canWrite: boolean; onError: (m: string | null) => void }) {
+  const qc = useQueryClient();
+  const trailers = useQuery({ queryKey: ['trailers'], queryFn: () => api<TrailerRow[]>('/trailers') });
+  const set = useMutation({
+    mutationFn: (trailerId: string | null) => api(`/trips/${trip.id}/trailer`, { method: 'PATCH', body: JSON.stringify({ trailerId }) }),
+    onSuccess: () => (onError(null), void qc.invalidateQueries({ queryKey: ['trip', trip.id] }), void qc.invalidateQueries({ queryKey: ['trailers'] })),
+    onError: (e) => onError(e instanceof ApiError ? ((e.body as { message?: string }).message ?? e.message) : e.message),
+  });
+  const current = trailers.data?.find((x) => x.id === trip.trailerId);
+  const editable = canWrite && (trip.status === 'PLANNED' || trip.status === 'ASSIGNED');
+  if (!editable) return current ? <Link to={`/vehicles/${current.id}`}>{current.plateNumber}</Link> : <span className="muted">none</span>;
+  if (!trailers.data?.length && !trip.trailerId) return <span className="muted">none (no trailers registered)</span>;
+  return (
+    <select aria-label="Trailer" value={trip.trailerId ?? ''} disabled={set.isPending} onChange={(e) => set.mutate(e.target.value || null)}>
+      <option value="">No trailer</option>
+      {trailers.data?.map((x) => {
+        const busy = x.trips.some((b) => b.id !== trip.id);
+        return (
+          <option key={x.id} value={x.id}>
+            {x.plateNumber}
+            {x.capacityKg ? ` · ${x.capacityKg.toLocaleString()} kg` : ''}
+            {busy ? ` · booked on ${x.trips.find((b) => b.id !== trip.id)?.tripNo}` : ''}
+          </option>
+        );
+      })}
+    </select>
   );
 }

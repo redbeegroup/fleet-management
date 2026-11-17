@@ -277,6 +277,39 @@ async function step(name, fn) {
     return done.length ? done.join(', ') : 'already loaded';
   });
 
+  await step('S18 trailer, generator and safety audit', async () => {
+    const done = [];
+    const all = (await j('/vehicles?pageSize=200')).b.items || [];
+    const find = (plate) => all.find((v) => v.plateNumber === plate);
+    if (!find('YGN-TL-001')) {
+      const r = await send('/vehicles', { plateNumber: 'YGN-TL-001', make: 'CIMC', model: '3-axle flatbed', vehicleClass: 'TRAILER', assetKind: 'TRAILER', meterType: 'KM', capacityKg: 30000, branchId: depot.id, notes: TAG });
+      done.push(ok(r) ? 'trailer' : `trailer HTTP ${r.s}`);
+    }
+    let gen = find('YGN-GEN-01');
+    if (!gen) {
+      const r = await send('/vehicles', { plateNumber: 'YGN-GEN-01', make: 'Cummins', model: 'C150 D5 standby generator', vehicleClass: 'MACHINERY', assetKind: 'GENERATOR', meterType: 'HOURS', hourMeter: 1180, branchId: depot.id, notes: TAG });
+      gen = r.b;
+      if (ok(r)) {
+        await send('/maintenance/plans', { vehicleId: gen.id, name: 'Generator 250-hour service', intervalHours: 250 });
+        await send(`/vehicles/${gen.id}/meter-readings`, { kind: 'HOURS', value: 1236, note: `${TAG} weekly reading` });
+        done.push('generator with an hour-based service plan');
+      } else done.push(`generator HTTP ${r.s}`);
+    }
+    const audits = (await j('/safety-audits')).b || [];
+    if (Array.isArray(audits) && !audits.length) {
+      const tpl = ((await j('/audit-templates')).b || []).find((t) => t.target === 'BRANCH');
+      if (tpl) {
+        const answers = tpl.questions.map((q) => ({ key: q.key, result: q.key === 'spill_kit' || q.key === 'traffic' ? 'FAIL' : 'PASS', note: q.key === 'spill_kit' ? 'No spill kit at the fuel bay' : q.key === 'traffic' ? 'Reversing area not marked' : null }));
+        const r = await send('/safety-audits', { templateId: tpl.id, branchId: depot.id, answers, notes: TAG, actions: [
+          { questionKey: 'spill_kit', description: 'Place a spill kit at the fuel bay', dueDate: day(7) },
+          { questionKey: 'traffic', description: 'Paint reversing bays and post the yard speed limit', dueDate: day(21) },
+        ] });
+        done.push(ok(r) ? `depot audit ${r.b.auditNo} (${r.b.score} %)` : `audit HTTP ${r.s}`);
+      }
+    }
+    return done.length ? done.join(', ') : 'already loaded';
+  });
+
   console.log(`\nDone: ${out.filter((x) => x.includes('FAILED') || /HTTP \d/.test(x)).length} step(s) need attention.`);
 })().catch((e) => {
   console.error(`Demo seed failed: ${e.message}`);

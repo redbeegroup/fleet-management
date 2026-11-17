@@ -55,4 +55,15 @@ Demo data: `deploy/demo/seed-demo.cjs` adds suppliers, parts in two depots, tire
 33. [ ] Dispose of a vehicle: refused while a work order or trip is open; afterwards status *Disposed*, gain / loss = sale value − book value, the vehicle leaves the active lists and depreciation stops.
 34. [ ] *Benchmark*: choose a class; vehicles are ranked by score with the class median row; better / worse labels match the figures; branches compare fairly with different class mixes.
 
+## F. Trailers & equipment, compliance, safety audits (S18)
+
+35. [ ] Register a trailer (asset kind *Trailer*) and a generator (meter *Engine hours*). Record an hour reading; a lower reading is refused. A 250-hour service plan shows *due soon* near the interval.
+36. [ ] A trailer cannot be chosen as the vehicle of a trip. On a planned trip, set the trailer; the same trailer on an overlapping trip is refused.
+37. [ ] A delivery load above the tractor's capacity is accepted once the trailer is added; with legal payload limits set (*Compliance → Legal payload*) a load above tractor + trailer limit is refused.
+38. [ ] Start the trip: the trailer shows *coupled* on its page and in the driver app; complete it and the trailer odometer grows by the trip km.
+39. [ ] *Compliance*: check the Myanmar rules against current RTAD requirements and correct them. Each vehicle shows its document status; missing / expired documents are alerted weekly.
+40. [ ] Turn on *dispatch blocking*: a vehicle without its licence or insurance cannot be assigned or start a trip (the reason is shown); after adding the documents it can.
+41. [ ] *Safety audits → Perform audit*: a depot audit with failed items gets a score and corrective actions with owner and due date; a failed critical vehicle item fails the audit and creates a repair request.
+42. [ ] The action owner sees it under *My actions*, marks it done with a note; another manager verifies it. Overdue actions are alerted; the branch trend shows score and open / overdue actions.
+
 Sign-off: ______________________ (IT) ______________________ (finance) ______________________ (operations) Date: __________

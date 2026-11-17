@@ -57,6 +57,9 @@ export function VehicleFormPage() {
       model: str('model'),
       year: num('year'),
       vehicleClass: str('vehicleClass'),
+      assetKind: str('assetKind') ?? 'VEHICLE',
+      meterType: str('meterType') ?? 'KM',
+      hourMeter: num('hourMeter'),
       ownership: str('ownership'),
       fuelType: str('fuelType'),
       capacityKg: num('capacityKg'),
@@ -115,6 +118,28 @@ export function VehicleFormPage() {
               </option>
             ))}
           </select>
+        </label>
+        <label>
+          Asset kind
+          <select name="assetKind" defaultValue={v?.assetKind ?? 'VEHICLE'} title="Trailers are coupled to tractors on trips; equipment is not dispatched">
+            {['VEHICLE', 'TRAILER', 'GENERATOR', 'FORKLIFT', 'CONTAINER', 'EQUIPMENT'].map((k) => (
+              <option key={k} value={k}>
+                {humanize(k)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Meter
+          <select name="meterType" defaultValue={v?.meterType ?? 'KM'}>
+            <option value="KM">Kilometres</option>
+            <option value="HOURS">Engine hours</option>
+            <option value="NONE">None</option>
+          </select>
+        </label>
+        <label>
+          Hour meter (h)
+          <input name="hourMeter" type="number" min={0} step="0.1" defaultValue={v?.hourMeter != null ? Number(v.hourMeter) : ''} />
         </label>
         <label>
           Ownership

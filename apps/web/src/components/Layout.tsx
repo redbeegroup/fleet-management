@@ -44,10 +44,12 @@ const sections: {
     items: [
       { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
       { to: '/lifecycle', label: 'Lifecycle', perm: Permission.COST_READ },
+      { to: '/compliance', label: 'Compliance', perm: Permission.VEHICLE_READ },
       { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
       { to: '/safety', label: 'Driver safety', perm: Permission.SAFETY_READ },
       { to: '/incidents', label: 'Incidents & claims', perm: Permission.SAFETY_READ },
       { to: '/inspections', label: 'Inspections', perm: Permission.INSPECTION_READ },
+      { to: '/audits', label: 'Safety audits', perm: '' },
       { to: '/training', label: 'Training', perm: Permission.DRIVER_READ },
       { to: '/incentives', label: 'Incentives', perm: Permission.INCENTIVE_READ },
       { to: '/fuel', label: 'Fuel', perm: Permission.FUEL_READ },

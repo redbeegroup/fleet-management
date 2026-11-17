@@ -206,6 +206,11 @@ model Vehicle {
   inServiceAt           DateTime?     @map("in_service_at") @db.Date
   /// Tire layout key (shared TIRE_LAYOUTS); null = default for the vehicle class (S16).
   tireLayout            String?       @map("tire_layout")
+  /// S18: VEHICLE | TRAILER | CONTAINER | GENERATOR | FORKLIFT | EQUIPMENT (not driven on its own unless VEHICLE)
+  assetKind             String        @default("VEHICLE") @map("asset_kind")
+  /// KM | HOURS | NONE: what the meter counts (equipment usually HOURS).
+  meterType             String        @default("KM") @map("meter_type")
+  hourMeter             Decimal?      @map("hour_meter") @db.Decimal(10, 1)
   /// Replacement planning (S17): month the vehicle should be replaced, and why.
   replacementPlannedFor DateTime?     @map("replacement_planned_for") @db.Date
   replacementNote       String?       @map("replacement_note")
@@ -548,6 +553,8 @@ model Trip {
   kind             TripKind   @default(GENERAL)
   /// Delivery date (company-local) of a delivery load.
   plannedDate      DateTime?  @map("planned_date") @db.Date
+  /// S18: trailer pulled on this trip (a vehicle with assetKind TRAILER).
+  trailerId        String?    @map("trailer_id") @db.Uuid
   /// Planned route (S11): road km/minutes from OSRM, or straight-line estimates.
   plannedKm        Decimal?   @map("planned_km") @db.Decimal(10, 1)
   plannedMinutes   Int?       @map("planned_minutes")
@@ -712,6 +719,9 @@ model MaintenancePlan {
   intervalDays       Int?      @map("interval_days")
   lastDoneAt         DateTime? @map("last_done_at")
   lastDoneOdometerKm Decimal?  @map("last_done_odometer_km") @db.Decimal(12, 1)
+  /// S18: service every N engine hours (equipment, reefers, generators).
+  intervalHours      Int?      @map("interval_hours")
+  lastDoneHours      Decimal?  @map("last_done_hours") @db.Decimal(10, 1)
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
@@ -1961,4 +1971,112 @@ model VehicleDisposal {
 
   @@index([companyId, disposedAt])
   @@map("vehicle_disposals")
+}
+
+// ---------------------------------------------------------------------------
+// Trailers & equipment, safety audits (S18)
+// ---------------------------------------------------------------------------
+
+/// Hour meter / odometer readings entered on the web or in the driver app.
+model MeterReading {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  /// KM | HOURS
+  kind      String
+  value     Decimal  @db.Decimal(12, 1)
+  readAt    DateTime @map("read_at")
+  /// WEB | APP | TRIP
+  source    String   @default("WEB")
+  note      String?
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([vehicleId, readAt])
+  @@map("meter_readings")
+}
+
+/// Which tractor pulled which trailer, and when.
+model TrailerCoupling {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  trailerId   String    @map("trailer_id") @db.Uuid
+  tractorId   String    @map("tractor_id") @db.Uuid
+  tripId      String?   @map("trip_id") @db.Uuid
+  coupledAt   DateTime  @map("coupled_at")
+  uncoupledAt DateTime? @map("uncoupled_at")
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([trailerId, coupledAt])
+  @@index([tractorId, coupledAt])
+  @@map("trailer_couplings")
+}
+
+model AuditTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String
+  /// BRANCH | VEHICLE
+  target    String
+  /// [{ key, section, label, weight (1-5), critical }]
+  questions Json
+  /// Pass mark in % (score below → NEEDS_ACTION).
+  passMark  Int      @default(80) @map("pass_mark")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("audit_templates")
+}
+
+model SafetyAudit {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  auditNo     String   @map("audit_no")
+  templateId  String   @map("template_id") @db.Uuid
+  /// BRANCH | VEHICLE
+  target      String
+  branchId    String?  @map("branch_id") @db.Uuid
+  vehicleId   String?  @map("vehicle_id") @db.Uuid
+  performedAt DateTime @map("performed_at")
+  auditorId   String?  @map("auditor_id") @db.Uuid
+  auditorName String?  @map("auditor_name")
+  /// [{ key, section, label, weight, critical, result: PASS|FAIL|NA, note, photoFileId }]
+  answers     Json
+  score       Decimal  @db.Decimal(5, 1)
+  /// PASS | NEEDS_ACTION | FAIL (critical item failed)
+  result      String
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actions CorrectiveAction[]
+
+  @@unique([companyId, auditNo])
+  @@index([companyId, performedAt])
+  @@map("safety_audits")
+}
+
+model CorrectiveAction {
+  id             String    @id @default(uuid()) @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  auditId        String    @map("audit_id") @db.Uuid
+  questionKey    String?   @map("question_key")
+  description    String
+  ownerUserId    String?   @map("owner_user_id") @db.Uuid
+  dueDate        DateTime  @map("due_date") @db.Date
+  /// OPEN | DONE | VERIFIED
+  status         String    @default("OPEN")
+  closedAt       DateTime? @map("closed_at")
+  closureNote    String?   @map("closure_note")
+  evidenceFileId String?   @map("evidence_file_id") @db.Uuid
+  verifiedBy     String?   @map("verified_by") @db.Uuid
+  verifiedAt     DateTime? @map("verified_at")
+  alertedAt      DateTime? @map("alerted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  audit SafetyAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status, dueDate])
+  @@map("corrective_actions")
 }

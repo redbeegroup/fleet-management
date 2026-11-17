@@ -39,6 +39,9 @@ export interface Vehicle {
   gpsDeviceId: string | null;
   speedLimitKmh?: number | null;
   tankCapacityL?: string | null;
+  assetKind?: string;
+  meterType?: string;
+  hourMeter?: string | null;
   branch: Branch | null;
 }
 
@@ -204,6 +207,7 @@ export interface Trip {
   notes: string | null;
   cancelReason: string | null;
   vehicleId: string | null;
+  trailerId?: string | null;
   driverId: string | null;
   vehicle: { id: string; plateNumber: string; vehicleClass: string; make: string; model: string } | null;
   driver: { id: string; fullName: string; employeeNo: string; phone: string | null } | null;

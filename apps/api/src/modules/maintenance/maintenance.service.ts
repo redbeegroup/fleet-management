@@ -98,7 +98,7 @@ export class MaintenanceService implements OnModuleInit {
         tx.maintenancePlan.findMany({
           where: { ...(vehicleId && { vehicleId }), vehicle: { deletedAt: null } },
           include: {
-            vehicle: { select: { id: true, plateNumber: true, odometerKm: true, status: true } },
+            vehicle: { select: { id: true, plateNumber: true, odometerKm: true, hourMeter: true, status: true } },
             workOrders: { where: { status: { in: ['OPEN', 'IN_PROGRESS'] } }, select: { id: true, woNo: true, status: true } },
           },
           orderBy: [{ vehicle: { plateNumber: 'asc' } }, { name: 'asc' }],
@@ -111,7 +111,7 @@ export class MaintenanceService implements OnModuleInit {
         ...p,
         openWorkOrder: workOrders[0] ?? null,
         due: p.active
-          ? planDue({ ...p, lastDoneOdometerKm: p.lastDoneOdometerKm ? Number(p.lastDoneOdometerKm) : null }, Number(p.vehicle.odometerKm), now, s)
+          ? planDue({ ...p, lastDoneOdometerKm: p.lastDoneOdometerKm ? Number(p.lastDoneOdometerKm) : null, lastDoneHours: p.lastDoneHours != null ? Number(p.lastDoneHours) : null }, Number(p.vehicle.odometerKm), now, s, p.vehicle.hourMeter != null ? Number(p.vehicle.hourMeter) : null)
           : null,
       }));
     });
@@ -128,13 +128,14 @@ export class MaintenanceService implements OnModuleInit {
           companyId: user.companyId,
           lastDoneAt: input.lastDoneAt ?? new Date(),
           lastDoneOdometerKm: input.lastDoneOdometerKm ?? v.odometerKm,
+          lastDoneHours: input.lastDoneHours ?? v.hourMeter,
         },
       });
     });
   }
 
   createPlansBulk(user: AuthUser, input: BulkMaintenancePlanInput) {
-    if (!input.intervalKm && !input.intervalDays) throw new BadRequestException('Set intervalKm and/or intervalDays');
+    if (!input.intervalKm && !input.intervalDays && !input.intervalHours) throw new BadRequestException('Set intervalKm, intervalDays and/or intervalHours');
     return this.db.tenant(user.companyId, async (tx) => {
       const vehicles = await tx.vehicle.findMany({ where: { id: { in: input.vehicleIds }, deletedAt: null } });
       if (vehicles.length !== new Set(input.vehicleIds).size) throw new BadRequestException('Unknown vehicle in vehicleIds');
@@ -146,8 +147,10 @@ export class MaintenanceService implements OnModuleInit {
           name: input.name,
           intervalKm: input.intervalKm,
           intervalDays: input.intervalDays,
+          intervalHours: input.intervalHours,
           lastDoneAt: now,
           lastDoneOdometerKm: v.odometerKm,
+          lastDoneHours: v.hourMeter,
         })),
       });
       return { created: count };
@@ -359,7 +362,7 @@ export class MaintenanceService implements OnModuleInit {
       const odo = input.odometerKm ?? Number(vehicle.odometerKm);
       if (odo > Number(vehicle.odometerKm)) await tx.vehicle.update({ where: { id: vehicle.id }, data: { odometerKm: odo } });
       if (wo.planId) {
-        await tx.maintenancePlan.update({ where: { id: wo.planId }, data: { lastDoneAt: completedAt, lastDoneOdometerKm: odo } });
+        await tx.maintenancePlan.update({ where: { id: wo.planId }, data: { lastDoneAt: completedAt, lastDoneOdometerKm: odo, lastDoneHours: vehicle.hourMeter } });
       }
       const updated = await tx.workOrder.update({
         where: { id },
@@ -498,7 +501,7 @@ export class MaintenanceService implements OnModuleInit {
     const plans = await this.db.system((tx) =>
       tx.maintenancePlan.findMany({
         where: { active: true, vehicle: { deletedAt: null, status: { notIn: ['DISPOSED', 'INACTIVE'] } } },
-        include: { vehicle: { select: { plateNumber: true, odometerKm: true } }, workOrders: { where: { status: { in: ['OPEN', 'IN_PROGRESS'] } }, select: { id: true } } },
+        include: { vehicle: { select: { plateNumber: true, odometerKm: true, hourMeter: true } }, workOrders: { where: { status: { in: ['OPEN', 'IN_PROGRESS'] } }, select: { id: true } } },
       }),
     );
     const companies = await this.db.system((tx) =>
@@ -508,11 +511,12 @@ export class MaintenanceService implements OnModuleInit {
     let sent = 0;
     for (const p of plans) {
       if (p.workOrders.length) continue; // already being handled
-      const due = planDue({ ...p, lastDoneOdometerKm: p.lastDoneOdometerKm ? Number(p.lastDoneOdometerKm) : null }, Number(p.vehicle.odometerKm), now, settingsBy.get(p.companyId)!);
+      const due = planDue({ ...p, lastDoneOdometerKm: p.lastDoneOdometerKm ? Number(p.lastDoneOdometerKm) : null, lastDoneHours: p.lastDoneHours != null ? Number(p.lastDoneHours) : null }, Number(p.vehicle.odometerKm), now, settingsBy.get(p.companyId)!, p.vehicle.hourMeter != null ? Number(p.vehicle.hourMeter) : null);
       if (due.status === 'OK') continue;
       const parts = [
         due.remainingKm !== null ? (due.remainingKm <= 0 ? `${-due.remainingKm} km overdue` : `due in ${due.remainingKm} km`) : null,
         due.remainingDays !== null ? (due.remainingDays <= 0 ? `${-due.remainingDays} days overdue` : `due in ${due.remainingDays} days`) : null,
+        due.remainingHours != null ? (due.remainingHours <= 0 ? `${-due.remainingHours} engine hours overdue` : `due in ${due.remainingHours} engine hours`) : null,
       ].filter(Boolean);
       sent += await this.notifications.notify({
         companyId: p.companyId,

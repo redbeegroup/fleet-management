@@ -112,6 +112,11 @@ export function TripsScreen() {
               {t.vehicle.make} {t.vehicle.model}
             </Text>
           )}
+          {t.trailer && (
+            <Text>
+              Trailer: <Text style={{ fontWeight: '700' }}>{t.trailer.plateNumber}</Text> {t.trailer.make} {t.trailer.model}
+            </Text>
+          )}
           {t.cargoDescription && <Text style={s.muted}>Cargo: {t.cargoDescription}</Text>}
           {t.kind === 'DELIVERY' && (
             <Button title="Delivery stops" kind="secondary" onPress={() => setStopsOf(t)} />

@@ -120,6 +120,9 @@ Use TLS (`sslmode=require`) outside the cluster network.
 | `reporting.vehicle_warranties` | Vehicle and component warranties. | company_id, company_code, warranty_id, vehicle_id, component, label, supplier_id, start_date, end_date, end_km |
 | `reporting.warranty_claims` | Warranty claims; recovered amounts reduce the cost. | company_id, company_code, claim_id, claim_no, vehicle_id, work_order_id, supplier_id, basis, status, amount_claimed, amount_approved, amount_recovered, submitted_at, recovered_at, recovered_local_date |
 | `reporting.vehicle_disposals` | Disposals with sale value, book value and gain / loss (S17). | company_id, company_code, disposal_id, vehicle_id, disposed_at, method, sale_value, odometer_km, book_value, gain_loss |
+| `reporting.trailer_couplings` | Trailer ↔ tractor couplings, with the trip (S18). | company_id, company_code, coupling_id, trailer_id, tractor_id, trip_id, coupled_at, uncoupled_at |
+| `reporting.safety_audits` | Safety audits of sites and vehicles with score and result (S18). | company_id, company_code, audit_id, audit_no, template_id, template_name, target, branch_id, vehicle_id, performed_at, local_date, score, result |
+| `reporting.corrective_actions` | Corrective actions from audits, with an overdue flag (S18). | company_id, company_code, action_id, audit_id, description, owner_user_id, due_date, status, closed_at, verified_at, overdue |
 
 S16 also appended `supplier_id, quote_amount, invoice_no, invoice_amount` to `reporting.work_orders`.
 

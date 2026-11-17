@@ -1,3 +1,4 @@
+import { payloadLimit } from '../compliance/rules';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { CheckInInput, CreateLoadInput, CreateReturnInput, StopOutcomeInput, UpdateCustomerInput, UpdateLoadInput, WebhookEvent } from '@fms/shared';
@@ -194,7 +195,7 @@ export class LogisticsService {
       }
       const vehicle = await tx.vehicle.findFirst({ where: { id: input.vehicleId, deletedAt: null }, select: vehicleSelect });
       if (!vehicle) throw new BadRequestException('Vehicle not found');
-      this.assertCapacity(toCapacity(vehicle), orders, settings.defaultMaxStops);
+      this.assertCapacity(await this.withLimits(tx, toCapacity(vehicle), vehicle.vehicleClass, null), orders, settings.defaultMaxStops);
 
       const groups = this.buildStops(orders);
       const start = input.departAt ?? this.departure(input.date, settings.departureTime, tz);
@@ -263,7 +264,7 @@ export class LogisticsService {
       }
       if (vehicleId) {
         const v = await tx.vehicle.findUniqueOrThrow({ where: { id: vehicleId }, select: vehicleSelect });
-        this.assertCapacity(toCapacity(v), all, settings.defaultMaxStops);
+        this.assertCapacity(await this.withLimits(tx, toCapacity(v), v.vehicleClass, trip.trailerId), all, settings.defaultMaxStops);
       }
       // Rebuild stops: keep manual order (stopIds) or existing order, append new customers, drop empty stops.
       const existingStops = await tx.tripStop.findMany({ where: { tripId }, orderBy: { seq: 'asc' } });
@@ -658,6 +659,18 @@ export class LogisticsService {
     const t = await tx.trip.findFirst({ where: { id: tripId, kind: 'DELIVERY' } });
     if (!t) throw new NotFoundException('Load not found');
     return t;
+  }
+
+  /** S18: a coupled trailer adds its capacity; the legal payload per class (compliance settings) caps the weight. */
+  private async withLimits(tx: Tx, v: VehicleCapacity, vehicleClass: string, trailerId: string | null): Promise<VehicleCapacity> {
+    const company = await tx.company.findFirstOrThrow({ select: { settings: true } });
+    const legal = parseCompanySettings(company.settings).compliance.maxPayloadKg;
+    const t = trailerId ? await tx.vehicle.findUnique({ where: { id: trailerId }, select: { plateNumber: true, vehicleClass: true, capacityKg: true, capacityM3: true, capacityCases: true, capacityPallets: true } }) : null;
+    const lim = payloadLimit({ vehicleClass, capacityKg: v.capacityKg }, t ? { vehicleClass: t.vehicleClass, capacityKg: n(t.capacityKg) } : null, legal);
+    const add = (a: number | null, b: number | null) => (a == null && b == null ? null : (a ?? 0) + (b ?? 0));
+    return t
+      ? { ...v, plateNumber: `${v.plateNumber} + ${t.plateNumber}`, capacityKg: lim.kg, capacityM3: add(v.capacityM3, n(t.capacityM3)), capacityCases: add(v.capacityCases, t.capacityCases), capacityPallets: add(v.capacityPallets, t.capacityPallets) }
+      : { ...v, capacityKg: lim.kg };
   }
 
   private assertCapacity(v: VehicleCapacity, orders: OrderRow[], defaultMaxStops: number | null) {

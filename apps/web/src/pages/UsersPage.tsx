@@ -21,7 +21,7 @@ interface UserRow {
 
 const ROLE_HELP: Record<string, string> = {
   COMPANY_ADMIN: 'everything in this company',
-  FLEET_MANAGER: 'fleet, costs, approvals',
+  FLEET_MANAGER: 'fleet, costs, approvals, safety audits',
   DISPATCHER: 'trips, planning, deliveries',
   DRIVER: 'mobile app',
   EXECUTIVE: 'read-only, all reports',
