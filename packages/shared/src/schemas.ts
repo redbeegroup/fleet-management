@@ -209,6 +209,7 @@ export const companySettingsSchema = z.object({
   diagnostics: z.lazy(() => diagnosticsSettingsSchema).default({}),
   security: z.lazy(() => securitySettingsSchema).default({}),
   tires: z.lazy(() => tireSettingsSchema).default({}),
+  lifecycle: z.lazy(() => lifecycleSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -227,6 +228,7 @@ export const updateCompanySettingsSchema = z.object({
   diagnostics: z.lazy(() => diagnosticsSettingsSchema.partial()).optional(),
   security: z.lazy(() => securitySettingsSchema.partial()).optional(),
   tires: z.lazy(() => tireSettingsSchema.partial()).optional(),
+  lifecycle: z.lazy(() => lifecycleSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -1434,3 +1436,64 @@ export const updateWarrantyClaimSchema = z.object({
   fileIds: z.array(z.string().uuid()).max(10).optional(),
 });
 export type UpdateWarrantyClaimInput = z.infer<typeof updateWarrantyClaimSchema>;
+
+// ---------------------------------------------------------------------------
+// Lifecycle and benchmarking (Sprint 17)
+// ---------------------------------------------------------------------------
+
+/** Replacement limits for a vehicle class; null = not used. */
+export const replacementLimitsSchema = z.object({
+  maxAgeYears: z.number().min(1).max(40).nullable().default(null),
+  maxKm: z.number().int().min(10_000).max(5_000_000).nullable().default(null),
+  /** Downtime (under repair) over the last 12 months, %. */
+  maxDowntimePct: z.number().min(1).max(100).nullable().default(null),
+});
+export type ReplacementLimits = z.infer<typeof replacementLimitsSchema>;
+
+const DEFAULT_LIMITS: Record<string, { maxAgeYears: number; maxKm: number; maxDowntimePct: number }> = {
+  TRUCK: { maxAgeYears: 10, maxKm: 600_000, maxDowntimePct: 15 },
+  TRACTOR: { maxAgeYears: 10, maxKm: 800_000, maxDowntimePct: 15 },
+  BUS: { maxAgeYears: 12, maxKm: 700_000, maxDowntimePct: 15 },
+  VAN: { maxAgeYears: 8, maxKm: 300_000, maxDowntimePct: 12 },
+  PICKUP: { maxAgeYears: 8, maxKm: 300_000, maxDowntimePct: 12 },
+  CAR: { maxAgeYears: 7, maxKm: 250_000, maxDowntimePct: 10 },
+  MOTORCYCLE: { maxAgeYears: 5, maxKm: 100_000, maxDowntimePct: 10 },
+};
+
+export const lifecycleSettingsSchema = z.object({
+  /** Limits per vehicle class (missing classes use the defaults above). */
+  limits: z.record(z.string(), replacementLimitsSchema.partial()).default({}),
+  /** Flag when the running cost per km (12 months) is this % above the class median. */
+  costAboveClassPct: z.number().min(5).max(500).default(30),
+  /** "Plan replacement" when a limit will be reached within this many months. */
+  planWithinMonths: z.number().int().min(1).max(60).default(12),
+});
+export type LifecycleSettings = z.infer<typeof lifecycleSettingsSchema>;
+
+export function replacementLimitsFor(settings: LifecycleSettings, vehicleClass: string) {
+  const d = DEFAULT_LIMITS[vehicleClass] ?? { maxAgeYears: null, maxKm: null, maxDowntimePct: null };
+  const o = settings.limits[vehicleClass] ?? {};
+  return {
+    maxAgeYears: o.maxAgeYears !== undefined ? o.maxAgeYears : d.maxAgeYears,
+    maxKm: o.maxKm !== undefined ? o.maxKm : d.maxKm,
+    maxDowntimePct: o.maxDowntimePct !== undefined ? o.maxDowntimePct : d.maxDowntimePct,
+  } as { maxAgeYears: number | null; maxKm: number | null; maxDowntimePct: number | null };
+}
+
+export const DisposalMethod = { SALE: 'SALE', SCRAP: 'SCRAP', TRADE_IN: 'TRADE_IN', TRANSFER: 'TRANSFER', WRITE_OFF: 'WRITE_OFF' } as const;
+export const disposeVehicleSchema = z.object({
+  disposedAt: z.coerce.date(),
+  method: z.nativeEnum(DisposalMethod),
+  buyer: z.string().trim().max(200).optional().nullable(),
+  saleValue: z.number().nonnegative().max(1e12).default(0),
+  odometerKm: z.number().nonnegative().optional().nullable(),
+  reason: z.string().trim().max(2000).optional().nullable(),
+  fileId: z.string().uuid().optional().nullable(),
+});
+export type DisposeVehicleInput = z.infer<typeof disposeVehicleSchema>;
+
+export const replacementPlanSchema = z.object({
+  replacementPlannedFor: z.coerce.date().nullable(),
+  replacementNote: z.string().trim().max(500).optional().nullable(),
+});
+export type ReplacementPlanInput = z.infer<typeof replacementPlanSchema>;

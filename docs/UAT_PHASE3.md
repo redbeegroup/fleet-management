@@ -46,4 +46,13 @@ Demo data: `deploy/demo/seed-demo.cjs` adds suppliers, parts in two depots, tire
 27. [ ] Warranty claim: create from the work order → submit → approved → money received. *Costs & TCO* shows the maintenance cost reduced by the recovered amount.
 28. [ ] Company B sees none of company A's suppliers, parts, stock, tires, warranties or claims (also in BI views).
 
+## E. Lifecycle, replacement, benchmarking (S17)
+
+29. [ ] *Lifecycle*: each vehicle shows Replace / Plan / OK with reasons (age, km, downtime, running cost vs class, economic life). Vehicles without purchase data are marked.
+30. [ ] Change a class limit (e.g. truck max age) in *Replacement limits*: the advice changes accordingly.
+31. [ ] Set a replacement month for a vehicle; it shows on the vehicle page timeline.
+32. [ ] Vehicle page → *Lifecycle*: lifetime cost, km and cost per km match *Costs & TCO* for the same period; book value as expected.
+33. [ ] Dispose of a vehicle: refused while a work order or trip is open; afterwards status *Disposed*, gain / loss = sale value − book value, the vehicle leaves the active lists and depreciation stops.
+34. [ ] *Benchmark*: choose a class; vehicles are ranked by score with the class median row; better / worse labels match the figures; branches compare fairly with different class mixes.
+
 Sign-off: ______________________ (IT) ______________________ (finance) ______________________ (operations) Date: __________

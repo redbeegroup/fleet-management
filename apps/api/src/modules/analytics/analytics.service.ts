@@ -6,6 +6,7 @@ import { PrismaService } from '../../common/db/prisma.service';
 import { dayBounds, localDate } from '../../common/time';
 import { minutesInStatus } from '../maintenance/due';
 import { fleetKpis, VehicleAgg, vehicleKpis } from './kpis';
+import { benchmark, BenchVehicle } from './benchmark';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v == null ? 0 : Number(v));
 const DAY = 86_400_000;
@@ -168,6 +169,30 @@ export class AnalyticsService {
         })),
       };
     });
+  }
+
+  /** Each vehicle against its class: medians, percentiles, productivity score and rank; branch comparison. */
+  async benchmark(user: AuthUser, q: AnalyticsRange) {
+    const o = await this.overview(user, q);
+    const days = o.range.days;
+    const rows: BenchVehicle[] = o.vehicles.map((v) => ({
+      id: v.id,
+      plateNumber: v.plateNumber,
+      vehicleClass: v.vehicleClass,
+      branchId: v.branchId,
+      branchName: v.branchName,
+      values: {
+        utilizationPct: v.utilizationPct,
+        kmPerDay: days ? Math.round((v.distanceKm / days) * 10) / 10 : null,
+        tripsPerDay: days ? Math.round((v.tripsCompleted / days) * 100) / 100 : null,
+        availabilityPct: v.downtimePct == null ? null : Math.round((100 - v.downtimePct) * 10) / 10,
+        costPerKm: v.costPerKm,
+        fuelKmPerLitre: v.fuelKmPerLitre,
+        idlePct: v.idlePct,
+        overspeedPer100Km: v.overspeedPer100Km,
+      },
+    }));
+    return { range: o.range, ...benchmark(rows) };
   }
 
   /** CSV of the per-vehicle table (for Excel / BI tools). */

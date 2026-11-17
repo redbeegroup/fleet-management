@@ -170,46 +170,49 @@ model AuditLog {
 }
 
 model Vehicle {
-  id               String        @id @default(uuid()) @db.Uuid
-  companyId        String        @map("company_id") @db.Uuid
-  branchId         String?       @map("branch_id") @db.Uuid
-  departmentId     String?       @map("department_id") @db.Uuid
-  plateNumber      String        @map("plate_number")
-  vin              String?
-  make             String
-  model            String
-  year             Int?
-  vehicleClass     VehicleClass  @map("vehicle_class")
-  ownership        OwnershipType @default(OWNED)
-  fuelType         String?       @map("fuel_type")
-  capacityKg       Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
-  capacityM3       Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
-  capacityCases    Int?          @map("capacity_cases")
-  capacityPallets  Int?          @map("capacity_pallets")
+  id                    String        @id @default(uuid()) @db.Uuid
+  companyId             String        @map("company_id") @db.Uuid
+  branchId              String?       @map("branch_id") @db.Uuid
+  departmentId          String?       @map("department_id") @db.Uuid
+  plateNumber           String        @map("plate_number")
+  vin                   String?
+  make                  String
+  model                 String
+  year                  Int?
+  vehicleClass          VehicleClass  @map("vehicle_class")
+  ownership             OwnershipType @default(OWNED)
+  fuelType              String?       @map("fuel_type")
+  capacityKg            Decimal?      @map("capacity_kg") @db.Decimal(12, 2)
+  capacityM3            Decimal?      @map("capacity_m3") @db.Decimal(12, 2)
+  capacityCases         Int?          @map("capacity_cases")
+  capacityPallets       Int?          @map("capacity_pallets")
   /// Max delivery stops per trip (falls back to settings.logistics.defaultMaxStops).
-  maxStops         Int?          @map("max_stops")
-  odometerKm       Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
-  status           VehicleStatus @default(AVAILABLE)
-  gpsDeviceId      String?       @map("gps_device_id")
+  maxStops              Int?          @map("max_stops")
+  odometerKm            Decimal       @default(0) @map("odometer_km") @db.Decimal(12, 1)
+  status                VehicleStatus @default(AVAILABLE)
+  gpsDeviceId           String?       @map("gps_device_id")
   /// Overrides the company speed limit for overspeed alerts.
-  speedLimitKmh    Int?          @map("speed_limit_kmh")
+  speedLimitKmh         Int?          @map("speed_limit_kmh")
   /// Fuel tank capacity (litres), used to flag implausible refills.
-  tankCapacityL    Decimal?      @map("tank_capacity_l") @db.Decimal(8, 1)
-  acquiredAt       DateTime?     @map("acquired_at") @db.Date
-  disposedAt       DateTime?     @map("disposed_at") @db.Date
+  tankCapacityL         Decimal?      @map("tank_capacity_l") @db.Decimal(8, 1)
+  acquiredAt            DateTime?     @map("acquired_at") @db.Date
+  disposedAt            DateTime?     @map("disposed_at") @db.Date
   /// Cost of ownership (S12): straight-line depreciation for owned vehicles, monthly lease/rent otherwise.
-  purchasePrice    Decimal?      @map("purchase_price") @db.Decimal(14, 2)
-  residualValue    Decimal?      @map("residual_value") @db.Decimal(14, 2)
-  usefulLifeMonths Int?          @map("useful_life_months")
-  monthlyLeaseCost Decimal?      @map("monthly_lease_cost") @db.Decimal(14, 2)
+  purchasePrice         Decimal?      @map("purchase_price") @db.Decimal(14, 2)
+  residualValue         Decimal?      @map("residual_value") @db.Decimal(14, 2)
+  usefulLifeMonths      Int?          @map("useful_life_months")
+  monthlyLeaseCost      Decimal?      @map("monthly_lease_cost") @db.Decimal(14, 2)
   /// Depreciation / lease start (defaults to acquiredAt).
-  inServiceAt      DateTime?     @map("in_service_at") @db.Date
+  inServiceAt           DateTime?     @map("in_service_at") @db.Date
   /// Tire layout key (shared TIRE_LAYOUTS); null = default for the vehicle class (S16).
-  tireLayout       String?       @map("tire_layout")
-  notes            String?
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
-  deletedAt        DateTime?     @map("deleted_at")
+  tireLayout            String?       @map("tire_layout")
+  /// Replacement planning (S17): month the vehicle should be replaced, and why.
+  replacementPlannedFor DateTime?     @map("replacement_planned_for") @db.Date
+  replacementNote       String?       @map("replacement_note")
+  notes                 String?
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  deletedAt             DateTime?     @map("deleted_at")
 
   company         Company              @relation(fields: [companyId], references: [id])
   branch          Branch?              @relation(fields: [branchId], references: [id])
@@ -228,6 +231,7 @@ model Vehicle {
   tireChanges     TireChange[]
   tireChecks      TireCheck[]
   warranties      VehicleWarranty[]
+  disposal        VehicleDisposal?
 
   @@unique([companyId, plateNumber])
   @@unique([companyId, gpsDeviceId])
@@ -1932,4 +1936,29 @@ model WarrantyClaim {
   @@unique([companyId, claimNo])
   @@index([companyId, status])
   @@map("warranty_claims")
+}
+
+/// Disposal of a vehicle (S17): sale, scrap, trade-in, transfer or write-off.
+model VehicleDisposal {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  vehicleId  String   @unique @map("vehicle_id") @db.Uuid
+  disposedAt DateTime @map("disposed_at") @db.Date
+  /// SALE | SCRAP | TRADE_IN | TRANSFER | WRITE_OFF
+  method     String
+  buyer      String?
+  saleValue  Decimal  @default(0) @map("sale_value") @db.Decimal(14, 2)
+  odometerKm Decimal? @map("odometer_km") @db.Decimal(12, 1)
+  /// Book value on the disposal day (owned vehicles), for the gain or loss.
+  bookValue  Decimal? @map("book_value") @db.Decimal(14, 2)
+  gainLoss   Decimal? @map("gain_loss") @db.Decimal(14, 2)
+  reason     String?
+  fileId     String?  @map("file_id") @db.Uuid
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([companyId, disposedAt])
+  @@map("vehicle_disposals")
 }

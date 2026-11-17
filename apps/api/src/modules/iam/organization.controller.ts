@@ -74,6 +74,7 @@ export class OrganizationController {
         diagnostics: { ...current.diagnostics, ...body.diagnostics },
         security: { ...current.security, ...body.security },
         tires: { ...current.tires, ...body.tires },
+        lifecycle: { ...current.lifecycle, ...body.lifecycle, limits: { ...current.lifecycle.limits, ...body.lifecycle?.limits } },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

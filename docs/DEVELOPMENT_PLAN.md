@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) and S16 (parts, tires, outside garages, warranty) delivered.** Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) S16 (parts, tires, outside garages, warranty) and S17 (lifecycle, replacement advice, benchmarking) delivered.** Next: S18 trailers & equipment, compliance rules, safety audits. Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -77,7 +77,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Document management | P1 | 1 / S2 | ✅ metadata, scans/photos (PDF, JPEG, PNG, WebP, HEIC) via S3-compatible storage |
 | Document expiry alerts | P1 | 1 / S2 | ✅ daily scan, 30/14/7/1-day + expired thresholds, renewal-aware, in-app + email |
 | Vehicle history | P1 | 1 / S2–S13 | ✅ one timeline: status, assignments, documents, trips, fuel, maintenance, repairs, expenses, incidents, inspections, alerts; filters + paging |
-| Vehicle lifecycle (acquisition → disposal) | P2 | 3 | ⏳ (acquired/disposed dates already stored) |
+| Vehicle lifecycle (acquisition → disposal) | P2 | 3 | ✅ S17: lifetime view, replacement advice and plans, disposal with book value and gain / loss |
 | Asset & equipment tracking (trailers, containers) | P2 | 3 | ⏳ |
 | Vehicle replacement planning | P3 | 4 | ⏳ |
 
@@ -209,9 +209,9 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Fuel efficiency dashboard | P1 | 1 / S6 | ✅ fleet and per-vehicle km/L |
 | Driver performance dashboard | P2 | 2 / S7 | ✅ safety dashboard (fleet score, event mix, ranking) |
 | Delivery efficiency | P2 | 2 / S11 | ✅ Delivery KPIs: OTIF, success, cost per drop, fill rate, route adherence |
-| Branch fleet comparison | P2 | 3 | 🟡 branch table in reports (Phase 1); benchmarking views in Phase 3 |
-| Vehicle productivity ranking | P2 | 3 | ⏳ |
-| Benchmarking (same class) | P2 | 3 | ⏳ |
+| Branch fleet comparison | P2 | 3 | ✅ S17: branches compared against each vehicle's class median |
+| Vehicle productivity ranking | P2 | 3 | ✅ S17: productivity score and rank within the class |
+| Benchmarking (same class) | P2 | 3 | ✅ S17: class medians, percentiles, deviation per metric |
 | Automated management reports | P2 | 3 | ✅ S15: fleet, budget & TCO, delivery, safety & compliance — daily/weekly/monthly e-mail with PDF + CSV |
 | AI executive insights | P3 | 4 | ⏳ |
 
@@ -509,3 +509,26 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Tests:**
   - Unit: stock, tires, warranty coverage, garage performance, numeric inspection items.
   - e2e (`sprint16`): moving average, transfer, count, CSV; issue / return and concurrent overdraw; garage quote → approval and invoice; tires incl. inspection readings and alerts; warranty hint → claim → recovered credit in TCO; storekeeper permissions; isolation.
+
+### Phase 3 — Sprint 17 (lifecycle, replacement advice, benchmarking) delivered
+
+- **Replacement advice** (*Lifecycle* page; pure `lifecycle/replacement.ts`):
+  - Each vehicle gets *Replace now* / *Plan* / *OK*, with the reasons.
+  - Limits per vehicle class: age, km and downtime over 12 months. Defaults per class can be overridden in settings `lifecycle.limits`.
+  - Running cost per km over 12 months is compared with the class median (at least 3 peers).
+  - *Plan* when a limit is reached within the planning window (default 12 months; km projected from the last 12 months).
+  - **Economic life**: the year of service with the lowest average cost per km. It combines declining-balance market value (reaching the residual at the end of the useful life) with running costs, projected from a linear trend of running cost per km when the minimum lies ahead. It needs purchase data and two complete years of history.
+  - Replacement month and note per vehicle.
+- **Disposal** (`vehicle_disposals`): sale / scrap / trade-in / transfer / write-off.
+  - Book value on the day and gain / loss.
+  - Refused while trips or work orders are open. Assignments are ended, and the status goes INACTIVE → DISPOSED.
+  - Depreciation stops from the disposal day.
+  - Disposals list; BI view `reporting.vehicle_disposals`.
+- **Vehicle page → Lifecycle**: timeline, lifetime cost / km / cost per km (up to the last 3 years), book value, advice and the dispose form.
+- **Benchmark** (*Benchmark* page, `GET /analytics/benchmark`; pure `analytics/benchmark.ts`):
+  - Every vehicle is compared with its class median: utilisation, km per day, trips per day, availability, cost per km, km/L, idle, overspeed.
+  - Percentile in the class and a productivity score (average percentile of the first five metrics), with a rank in the class.
+  - Branches are compared through each vehicle's deviation from its own class median, so different class mixes stay comparable.
+- **Tests:**
+  - Unit: limits, plan window, cost vs class, economic life incl. projection, percentiles / ties / ranks / branches.
+  - e2e (`sprint17`): advice incl. settings override, lifetime view and plan, disposal (blocked by an open work order, book value → gain), benchmark, isolation.

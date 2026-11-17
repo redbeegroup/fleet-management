@@ -36,6 +36,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TiresModule } from './modules/tires/tires.module';
 import { WarrantyModule } from './modules/warranty/warranty.module';
+import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { TelematicsLiveModule, TelematicsModule } from './modules/telematics/telematics.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
@@ -81,6 +82,7 @@ const core: Array<Type | DynamicModule> = [DbModule, RedisModule, NotificationsM
     InventoryModule,
     TiresModule,
     WarrantyModule,
+    LifecycleModule,
   ],
   controllers: [HealthController, MetricsController],
   providers: [

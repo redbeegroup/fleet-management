@@ -208,6 +208,13 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
   - Claims follow `CLAIM_FLOW`. The ledger adds negative `warranty` rows for recovered claims.
 - **Costs:** the ledger splits work-order TIRE lines into the TIRES category, adds `tire` rows for tire changes without a work order, and adds `warranty` credits.
 
+## Lifecycle and benchmarking (S17)
+
+- `LifecycleService` reads the cost ledger for the last 36 months (running cost = all rows except `asset`), `vehicle_daily_stats` km and status events (downtime).
+  - It groups cost and km by year of service for the economic-life curve, and takes class medians of the 12-month running cost per km.
+  - Advice is pure (`lifecycle/replacement.ts`). Disposal locks the vehicle row, records `vehicle_disposals` with the book value from `costs/calc.bookValue`, and moves the status through INACTIVE to DISPOSED.
+- `AnalyticsService.benchmark` reuses `overview` (per-vehicle KPIs) and the pure `analytics/benchmark.ts`.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |

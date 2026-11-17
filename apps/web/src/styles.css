@@ -399,3 +399,9 @@ tr.selected td { background: var(--info-bg); }
 .tire-warn { border-color: var(--warn); background: var(--warn-bg); }
 .tire-critical { border-color: var(--danger); background: var(--danger-bg); }
 .tire-unknown { border-style: dashed; color: var(--muted); }
+
+/* Lifecycle & benchmark (S17) */
+.good-text { color: var(--ok); }
+.bad-text { color: var(--danger); }
+.tile-button { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.tile-button.sel { outline: 2px solid var(--primary); outline-offset: -2px; }

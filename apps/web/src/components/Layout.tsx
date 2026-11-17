@@ -16,6 +16,7 @@ const sections: {
       { to: '/reports', label: 'Reports', perm: Permission.COST_READ },
       { to: '/costs', label: 'Costs & TCO', perm: Permission.COST_READ },
       { to: '/budgets', label: 'Budgets', perm: Permission.BUDGET_READ },
+      { to: '/benchmark', label: 'Benchmark', perm: Permission.COST_READ },
       { to: '/report-subscriptions', label: 'Scheduled reports', perm: Permission.SAFETY_READ },
     ],
   },
@@ -42,6 +43,7 @@ const sections: {
     title: 'Fleet',
     items: [
       { to: '/vehicles', label: 'Vehicles', perm: Permission.VEHICLE_READ },
+      { to: '/lifecycle', label: 'Lifecycle', perm: Permission.COST_READ },
       { to: '/drivers', label: 'Drivers', perm: Permission.DRIVER_READ },
       { to: '/safety', label: 'Driver safety', perm: Permission.SAFETY_READ },
       { to: '/incidents', label: 'Incidents & claims', perm: Permission.SAFETY_READ },

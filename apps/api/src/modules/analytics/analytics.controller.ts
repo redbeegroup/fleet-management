@@ -18,6 +18,12 @@ export class AnalyticsController {
     return this.analytics.overview(user, q);
   }
 
+  @Get('benchmark')
+  @RequirePermissions(Permission.COST_READ)
+  benchmark(@CurrentUser() user: AuthUser, @Query(new ZodPipe(analyticsRangeSchema)) q: AnalyticsRange) {
+    return this.analytics.benchmark(user, q);
+  }
+
   @Get('vehicles.csv')
   @RequirePermissions(Permission.COST_READ)
   @Header('Content-Type', 'text/csv; charset=utf-8')

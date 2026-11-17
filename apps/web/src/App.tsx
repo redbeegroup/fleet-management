@@ -37,6 +37,8 @@ import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
 import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
+import { BenchmarkPage } from './pages/BenchmarkPage';
+import { LifecyclePage } from './pages/LifecyclePage';
 import { PartsPage } from './pages/PartsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { TiresPage } from './pages/TiresPage';
@@ -109,6 +111,8 @@ export function App() {
         <Route path="parts" element={<PartsPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="tires" element={<TiresPage />} />
+        <Route path="lifecycle" element={<LifecyclePage />} />
+        <Route path="benchmark" element={<BenchmarkPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="admin/companies" element={<CompaniesPage />} />
         <Route path="costs" element={<CostsPage />} />

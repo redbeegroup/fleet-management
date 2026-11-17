@@ -14,3 +14,5 @@ Generate a new migration (needs an empty scratch database for the shadow):
     npx prisma migrate diff --from-migrations prisma/migrations \
       --to-schema-datamodel prisma/schema.prisma \
       --shadow-database-url postgresql://postgres@localhost:5432/fms_shadow --script
+
+**Shadow database:** `prisma migrate diff --shadow-database-url …` leaves the non-Prisma `reporting` / `fms_bi` schemas behind, so a second diff fails with "relation … already exists". Recreate the shadow database before each diff (`DROP DATABASE fms_shadow; CREATE DATABASE fms_shadow;`), and create the migration directory only after the diff succeeded (an empty directory breaks `migrate deploy`).

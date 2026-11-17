@@ -119,6 +119,7 @@ Use TLS (`sslmode=require`) outside the cluster network.
 | `reporting.tire_checks` | Tread and pressure checks. | company_id, company_code, tire_check_id, vehicle_id, position, checked_at, local_date, odometer_km, tread_mm, pressure, source |
 | `reporting.vehicle_warranties` | Vehicle and component warranties. | company_id, company_code, warranty_id, vehicle_id, component, label, supplier_id, start_date, end_date, end_km |
 | `reporting.warranty_claims` | Warranty claims; recovered amounts reduce the cost. | company_id, company_code, claim_id, claim_no, vehicle_id, work_order_id, supplier_id, basis, status, amount_claimed, amount_approved, amount_recovered, submitted_at, recovered_at, recovered_local_date |
+| `reporting.vehicle_disposals` | Disposals with sale value, book value and gain / loss (S17). | company_id, company_code, disposal_id, vehicle_id, disposed_at, method, sale_value, odometer_km, book_value, gain_loss |
 
 S16 also appended `supplier_id, quote_amount, invoice_no, invoice_amount` to `reporting.work_orders`.
 
