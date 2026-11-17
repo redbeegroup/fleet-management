@@ -309,7 +309,27 @@ export interface WorkOrder {
   totalCost: string;
   vehicle: { id: string; plateNumber: string; status: string };
   plan: { id: string; name: string } | null;
-  lines?: { id: string; kind: string; description: string; quantity: string; unitCost: string; total: string }[];
+  supplierId: string | null;
+  supplier: { id: string; name: string } | null;
+  quoteAmount: string | null;
+  quoteFileId: string | null;
+  quotedAt: string | null;
+  invoiceNo: string | null;
+  invoiceDate: string | null;
+  invoiceAmount: string | null;
+  invoiceFileId: string | null;
+  lines?: {
+    id: string;
+    kind: string;
+    description: string;
+    quantity: string;
+    unitCost: string;
+    total: string;
+    partId: string | null;
+    branchId: string | null;
+    warrantyUntil: string | null;
+    warrantyKmUntil: string | null;
+  }[];
   repairRequests?: RepairRequest[];
 }
 
@@ -477,6 +497,13 @@ export interface ChecklistItem {
   key: string;
   label: string;
   critical: boolean;
+  /** 'number': measured value (tires); outside min/max is a defect. */
+  type?: 'check' | 'number';
+  unit?: string;
+  min?: number;
+  max?: number;
+  tirePosition?: string;
+  measure?: 'TREAD' | 'PRESSURE';
 }
 
 export interface InspectionTemplate {
@@ -955,4 +982,34 @@ export interface ControlSettings {
   workingHours: ({ start: string; end: string } | null)[];
   requireDriverOnDuty: boolean;
   restrictedAreaAlerts: boolean;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  kinds: string[];
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  taxId: string | null;
+  paymentTermsDays: number | null;
+  notes: string | null;
+  externalRef: string | null;
+  active: boolean;
+}
+
+export interface Part {
+  id: string;
+  partNo: string;
+  name: string;
+  category: string | null;
+  unit: string;
+  supplierId: string | null;
+  minQty: string;
+  reorderQty: string;
+  warrantyMonths: number | null;
+  warrantyKm: number | null;
+  externalRef: string | null;
+  active: boolean;
+  stocks: { branchId: string; qtyOnHand: string; avgCost: string }[];
 }

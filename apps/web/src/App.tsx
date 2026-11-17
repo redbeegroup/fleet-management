@@ -37,6 +37,9 @@ import { TripDetailPage } from './pages/TripDetailPage';
 import { TripFormPage } from './pages/TripFormPage';
 import { TripsPage } from './pages/TripsPage';
 import { LoginPage } from './pages/LoginPage';
+import { PartsPage } from './pages/PartsPage';
+import { SuppliersPage } from './pages/SuppliersPage';
+import { TiresPage } from './pages/TiresPage';
 import { ReportSubscriptionsPage } from './pages/ReportSubscriptionsPage';
 import { SsoPage } from './pages/SsoPage';
 import { SetPasswordPage } from './pages/SetPasswordPage';
@@ -103,6 +106,9 @@ export function App() {
         <Route path="delivery-kpis" element={<DeliveryKpisPage />} />
         <Route path="site-visits" element={<SiteVisitsPage />} />
         <Route path="report-subscriptions" element={<ReportSubscriptionsPage />} />
+        <Route path="parts" element={<PartsPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="tires" element={<TiresPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="admin/companies" element={<CompaniesPage />} />
         <Route path="costs" element={<CostsPage />} />

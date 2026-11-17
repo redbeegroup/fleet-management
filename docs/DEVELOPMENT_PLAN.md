@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3 started: S15 (single sign-on, BI access, scheduled management reports) delivered.** Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) and S16 (parts, tires, outside garages, warranty) delivered.** Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -141,10 +141,10 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Maintenance history | P1 | 1 / S5 | ✅ work orders + vehicle history timeline |
 | Maintenance expenses | P1 | 1 / S5 | ✅ parts / labour / external per vehicle |
 | Vehicle downtime | P1 | 1 / S5 | ✅ off-road work orders set UNDER_REPAIR; downtime report from status history |
-| Spare parts inventory | P2 | 3 | ⏳ |
-| Tire management | P2 | 3 | ⏳ |
-| Workshop management | P2 | 3 | ⏳ |
-| Warranty management | P2 | 3 | ⏳ |
+| Spare parts inventory | P2 | 3 | ✅ S16: store per branch, moving average cost, receipts, issues to work orders, transfers, counts, reorder alerts |
+| Tire management | P2 | 3 | ✅ S16: per vehicle position — changes, rotation, tread/pressure checks (web and inspections), wear projection, cost per km by brand |
+| Workshop management | P2 | 3 | ✅ S16: outside garages — quotes (approval limit), invoices, garage performance (turnaround, repeat repairs, invoice vs quote) |
+| Warranty management | P2 | 3 | ✅ S16: vehicle / part / tire warranty, coverage hints on work orders, claims with recovered credit in costs |
 | Predictive maintenance | P3 | 4 | ⏳ |
 
 ### Module 6 — Driver Management & Safety (`drivers`)
@@ -480,3 +480,32 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
 - **Tests:**
   - Unit: SSO claim checks and encryption; report periods, ISO weeks, time zones, CSV, builders and PDF.
   - e2e: SSO against a fake OpenID provider (tenant, subject pinning, unknown or inactive users, password switch, mobile deep link); BI logins connecting to PostgreSQL (own company only, no raw tables, settings cannot widen, group sees all, rotate, remove); reports (preview, recipients' permissions, once per period from 07:00, send now, isolation).
+
+### Phase 3 — Sprint 16 (workshop depth: parts, tires, outside garages, warranty) delivered
+
+- **Suppliers and outside garages** (`suppliers`, kinds GARAGE / PARTS / TIRES / OTHER, SAP vendor no.):
+  - A work order can be sent to a garage. Its quote becomes the planned cost, so the approval limit applies.
+  - Completing a garage job requires the invoice number and amount. Without cost lines, the invoice becomes an EXTERNAL line.
+  - *Suppliers & garages* page: garage performance (jobs, cost, turnaround, repeat repairs within 30 days, invoice vs quote, warranty recovered).
+- **Spare parts** (`parts`, `part_stocks`, `stock_movements`; new role `STOREKEEPER`, permissions `inventory:read` / `inventory:write`):
+  - One store per branch, valued at moving average cost (pure `inventory/stock.ts`).
+  - Store operations: receipts with invoice document, transfers (average cost carried), counts (adjustments).
+  - Issue to a work order: a PART line at the average cost, with the part's warranty end. Removing the line returns the stock.
+  - Stock rows are locked, so concurrent issues cannot overdraw.
+  - Catalogue CSV import. Movements CSV export (for SAP upload until the integration exists).
+  - Daily `stock-alerts` and the `stock.low` webhook.
+- **Tires per vehicle position** (`tire_changes`, `tire_checks`; layouts in `TIRE_LAYOUTS`):
+  - Changes, simultaneous rotations (km continue), and tread / pressure checks.
+  - Pure `tires/tires.ts`: current fitment, km, wear projection, pressure vs target, expected life, warranty, life and cost per km by brand / size.
+  - Inspection checklists gain numeric items (`type: 'number'`, min / max, tire position). A generated *tire checklist* feeds `tire_checks` from the web and the driver app (offline outbox). Out-of-limit values are defects and raise the usual repair request.
+  - New cost category TIRES: work-order TIRE lines and tire changes outside work orders.
+  - *Tires* page; tire diagram on the vehicle page; daily `tire-alerts`.
+- **Warranty** (`vehicle_warranties`, `warranty_claims`):
+  - Coverage (pure `warranty/coverage.ts`) by date / km for vehicle components, parts fitted on earlier work orders, and tires.
+  - Work orders show likely matches. Managers are notified when a new work order may be under warranty.
+  - Claims go DRAFT → SUBMITTED → APPROVED / REJECTED → RECOVERED. Recovered amounts reduce MAINTENANCE / TIRES costs in the recovery month (ledger, TCO, budgets, BI `cost_ledger`).
+  - Daily `warranty-alerts`; `warranty_claim.updated` webhook.
+- **BI:** new `reporting` views `suppliers`, `parts`, `stock`, `stock_movements`, `tire_changes`, `tire_checks`, `vehicle_warranties`, `warranty_claims`. `work_orders` gains garage columns, and `cost_ledger` gains tires and warranty credits.
+- **Tests:**
+  - Unit: stock, tires, warranty coverage, garage performance, numeric inspection items.
+  - e2e (`sprint16`): moving average, transfer, count, CSV; issue / return and concurrent overdraw; garage quote → approval and invoice; tires incl. inspection readings and alerts; warranty hint → claim → recovered credit in TCO; storekeeper permissions; isolation.

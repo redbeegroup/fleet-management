@@ -75,7 +75,7 @@ Use TLS (`sslmode=require`) outside the cluster network.
 - Money is in the company currency (`reporting.companies.currency`).
 - Enum values are upper-case text (e.g. `status = 'COMPLETED'`).
 - `fuel`, `expenses`: filter `approval_status = 'APPROVED'` for costs. `cost_ledger` already includes only approved and completed costs.
-- `cost_ledger` holds direct costs: fuel, maintenance and expenses. Ownership costs come from these sources:
+- `cost_ledger` holds direct costs: fuel, maintenance (work-order tire lines as TIRES), expenses, tire changes outside work orders, and recovered warranty claims as negative amounts. Ownership costs come from these sources:
   - Depreciation: straight line, (`purchase_price` − `residual_value`) / `useful_life_months` from `in_service_at`.
   - Lease: `monthly_lease_cost`.
   - Document fees: `vehicle_documents.amount` spread over their validity.
@@ -111,6 +111,16 @@ Use TLS (`sslmode=require`) outside the cluster network.
 | `reporting.vehicle_documents` | Vehicle documents (registration, insurance, permits) with expiry. | company_id, company_code, document_id, vehicle_id, type, number, issuer, issued_at, expires_at, amount |
 | `reporting.vehicles` | Vehicles with asset data (purchase or lease) for TCO. | company_id, company_code, vehicle_id, plate_number, vin, make, model, year, vehicle_class, ownership, fuel_type, status, branch_id, branch_name, department_id, department_name, odometer_km, capacity_kg, capacity_m3, capacity_cases, capacity_pallets, tank_capacity_l, acquired_at, in_service_at, disposed_at, purchase_price, residual_value, useful_life_months, monthly_lease_cost, deleted |
 | `reporting.work_orders` | Maintenance and repair work orders. | company_id, company_code, work_order_id, wo_no, vehicle_id, type, status, priority, title, workshop, off_road, opened_at, started_at, completed_at, completed_local_date, estimated_cost, total_cost, downtime_hours |
+| `reporting.suppliers` | Outside garages and parts / tire suppliers. | company_id, company_code, supplier_id, name, kinds, payment_terms_days, external_ref (SAP vendor), active |
+| `reporting.parts` | Spare parts catalogue. | company_id, company_code, part_id, part_no, name, category, unit, supplier_id, min_qty, reorder_qty, warranty_months, warranty_km, external_ref (SAP material), active |
+| `reporting.stock` | Stock per part and branch store at moving average cost. | company_id, company_code, part_id, part_no, part_name, branch_id, branch_name, qty_on_hand, avg_cost, stock_value, min_qty, below_min |
+| `reporting.stock_movements` | Receipts, issues to work orders, returns, adjustments, transfers. | company_id, company_code, movement_id, part_id, branch_id, kind, qty (signed), unit_cost, value, qty_after, work_order_id, supplier_id, reference, occurred_at, local_date |
+| `reporting.tire_changes` | Tires fitted per vehicle position. | company_id, company_code, tire_change_id, vehicle_id, position, changed_at, local_date, odometer_km, reason, brand, model, size, condition, cost, supplier_id, work_order_id, removed_tread_mm |
+| `reporting.tire_checks` | Tread and pressure checks. | company_id, company_code, tire_check_id, vehicle_id, position, checked_at, local_date, odometer_km, tread_mm, pressure, source |
+| `reporting.vehicle_warranties` | Vehicle and component warranties. | company_id, company_code, warranty_id, vehicle_id, component, label, supplier_id, start_date, end_date, end_km |
+| `reporting.warranty_claims` | Warranty claims; recovered amounts reduce the cost. | company_id, company_code, claim_id, claim_no, vehicle_id, work_order_id, supplier_id, basis, status, amount_claimed, amount_approved, amount_recovered, submitted_at, recovered_at, recovered_local_date |
+
+S16 also appended `supplier_id, quote_amount, invoice_no, invoice_amount` to `reporting.work_orders`.
 
 ## Changing the views
 

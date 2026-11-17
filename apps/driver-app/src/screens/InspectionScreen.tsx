@@ -12,7 +12,7 @@ const KIND: Record<string, string> = {
   PERIODIC: 'Periodic',
 };
 const TONE = { PASS: 'ok', DEFECTS: 'warn', FAIL: 'danger' } as const;
-type Answer = { ok: boolean; note: string; photo: string | null };
+type Answer = { ok: boolean; note: string; photo: string | null; value?: string };
 
 export function InspectionScreen({ vehicles }: { vehicles: MyVehicle[] }) {
   const [vehicleId, setVehicleId] = useState(vehicles[0]?.id ?? '');
@@ -57,15 +57,21 @@ export function InspectionScreen({ vehicles }: { vehicles: MyVehicle[] }) {
   async function submit() {
     if (!template) return;
     const missing = template.items.filter(
-      (i) => !get(i.key).ok && !get(i.key).note.trim() && !get(i.key).photo,
+      (i) => i.type !== 'number' && !get(i.key).ok && !get(i.key).note.trim() && !get(i.key).photo,
     );
     if (missing.length)
       return Alert.alert('Describe each defect', missing.map((i) => i.label).join('\n'));
+    const noValue = template.items.filter((i) => i.type === 'number' && !(get(i.key).value ?? '').trim());
+    if (noValue.length) return Alert.alert('Enter every measurement', noValue.map((i) => i.label).join('\n'));
     setBusy(true);
     try {
       const list = [];
       for (const i of template.items) {
         const a = get(i.key);
+        if (i.type === 'number') {
+          list.push({ key: i.key, ok: true, value: Number(a.value!.replace(',', '.')) });
+          continue;
+        }
         list.push({
           key: i.key,
           ok: a.ok,
@@ -130,6 +136,21 @@ export function InspectionScreen({ vehicles }: { vehicles: MyVehicle[] }) {
           )}
           {template?.items.map((i) => {
             const a = get(i.key);
+            if (i.type === 'number') {
+              const v = a.value ? Number(a.value.replace(',', '.')) : null;
+              const out = v != null && ((i.min != null && v < i.min) || (i.max != null && v > i.max));
+              return (
+                <Card key={i.key}>
+                  <Field
+                    label={`${i.label}${i.unit ? ` (${i.unit})` : ''}${i.min != null ? ` · min ${i.min}` : ''}${i.max != null ? ` · max ${i.max}` : ''}`}
+                    keyboardType="decimal-pad"
+                    value={a.value ?? ''}
+                    onChangeText={(t) => set(i.key, { value: t })}
+                  />
+                  {out && <Text style={s.error}>Outside the limit: this is reported as a defect.</Text>}
+                </Card>
+              );
+            }
             return (
               <Card key={i.key}>
                 <View style={[s.row, { justifyContent: 'space-between' }]}>

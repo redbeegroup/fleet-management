@@ -156,6 +156,8 @@ A company admin adds an endpoint in **Integrations → Webhooks** (HTTPS only) a
 | `vehicle.overspeed`, `vehicle.geofence_enter`, `vehicle.geofence_exit`, `vehicle.gps_offline` | vehicle, driver id, time, position, speed, geofence |
 | `vehicle.fuel_drop` | same fields; `data` has `litres`, `from`, `to` (tank level in L, from the fuel sensor) |
 | `vehicle.engine_fault` | same fields; `data.kind` is `DTC` (with `code`), `COOLANT_HOT` or `BATTERY_LOW` (with `value`, `limit`) |
+| `stock.low` | `partId`, `partNo`, `name`, `branchId`, `store`, `qtyOnHand`, `minQty`, `suggestedOrder` (daily, at most weekly per item and store) |
+| `warranty_claim.updated` | `id`, `claimNo`, `vehicleId`, `workOrderId`, `basis` (VEHICLE / PART / TIRE), `status`, `amountClaimed`, `amountApproved`, `amountRecovered` |
 | `vehicle.off_route` | same fields; `data` has `tripId`, `tripNo`, `distanceM` (from the planned route) and `limitM` |
 | `vehicle.unauthorised_use` | same fields; `type` is `UNAUTHORISED_MOVEMENT` (no ongoing trip, `data.km`), `AFTER_HOURS`, `NO_DRIVER` (`data.reason`) or `RESTRICTED_AREA` (`geofenceId`, `data.geofence`) |
 | `inspection.failed` | inspection no., vehicle, driver, failed items |

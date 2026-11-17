@@ -28,6 +28,7 @@ const ROLE_HELP: Record<string, string> = {
   VIEWER: 'vehicles and map',
   REQUESTER: 'vehicle requests only',
   SUPER_ADMIN: 'all companies of the group',
+  STOREKEEPER: 'parts stores: receive, issue, count',
 };
 
 /** Users of the company: invite by e-mail, change roles, deactivate, resend links. */

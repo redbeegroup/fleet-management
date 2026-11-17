@@ -196,6 +196,18 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
   - `ReportsService` builds with the company's full read access (the existing analytics, costs, delivery-KPI, site-visit and safety services). It then sends only to recipients holding the report's permission.
   - Runs are unique per (subscription, period key).
 
+## Workshop depth (S16)
+
+- **Inventory** (`modules/inventory`):
+  - `stock.ts` holds the moving-average arithmetic.
+  - `InventoryService` locks a `part_stocks` row with `INSERT … ON CONFLICT DO NOTHING` followed by `SELECT … FOR UPDATE`. Every change writes a `stock_movements` row with the balance after it.
+  - `issueTx` / `returnTx` run inside the work-order transaction (`MaintenanceService.issuePart` / `removeLine`). Transfers lock both rows in a fixed order to avoid deadlocks.
+- **Tires** (`modules/tires`): positions come from `TIRE_LAYOUTS` (shared). History is replayed from `tire_changes`, where a rotation is a pair of rows with `from_position`. Status is computed with the latest `tire_checks`. Inspections write tire checks from numeric items that carry `tirePosition` / `measure`.
+- **Warranty** (`modules/warranty`):
+  - `coverage.ts` matches vehicle warranties, PART lines with `warranty_until` / `warranty_km_until`, and current tires against a work order's text, parts and positions.
+  - Claims follow `CLAIM_FLOW`. The ledger adds negative `warranty` rows for recovered claims.
+- **Costs:** the ledger splits work-order TIRE lines into the TIRES category, adds `tire` rows for tire changes without a work order, and adds `warranty` credits.
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -209,6 +221,9 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `webhook-dispatch` | every 15 s | send due webhook deliveries (retries with backoff) |
 | `fuel-card-sync` | hourly | pull card transactions from the provider API for companies with sync enabled |
 | `budget-alerts` | daily 08:15 Asia/Yangon | current-month budget lines reaching 90 % / 100 % (once per level) |
+| `stock-alerts` | daily 07:45 Asia/Yangon | parts at or below minimum (once a week per item and store) |
+| `tire-alerts` | daily 07:50 Asia/Yangon | tread below minimum, pressure out of tolerance, beyond expected life (weekly per vehicle) |
+| `warranty-alerts` | daily 07:55 Asia/Yangon | vehicle warranties ending in 30 days / 2,000 km; claims submitted > 30 days ago |
 | `report-dispatch` | hourly at :05 | scheduled management reports due (from 07:00 company time; once per period) |
 | `daily-stats` | every 30 min | roll GPS positions up into `vehicle_daily_stats` (last 3 local days) |
 

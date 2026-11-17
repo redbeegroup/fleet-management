@@ -10,6 +10,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileLink } from '../components/FileLink';
 import { StatusBadge } from '../components/StatusBadge';
+import { VehicleTires, VehicleWarranties } from '../components/VehicleTires';
 import { api, session, uploadFile } from '../lib/api';
 import { daysUntil, expiryTone, formatDate, humanize } from '../lib/format';
 import type { Driver, HistoryEvent, VehicleDetail } from '../lib/types';
@@ -443,6 +444,8 @@ export function VehicleDetailPage() {
           </button>
         )}
       </section>
+      <VehicleTires vehicleId={v.id} />
+      <VehicleWarranties vehicleId={v.id} />
     </>
   );
 }

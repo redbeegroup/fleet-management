@@ -1,3 +1,4 @@
+import { WarrantyTab } from '../components/WarrantyTab';
 import { Paginated, Permission, WorkOrderType } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
@@ -22,7 +23,7 @@ import type {
   WorkOrder,
 } from '../lib/types';
 
-type Tab = 'plans' | 'orders' | 'requests' | 'report';
+type Tab = 'plans' | 'orders' | 'requests' | 'report' | 'warranty';
 
 export function MaintenancePage() {
   const [params, setParams] = useSearchParams();
@@ -47,6 +48,7 @@ export function MaintenancePage() {
               `Repair requests${openRequests.data?.length ? ` (${openRequests.data.length})` : ''}`,
             ],
             ['report', 'Cost & downtime'],
+            ['warranty', 'Warranty'],
           ] as [Tab, string][]
         ).map(([k, label]) => (
           <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
@@ -58,6 +60,7 @@ export function MaintenancePage() {
       {tab === 'orders' && <OrdersTab />}
       {tab === 'requests' && <RequestsTab />}
       {tab === 'report' && <ReportTab />}
+      {tab === 'warranty' && <WarrantyTab />}
     </>
   );
 }

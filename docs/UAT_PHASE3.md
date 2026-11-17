@@ -29,4 +29,21 @@ Needs the app registrations described in [DEPLOYMENT.md](DEPLOYMENT.md) §2.6d (
 15. [ ] With SMTP configured: *Send now* delivers an e-mail with PDF and CSV attachments. The next scheduled report arrives at 07:00 company time, once.
 16. [ ] Without SMTP: the run shows *Skipped — Not sent: SMTP is not configured*.
 
+## D. Parts, tires, garages, warranty (S16)
+
+Demo data: `deploy/demo/seed-demo.cjs` adds suppliers, parts in two depots, tires on a truck, an engine warranty and a recovered warranty claim.
+
+17. [ ] *Parts & stock*: receive parts with an invoice. The average cost re-weights (e.g. 10 @ 100 + 10 @ 130 → 115). Transfer to another depot. Do a stock count and check the adjustment.
+18. [ ] A storekeeper login can receive, transfer, count and issue parts to a work order, but cannot create work orders.
+19. [ ] Work order → *Issue from store*: a PART line at the average cost with its warranty end. Issuing more than is in stock is refused. Removing the line puts the parts back.
+20. [ ] *To reorder* lists items at or below minimum. The daily alert arrives once a week. *Movements → Export CSV* opens in Excel.
+21. [ ] *Send to a garage* with a quote above the approval limit → approval needed. Completing asks for the invoice. The invoice becomes the cost when there are no lines.
+22. [ ] *Suppliers & garages*: performance per garage (turnaround, back within 30 days, invoice vs quote).
+23. [ ] Vehicle page → *Tires*: choose the layout; fit tires per position; record tread / pressure; swap two positions (km continue). Status colours and labels: Act now / Watch / OK.
+24. [ ] *Inspections → Tire checklist*: the driver app shows number fields. A tread below the minimum fails the inspection and creates a repair request. Readings appear on the vehicle tire diagram.
+25. [ ] *Tires*: positions needing attention; tire life and cost per km by brand.
+26. [ ] Vehicle warranty (e.g. engine, until date / km). A work order with "engine" in the title shows *likely* warranty. A repeat repair of a part fitted within its warranty is flagged.
+27. [ ] Warranty claim: create from the work order → submit → approved → money received. *Costs & TCO* shows the maintenance cost reduced by the recovered amount.
+28. [ ] Company B sees none of company A's suppliers, parts, stock, tires, warranties or claims (also in BI views).
+
 Sign-off: ______________________ (IT) ______________________ (finance) ______________________ (operations) Date: __________

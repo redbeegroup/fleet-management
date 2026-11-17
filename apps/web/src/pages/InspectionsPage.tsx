@@ -1,4 +1,4 @@
-import { Paginated, Permission } from '@fms/shared';
+import { Paginated, Permission, TIRE_LAYOUTS, VehicleClass } from '@fms/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -147,7 +147,7 @@ function RecordInspection({ onDone }: { onDone: () => void }) {
   const [vehicleId, setVehicleId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [answers, setAnswers] = useState<
-    Record<string, { ok: boolean; note: string; file: File | null }>
+    Record<string, { ok: boolean; note: string; file: File | null; value?: string }>
   >({});
   const [error, setError] = useState<string | null>(null);
   const vehicles = useQuery({
@@ -170,6 +170,10 @@ function RecordInspection({ onDone }: { onDone: () => void }) {
       const list = [];
       for (const item of template!.items) {
         const a = answers[item.key] ?? { ok: true, note: '', file: null };
+        if (item.type === 'number') {
+          list.push({ key: item.key, ok: true, value: a.value === undefined || a.value === '' ? null : Number(a.value), note: a.note || null });
+          continue;
+        }
         const photoFileId = !a.ok && a.file ? (await uploadFile(a.file)).id : null;
         list.push({ key: item.key, ok: a.ok, note: a.note || null, photoFileId });
       }
@@ -185,7 +189,7 @@ function RecordInspection({ onDone }: { onDone: () => void }) {
     },
     onError: (e) => setError(errorText(e)),
   });
-  const set = (key: string, patch: Partial<{ ok: boolean; note: string; file: File | null }>) =>
+  const set = (key: string, patch: Partial<{ ok: boolean; note: string; file: File | null; value: string }>) =>
     setAnswers((a) => ({
       ...a,
       [key]: { ...(a[key] ?? { ok: true, note: '', file: null }), ...patch },
@@ -236,6 +240,32 @@ function RecordInspection({ onDone }: { onDone: () => void }) {
         <ul className="checklist">
           {template.items.map((item) => {
             const a = answers[item.key] ?? { ok: true, note: '', file: null };
+            if (item.type === 'number') {
+              const v = a.value === undefined || a.value === '' ? null : Number(a.value);
+              const out = v != null && ((item.min != null && v < item.min) || (item.max != null && v > item.max));
+              return (
+                <li key={item.key} className={out ? 'defect' : ''}>
+                  <span>
+                    {item.label}{' '}
+                    <span className="muted small">
+                      {[item.min != null && `min ${item.min}`, item.max != null && `max ${item.max}`].filter(Boolean).join(', ')}
+                    </span>
+                  </span>
+                  <span className="actions">
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={a.value ?? ''}
+                      onChange={(e) => set(item.key, { value: e.target.value })}
+                      aria-label={item.label}
+                      style={{ width: 100 }}
+                    />{' '}
+                    {item.unit}
+                  </span>
+                </li>
+              );
+            }
             return (
               <li key={item.key} className={a.ok ? '' : 'defect'}>
                 <span>
@@ -315,6 +345,7 @@ function Checklists({ canWrite }: { canWrite: boolean }) {
           <button className="btn" onClick={() => setEditing('new')}>
             New checklist
           </button>
+          <TireChecklistButton />
         </div>
       )}
       {editing && (
@@ -350,7 +381,8 @@ function Checklists({ canWrite }: { canWrite: boolean }) {
             <ol>
               {t.items.map((i) => (
                 <li key={i.key}>
-                  {i.label} {i.critical && <span className="badge badge-danger">critical</span>}
+                  {i.label} {i.type === 'number' && <span className="muted small">({[i.unit, i.min != null && `min ${i.min}`, i.max != null && `max ${i.max}`].filter(Boolean).join(', ')})</span>}{' '}
+                  {i.critical && <span className="badge badge-danger">critical</span>}
                 </li>
               ))}
             </ol>
@@ -478,6 +510,62 @@ function TemplateEditor({
           Save checklist
         </button>
       </div>
+    </form>
+  );
+}
+
+/** Creates a tread + pressure checklist for every position of a tire layout. */
+function TireChecklistButton() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: (b: unknown) => api('/inspection-templates/tires', { method: 'POST', body: JSON.stringify(b) }),
+    onSuccess: () => (setOpen(false), setError(null), void qc.invalidateQueries({ queryKey: ['inspection-templates'] })),
+    onError: (e) => setError(errorText(e)),
+  });
+  if (!open)
+    return (
+      <button className="btn" onClick={() => setOpen(true)}>
+        Tire checklist…
+      </button>
+    );
+  return (
+    <form
+      className="inline-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        create.mutate({ layout: f.get('layout'), vehicleClasses: f.get('vehicleClass') ? [f.get('vehicleClass')] : [], kind: f.get('kind') });
+      }}
+    >
+      <select name="layout" aria-label="Tire layout" defaultValue="4x2-6">
+        {Object.entries(TIRE_LAYOUTS).map(([k, l]) => (
+          <option key={k} value={k}>
+            {l.label}
+          </option>
+        ))}
+      </select>
+      <select name="vehicleClass" aria-label="Vehicle class" defaultValue="TRUCK">
+        <option value="">All classes</option>
+        {Object.values(VehicleClass).map((c) => (
+          <option key={c} value={c}>
+            {humanize(c)}
+          </option>
+        ))}
+      </select>
+      <select name="kind" aria-label="When" defaultValue="PERIODIC">
+        <option value="PERIODIC">Periodic</option>
+        <option value="PRE_TRIP">Pre-trip</option>
+      </select>
+      <button className="btn btn-primary" disabled={create.isPending}>
+        Create
+      </button>
+      <button type="button" className="btn" onClick={() => setOpen(false)}>
+        Close
+      </button>
+      {error && <span className="error small">{error}</span>}
+      <span className="muted small">Tread and pressure for each position; values outside the limits (Settings → tires) are defects.</span>
     </form>
   );
 }

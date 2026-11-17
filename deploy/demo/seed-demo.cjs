@@ -49,7 +49,7 @@ async function step(name, fn) {
   const login = await send('/auth/login', { email: EMAIL, password: PASSWORD });
   if (!ok(login)) throw new Error(`Login failed (${login.s})`);
   H = { authorization: `Bearer ${login.b.accessToken}` };
-  console.log(`Seeding Phase 2 demo data into ${BASE} as ${EMAIL}`);
+  console.log(`Seeding demo data into ${BASE} as ${EMAIL}`);
 
   const branches = (await j('/branches')).b;
   const depot = branches.find((b) => b.code === 'YGN') || branches[0];
@@ -212,6 +212,69 @@ async function step(name, fn) {
     fd.append('commit', 'true');
     const r = await j('/fuel/card-statements', { method: 'POST', body: fd });
     return ok(r) ? `${r.b.imported} new transactions (${r.b.duplicates} already imported)` : `HTTP ${r.s}`;
+  });
+
+  await step('Workshop (S16): suppliers, parts stock in two depots, tires, warranty and a claim', async () => {
+    const branches = (await j('/branches')).b || [];
+    const vehicles = ((await j('/vehicles?pageSize=50')).b || {}).items || [];
+    const truck = vehicles.find((v) => v.vehicleClass === 'TRUCK') || vehicles[0];
+    if (!branches.length || !truck) return 'skipped: no branch or vehicle';
+    const [d1, d2] = [branches[0].id, (branches[1] || branches[0]).id];
+    let sups = (await j('/suppliers')).b || [];
+    for (const s of [
+      { name: 'Shwe Auto Garage', kinds: ['GARAGE'], phone: '+95 9 450 112233', paymentTermsDays: 30 },
+      { name: 'Yangon Truck Parts', kinds: ['PARTS'], paymentTermsDays: 30 },
+      { name: 'Golden Tyre Co.', kinds: ['TIRES'], paymentTermsDays: 14 },
+    ]) if (!sups.some((x) => x.name === s.name)) await send('/suppliers', { ...s, notes: TAG });
+    sups = (await j('/suppliers')).b || [];
+    const sup = (n) => sups.find((x) => x.name === n).id;
+    await send('/inventory/parts/import', { parts: [
+      { partNo: 'ALT-24V-80A', name: 'Alternator 24V 80A', category: 'Electrical', minQty: 2, reorderQty: 4, warrantyMonths: 12, warrantyKm: 50000 },
+      { partNo: 'OF-ISZ-01', name: 'Oil filter Isuzu', category: 'Filters', minQty: 10, reorderQty: 24 },
+      { partNo: 'BP-FR-02', name: 'Brake pads front (set)', category: 'Brakes', minQty: 4, reorderQty: 8, warrantyMonths: 6, warrantyKm: 20000 },
+      { partNo: 'BAT-12V-100', name: 'Battery 12V 100Ah', category: 'Electrical', minQty: 2, reorderQty: 4, warrantyMonths: 18 },
+    ] });
+    const parts = Object.fromEntries(((await j('/inventory/parts')).b || []).map((x) => [x.partNo, x.id]));
+    const stock = ((await j('/inventory/stock')).b || { items: [] }).items;
+    const done = [];
+    if (!stock.length) {
+      await send('/inventory/receipts', { branchId: d1, supplierId: sup('Yangon Truck Parts'), reference: 'DEMO-GRN-1', lines: [
+        { partId: parts['ALT-24V-80A'], qty: 4, unitCost: 420000 }, { partId: parts['OF-ISZ-01'], qty: 30, unitCost: 18000 },
+        { partId: parts['BP-FR-02'], qty: 6, unitCost: 95000 }, { partId: parts['BAT-12V-100'], qty: 3, unitCost: 265000 } ] });
+      if (d2 !== d1) await send('/inventory/transfers', { fromBranchId: d1, toBranchId: d2, lines: [{ partId: parts['OF-ISZ-01'], qty: 12 }, { partId: parts['BP-FR-02'], qty: 3 }] });
+      done.push('stock received');
+    }
+    const sheet = (await j(`/vehicles/${truck.id}/tires`)).b;
+    if (sheet && !sheet.totals.changes) {
+      const odo = Number(truck.odometerKm || 0);
+      const ago = (d) => new Date(Date.now() - d * 86_400_000).toISOString();
+      for (const [pos, brand, d] of [['1L', 'Bridgestone', 200], ['1R', 'Bridgestone', 200], ['2LO', 'Maxxis', 300], ['2LI', 'Maxxis', 300], ['2RI', 'Maxxis', 300], ['2RO', 'Maxxis', 300]])
+        await send(`/vehicles/${truck.id}/tires/changes`, { position: pos, reason: 'NEW_FIT', brand, size: '8.25R16', cost: brand === 'Maxxis' ? 360000 : 420000, supplierId: sup('Golden Tyre Co.'), odometerKm: Math.max(0, odo - d * 60), changedAt: ago(d), warrantyMonths: 12, notes: TAG });
+      await send(`/vehicles/${truck.id}/tires/checks`, { readings: [{ position: '1L', treadMm: 7.5 }, { position: '1R', treadMm: 7.2 }, { position: '2LO', treadMm: 3.6 }, { position: '2LI', treadMm: 4.8 }, { position: '2RI', treadMm: 5.1 }, { position: '2RO', treadMm: 2.4 }] });
+      done.push('tires fitted and checked');
+    }
+    const warranties = (await j(`/warranties?vehicleId=${truck.id}`)).b || [];
+    if (!warranties.length) {
+      await send(`/vehicles/${truck.id}/warranties`, { component: 'ENGINE', label: 'Powertrain', startDate: day(-600), endDate: day(500), endKm: 200000, supplierId: sup('Shwe Auto Garage'), terms: TAG });
+      done.push('engine warranty');
+    }
+    const claims = ((await j('/warranty-claims')).b || { items: [] }).items;
+    if (!claims.length) {
+      const wo1 = (await send('/maintenance/work-orders', { vehicleId: truck.id, type: 'CORRECTIVE', title: `${TAG} Battery not charging`, offRoad: false })).b;
+      await send(`/maintenance/work-orders/${wo1.id}/parts`, { partId: parts['ALT-24V-80A'], branchId: d1, qty: 1 });
+      await send(`/maintenance/work-orders/${wo1.id}/complete`, { resolution: 'Alternator replaced' });
+      const wo2 = (await send('/maintenance/work-orders', { vehicleId: truck.id, type: 'CORRECTIVE', title: `${TAG} Alternator noise again`, supplierId: sup('Shwe Auto Garage'), quoteAmount: 60000, offRoad: false })).b;
+      const cov = (await j(`/maintenance/work-orders/${wo2.id}/warranty`)).b;
+      const part = cov && cov.items.find((i) => i.basis === 'PART');
+      if (part) {
+        const c = (await send('/warranty-claims', { vehicleId: truck.id, workOrderId: wo2.id, supplierId: sup('Yangon Truck Parts'), basis: 'PART', basisRef: part.ref, description: 'Alternator bearing failed within warranty', amountClaimed: 420000 })).b;
+        await send(`/warranty-claims/${c.id}`, { action: 'SUBMIT' }, 'PATCH');
+        await send(`/warranty-claims/${c.id}`, { action: 'APPROVE', amountApproved: 420000 }, 'PATCH');
+        await send(`/warranty-claims/${c.id}`, { action: 'RECOVER', amountRecovered: 420000 }, 'PATCH');
+      }
+      done.push('garage job, repeat repair and a recovered warranty claim');
+    }
+    return done.length ? done.join(', ') : 'already loaded';
   });
 
   console.log(`\nDone: ${out.filter((x) => x.includes('FAILED') || /HTTP \d/.test(x)).length} step(s) need attention.`);

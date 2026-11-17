@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, session } from '../lib/api';
 import {
+  formatDate,
   formatDateTime,
   formatDuration,
   humanize,
@@ -12,6 +13,7 @@ import {
   WO_TONE,
 } from '../lib/format';
 import type { WorkOrder, CompanySettings } from '../lib/types';
+import { GarageCard, IssuePartForm, WarrantyHint } from '../components/WorkOrderWorkshop';
 
 export function WorkOrderPage() {
   const { id } = useParams();
@@ -147,9 +149,16 @@ export function WorkOrderPage() {
             const f = new FormData(e.currentTarget);
             if (panel === 'complete') {
               const odo = f.get('odometerKm') as string;
+              const invNo = f.get('invoiceNo') as string | null;
+              const invAmt = f.get('invoiceAmount') as string | null;
               act.mutate({
                 path: '/complete',
-                body: { resolution: f.get('text'), ...(odo && { odometerKm: Number(odo) }) },
+                body: {
+                  resolution: f.get('text'),
+                  ...(odo && { odometerKm: Number(odo) }),
+                  ...(invNo && { invoiceNo: invNo }),
+                  ...(invAmt && { invoiceAmount: Number(invAmt) }),
+                },
               });
             } else act.mutate({ path: '/cancel', body: { reason: f.get('text') } });
           }}
@@ -163,6 +172,21 @@ export function WorkOrderPage() {
           />
           {panel === 'complete' && (
             <input name="odometerKm" type="number" min={0} step="any" placeholder="Odometer (km)" />
+          )}
+          {panel === 'complete' && w.supplierId && (
+            <>
+              <input name="invoiceNo" required={!w.invoiceNo} defaultValue={w.invoiceNo ?? ''} placeholder="Garage invoice no." />
+              <input
+                name="invoiceAmount"
+                type="number"
+                min={0}
+                step="any"
+                required={!w.invoiceAmount}
+                defaultValue={w.invoiceAmount ?? ''}
+                placeholder="Invoice amount"
+                title="Without cost lines, the invoice amount becomes the cost"
+              />
+            </>
           )}
           <button className="btn btn-primary">Confirm</button>
           <button type="button" className="btn" onClick={() => setPanel('none')}>
@@ -180,10 +204,6 @@ export function WorkOrderPage() {
                 {humanize(w.priority)}
               </span>
             </dd>
-            <dt>Workshop</dt>
-            <dd>{w.workshop ?? '—'}</dd>
-            <dt>Mechanic</dt>
-            <dd>{w.assignedTo ?? '—'}</dd>
             <dt>Opened</dt>
             <dd>{formatDateTime(w.openedAt)}</dd>
             <dt>Started</dt>
@@ -223,6 +243,8 @@ export function WorkOrderPage() {
           )}
         </div>
       </section>
+      <GarageCard w={w} editable={canWrite && w.status !== 'COMPLETED' && w.status !== 'CANCELLED'} />
+      <WarrantyHint w={w} />
       <section className="card">
         <h2>Costs</h2>
         <table>
@@ -240,7 +262,15 @@ export function WorkOrderPage() {
             {w.lines?.map((l) => (
               <tr key={l.id}>
                 <td>{humanize(l.kind)}</td>
-                <td>{l.description}</td>
+                <td>
+                  {l.description}
+                  {l.warrantyUntil && (
+                    <div className="muted small">
+                      warranty until {formatDate(l.warrantyUntil)}
+                      {l.warrantyKmUntil ? ` / ${Number(l.warrantyKmUntil).toLocaleString()} km` : ''}
+                    </div>
+                  )}
+                </td>
                 <td className="num">{Number(l.quantity)}</td>
                 <td className="num">{money(l.unitCost)}</td>
                 <td className="num">{money(l.total)}</td>
@@ -273,6 +303,7 @@ export function WorkOrderPage() {
               <option value="PART">Part</option>
               <option value="LABOUR">Labour</option>
               <option value="EXTERNAL">External service</option>
+              <option value="TIRE">Tire</option>
               <option value="OTHER">Other</option>
             </select>
             <input name="description" required placeholder="Description" size={30} />
@@ -296,6 +327,7 @@ export function WorkOrderPage() {
             <button className="btn btn-primary">Add line</button>
           </form>
         )}
+        {(w.status === 'OPEN' || w.status === 'IN_PROGRESS') && <IssuePartForm woId={w.id} />}
       </section>
     </>
   );

@@ -245,7 +245,7 @@ export interface ChecklistTemplate {
   id: string;
   name: string;
   kind: 'PRE_TRIP' | 'POST_TRIP' | 'PERIODIC';
-  items: { key: string; label: string; critical: boolean }[];
+  items: { key: string; label: string; critical: boolean; type?: 'check' | 'number'; unit?: string; min?: number; max?: number }[];
 }
 
 export interface MyInspection {
