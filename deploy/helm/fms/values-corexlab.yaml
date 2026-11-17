@@ -4,8 +4,8 @@
 # Images are public on GHCR, so no pull secret is needed.
 image:
   # Deploy an immutable commit tag: --set image.api.tag=<sha> --set image.web.tag=<sha>
-  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "71f0ae3ce63bd18ce29bd85fac286b38225b4f10", pullPolicy: IfNotPresent }
-  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "71f0ae3ce63bd18ce29bd85fac286b38225b4f10", pullPolicy: IfNotPresent }
+  api: { repository: ghcr.io/redbeegroup/fleet-management/api, tag: "d3cb52768c818245ed368f4c2de70956554247a2", pullPolicy: IfNotPresent }
+  web: { repository: ghcr.io/redbeegroup/fleet-management/web, tag: "d3cb52768c818245ed368f4c2de70956554247a2", pullPolicy: IfNotPresent }
 database:
   externalService: { enabled: false }
 secrets:
