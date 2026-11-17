@@ -85,8 +85,10 @@ export function advise(f: VehicleFacts, l: Limits): { advice: Advice; reasons: s
   if (l.maxAgeYears != null && f.ageMonths != null) {
     const left = l.maxAgeYears * 12 - f.ageMonths;
     if (left <= 0) now.push(`Age ${Math.floor(f.ageMonths / 12)} years (limit ${l.maxAgeYears})`);
-    else if (left <= l.planWithinMonths) (plan.push(`Reaches ${l.maxAgeYears} years in ${Math.ceil(left)} months`), months.push(left));
-    else months.push(left);
+    else {
+      if (left <= l.planWithinMonths) plan.push(`Reaches ${l.maxAgeYears} years in ${Math.ceil(left)} months`);
+      months.push(left);
+    }
   }
   if (l.maxKm != null) {
     const left = l.maxKm - f.odometerKm;
@@ -107,7 +109,10 @@ export function advise(f: VehicleFacts, l: Limits): { advice: Advice; reasons: s
   if (f.economicLifeYears != null && f.ageMonths != null) {
     const left = f.economicLifeYears * 12 - f.ageMonths;
     if (left <= 0) now.push(`Past its economic life (${f.economicLifeYears} years)`);
-    else if (left <= l.planWithinMonths) (plan.push(`Economic life (${f.economicLifeYears} years) ends in ${Math.ceil(left)} months`), months.push(left));
+    else if (left <= l.planWithinMonths) {
+      plan.push(`Economic life (${f.economicLifeYears} years) ends in ${Math.ceil(left)} months`);
+      months.push(left);
+    }
   }
   const monthsToLimit = now.length ? 0 : months.length ? Math.max(0, Math.round(Math.min(...months))) : null;
   return { advice: now.length ? 'REPLACE_NOW' : plan.length ? 'PLAN' : 'OK', reasons: [...now, ...plan], monthsToLimit };
