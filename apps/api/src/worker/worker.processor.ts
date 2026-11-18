@@ -3,6 +3,7 @@ import { InventoryService } from '../modules/inventory/inventory.service';
 import { TiresService } from '../modules/tires/tires.service';
 import { WarrantyService } from '../modules/warranty/warranty.service';
 import { ComplianceService } from '../modules/compliance/compliance.service';
+import { SapService } from '../modules/sap/sap.service';
 import { AuditsService } from '../modules/audits/audits.service';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
@@ -44,6 +45,7 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     private readonly warranty: WarrantyService,
     private readonly compliancePack: ComplianceService,
     private readonly audits: AuditsService,
+    private readonly sap: SapService,
   ) {
     super();
   }
@@ -65,6 +67,11 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
     await this.queue.upsertJobScheduler('warranty-alerts', { pattern: '0 55 7 * * *', tz: 'Asia/Yangon' }, { name: 'warranty-alerts' });
     await this.queue.upsertJobScheduler('compliance-pack', { pattern: '0 0 8 * * *', tz: 'Asia/Yangon' }, { name: 'compliance-pack' });
     await this.queue.upsertJobScheduler('audit-actions', { pattern: '0 5 8 * * *', tz: 'Asia/Yangon' }, { name: 'audit-actions' });
+    // SAP link (S19): outbox and receipt checks every minute, master data nightly, billing hourly, month-end posting.
+    await this.queue.upsertJobScheduler('sap-dispatch', { every: 60_000 }, { name: 'sap-dispatch' });
+    await this.queue.upsertJobScheduler('sap-sync', { pattern: '0 30 2 * * *', tz: 'Asia/Yangon' }, { name: 'sap-sync' });
+    await this.queue.upsertJobScheduler('sap-billing', { pattern: '0 15 * * * *' }, { name: 'sap-billing' });
+    await this.queue.upsertJobScheduler('sap-autopost', { pattern: '0 10 6 * * *', tz: 'Asia/Yangon' }, { name: 'sap-autopost' });
     // Hourly at :05; each company's reports go out from 07:00 local time.
     await this.queue.upsertJobScheduler('report-dispatch', { pattern: '0 5 * * * *' }, { name: 'report-dispatch' });
     await this.queue.upsertJobScheduler('fuel-card-sync', { pattern: '0 20 * * * *' }, { name: 'fuel-card-sync' });
@@ -99,6 +106,14 @@ export class WorkerProcessor extends WorkerHost implements OnApplicationBootstra
         return this.compliancePack.alerts();
       case 'audit-actions':
         return this.audits.overdueAlerts();
+      case 'sap-dispatch':
+        return { ...(await this.sap.dispatchDue()), receipts: await this.sap.checkReceipts() };
+      case 'sap-sync':
+        return this.sap.syncAll();
+      case 'sap-billing':
+        return this.sap.billingAll();
+      case 'sap-autopost':
+        return this.sap.autoPostAll();
       case 'report-dispatch':
         return this.reports.dispatch();
       case 'fuel-card-sync':

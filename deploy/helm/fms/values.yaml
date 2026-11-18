@@ -68,6 +68,8 @@ config:
   WATCHTOWER_POLL_SECONDS: "30"
   # Fuel card provider API for companies with card sync enabled: none | mock | rest (FUEL_CARD_API_URL; key in the secret)
   FUEL_CARD_API: none
+  # SAP S/4HANA link: none | mock (demo stand-in) | odata (real system; connection per company in Integrations → SAP)
+  SAP_MODE: none
   # Files: S3-compatible object storage (required with more than one API replica)
   STORAGE_DRIVER: s3
   S3_ENDPOINT: ""                    # e.g. https://s3.example.internal (empty = AWS)

@@ -9,6 +9,9 @@ import { errorText } from '../pages/IncidentsPage';
 const num = (v: FormDataEntryValue | null) => (v === null || v === '' ? null : Number(v));
 
 /** Outside garage, its quote and its invoice. */
+const PO_TONE: Record<string, string> = { REQUESTED: 'info', CREATED: 'info', MATCHED: 'ok', INVOICE_MISMATCH: 'danger', FAILED: 'danger', NO_SAP_VENDOR: 'warn' };
+const PO_LABEL: Record<string, string> = { REQUESTED: 'sending to SAP', CREATED: 'created', MATCHED: 'invoice matches', INVOICE_MISMATCH: 'invoice differs from PO', FAILED: 'not created', NO_SAP_VENDOR: 'garage has no SAP vendor no.' };
+
 export function GarageCard({ w, editable }: { w: WorkOrder; editable: boolean }) {
   const qc = useQueryClient();
   const [edit, setEdit] = useState(false);
@@ -67,6 +70,14 @@ export function GarageCard({ w, editable }: { w: WorkOrder; editable: boolean })
           <dd>
             {w.invoiceNo ? `${w.invoiceNo} · ${money(w.invoiceAmount)} · ${formatDate(w.invoiceDate)}` : '—'} {file(w.invoiceFileId, 'document')}
           </dd>
+          {(w.poNumber || w.poStatus) && (
+            <>
+              <dt>SAP PO</dt>
+              <dd>
+                {w.poNumber ?? '—'} {w.poStatus && <span className={`badge badge-${PO_TONE[w.poStatus] ?? 'muted'}`}>{PO_LABEL[w.poStatus] ?? w.poStatus}</span>}
+              </dd>
+            </>
+          )}
         </dl>
       ) : (
         <form className="form-grid" onSubmit={(e) => void submit(e)}>

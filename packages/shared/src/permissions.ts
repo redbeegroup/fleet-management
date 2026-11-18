@@ -59,6 +59,8 @@ export const Permission = {
   /** Safety audits and corrective actions (S18). */
   AUDIT_SAFETY_READ: 'safety-audit:read',
   AUDIT_SAFETY_WRITE: 'safety-audit:write',
+  /** Freight rate cards and trip revenue re-rating (S19). */
+  RATE_CARD_WRITE: 'rate-card:write',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -96,6 +98,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.REPAIR_REQUEST,
     Permission.INVENTORY_WRITE,
     Permission.AUDIT_SAFETY_WRITE,
+    Permission.RATE_CARD_WRITE,
     Permission.COST_WRITE,
     Permission.SAFETY_WRITE,
     Permission.INCIDENT_REPORT,

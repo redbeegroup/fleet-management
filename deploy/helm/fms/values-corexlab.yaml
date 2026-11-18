@@ -16,6 +16,7 @@ config:
   APP_URL: https://fms.corexlab.net
   TELEMATICS_PROVIDER: mock          # until the Watch Tower API is connected
   FUEL_CARD_API: mock                # until a fuel card provider is chosen
+  SAP_MODE: mock                     # until the SAP sandbox and communication user exist
   S3_ENDPOINT: https://s3.corexlab.net
   S3_BUCKET: cannopy-fms
   PUSH_ENABLED: "false"

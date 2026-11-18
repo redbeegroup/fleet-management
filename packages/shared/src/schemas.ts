@@ -215,6 +215,7 @@ export const companySettingsSchema = z.object({
   tires: z.lazy(() => tireSettingsSchema).default({}),
   lifecycle: z.lazy(() => lifecycleSettingsSchema).default({}),
   compliance: z.lazy(() => complianceSettingsSchema).default({}),
+  sap: z.lazy(() => sapSettingsSchema).default({}),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -235,6 +236,7 @@ export const updateCompanySettingsSchema = z.object({
   tires: z.lazy(() => tireSettingsSchema.partial()).optional(),
   lifecycle: z.lazy(() => lifecycleSettingsSchema.partial()).optional(),
   compliance: z.lazy(() => complianceSettingsSchema.partial()).optional(),
+  sap: z.lazy(() => sapSettingsSchema.partial()).optional(),
 });
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>;
 
@@ -1300,6 +1302,8 @@ export const receiveStockSchema = z.object({
   branchId: z.string().uuid(),
   supplierId: z.string().uuid().optional().nullable(),
   reference: z.string().trim().max(60).optional().nullable(),
+  /** SAP purchase order the goods are received against (S19); lines are checked against it. */
+  poNumber: z.string().trim().max(20).optional().nullable(),
   fileId: z.string().uuid().optional().nullable(),
   occurredAt: z.coerce.date().optional(),
   lines: z.array(z.object({ partId: z.string().uuid(), qty, unitCost: z.number().nonnegative().max(1e10) })).min(1).max(200),
@@ -1624,3 +1628,83 @@ export const updateCorrectiveActionSchema = z.object({
   dueDate: z.coerce.date().optional(),
 });
 export type UpdateCorrectiveActionInput = z.infer<typeof updateCorrectiveActionSchema>;
+
+// ---------------------------------------------------------------------------
+// S19: rate cards, profitability, SAP S/4HANA
+// ---------------------------------------------------------------------------
+
+const money = z.number().nonnegative().max(1e10);
+export const rateCardSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120),
+    customerId: z.string().uuid().optional().nullable(),
+    vehicleClass: z.string().max(30).optional().nullable(),
+    branchId: z.string().uuid().optional().nullable(),
+    validFrom: z.coerce.date(),
+    validTo: z.coerce.date().optional().nullable(),
+    active: z.boolean().default(true),
+    priority: z.number().int().min(0).max(100).default(0),
+    perTrip: money.default(0),
+    perKm: money.default(0),
+    perKg: money.default(0),
+    perDrop: money.default(0),
+    perPallet: money.default(0),
+    minCharge: money.default(0),
+    fuelSurchargePct: z.number().min(0).max(100).default(0),
+    waitingPerHour: money.default(0),
+    freeWaitMinutes: z.number().int().min(0).max(1440).default(0),
+    notes: z.string().trim().max(500).optional().nullable(),
+  })
+  .refine((r) => !r.validTo || r.validTo >= r.validFrom, { message: 'Valid to is before valid from', path: ['validTo'] })
+  .refine((r) => r.perTrip + r.perKm + r.perKg + r.perDrop + r.perPallet + r.minCharge > 0, { message: 'Enter at least one charge', path: ['perTrip'] });
+export type RateCardInput = z.infer<typeof rateCardSchema>;
+
+export const rerateSchema = z.object({ from: z.coerce.date(), to: z.coerce.date() });
+
+export const ProfitGroupBy = ['trip', 'vehicle', 'customer', 'branch'] as const;
+
+/** SAP S/4HANA link (per company). Credentials are stored separately, encrypted. */
+export const sapSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  companyCode: z.string().trim().max(10).default(''),
+  controllingArea: z.string().trim().max(10).default(''),
+  plant: z.string().trim().max(10).default(''),
+  purchasingOrg: z.string().trim().max(10).default(''),
+  purchasingGroup: z.string().trim().max(10).default(''),
+  currency: z.string().trim().length(3).default('MMK'),
+  /** GL expense account per cost category; categories without an account use `default`. */
+  glAccounts: z.record(z.string(), z.string().trim().max(20)).default({}),
+  /** Credit side of the cost journal (clearing / accrual account). */
+  offsetAccount: z.string().trim().max(20).default(''),
+  /** Cost centre for vehicles without a department cost centre. */
+  defaultCostCenter: z.string().trim().max(20).default(''),
+  /** GL account and material group for garage purchase orders. */
+  serviceGlAccount: z.string().trim().max(20).default(''),
+  materialGroup: z.string().trim().max(20).default(''),
+  /** Day of the month on which last month is posted automatically (with autoPost). */
+  postingDay: z.number().int().min(1).max(28).default(5),
+  autoPost: z.boolean().default(false),
+  /** Create a PO when an outside-garage quote is accepted. */
+  poForGarageJobs: z.boolean().default(true),
+  /** Check parts receipts against the PO given on the receipt. */
+  poForReceipts: z.boolean().default(true),
+  /** Allowed difference between invoice / receipt and PO (percent). */
+  poTolerancePct: z.number().min(0).max(50).default(2),
+  /** Pull SD billing documents (actual revenue) for comparison with rate-card revenue. */
+  importBilling: z.boolean().default(true),
+});
+export type SapSettings = z.infer<typeof sapSettingsSchema>;
+
+export const sapCredentialSchema = z.object({
+  baseUrl: z.string().trim().url().max(300),
+  authType: z.enum(['BASIC', 'OAUTH']).default('BASIC'),
+  username: z.string().trim().min(1).max(120),
+  /** Omit to keep the stored secret. */
+  secret: z.string().min(1).max(500).optional(),
+  tokenUrl: z.string().trim().url().max(300).optional().nullable(),
+  sapClient: z.string().trim().regex(/^\d{3}$/).optional().nullable(),
+});
+export type SapCredentialInput = z.infer<typeof sapCredentialSchema>;
+
+export const costPostingSchema = z.object({ period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
+export const assetMatchSchema = z.object({ vehicleId: z.string().uuid(), sapAssetNo: z.string().trim().max(30).nullable() });

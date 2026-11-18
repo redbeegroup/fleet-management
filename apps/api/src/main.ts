@@ -4,6 +4,7 @@ import { TiresService } from './modules/tires/tires.service';
 import { WarrantyService } from './modules/warranty/warranty.service';
 import { ComplianceService } from './modules/compliance/compliance.service';
 import { AuditsService } from './modules/audits/audits.service';
+import { SapService } from './modules/sap/sap.service';
 import { FuelCardsService } from './modules/fuel/cards/fuel-cards.service';
 import { CostsService } from './modules/costs/costs.service';
 import 'reflect-metadata';
@@ -94,6 +95,10 @@ async function runJob(name: string | undefined) {
     'warranty-alerts': () => app.get(WarrantyService).alerts(),
     'compliance-pack': () => app.get(ComplianceService).alerts(),
     'audit-actions': () => app.get(AuditsService).overdueAlerts(),
+    'sap-dispatch': async () => ({ ...(await app.get(SapService).dispatchDue()), receipts: await app.get(SapService).checkReceipts() }),
+    'sap-sync': () => app.get(SapService).syncAll(),
+    'sap-billing': () => app.get(SapService).billingAll(),
+    'sap-autopost': () => app.get(SapService).autoPostAll(),
     'fuel-card-sync': () => app.get(FuelCardsService).syncAll(),
     'daily-stats': () => app.get(AnalyticsService).rollup(process.env.JOB_FROM, process.env.JOB_TO),
   };

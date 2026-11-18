@@ -198,3 +198,27 @@ def verify(raw_body: bytes, header: str, secret: str, tolerance: int = 300) -> b
 ```
 
 Use the **raw** request body, before any JSON parsing.
+
+## 5. SAP S/4HANA (S19)
+
+FMS calls SAP; SAP does not call FMS. Switch it on with `SAP_MODE=odata` on the API and worker, then enter the connection under *Integrations → SAP S/4HANA* (stored encrypted). `SAP_MODE=mock` runs a built-in stand-in for demos.
+
+**Checklist for the SAP team (communication arrangement for one communication user):**
+
+| Purpose | Standard API | Direction |
+|---|---|---|
+| Cost centres | API_COSTCENTER_SRV (A_CostCenter, to_Text) | read |
+| Suppliers / customers | API_BUSINESS_PARTNER (A_Supplier, A_Customer) | read |
+| Materials | API_PRODUCT_SRV (A_Product, to_Description) | read |
+| Fixed assets | API_FIXEDASSET_SRV (A_FixedAsset) | read |
+| Journal entries | Journal Entry – Post (SOAP JournalEntryBulkCreateRequest, path `/sap/bc/srt/scs_ext/sap/journalentrycreaterequestconfi`) | write |
+| Purchase orders | API_PURCHASEORDER_PROCESS_SRV (A_PurchaseOrder, deep insert with items and account assignment) | read / write |
+| Billing documents | API_BILLING_DOCUMENT_SRV (A_BillingDocument, to_Item) | read |
+
+- Authentication: user + password (basic) or OAuth client credentials; optional `sap-client`. HTTPS only.
+- Values to provide: company code, controlling area, plant, purchasing organisation and group, currency, GL expense account per cost category (or a default), the offset (accrual) account, a default cost centre, the GL account and material group for garage POs.
+- Journal entries: document type SA, one debit line per cost centre × GL account (credit for a net credit), one balancing line on the offset account, posting date = last day of the month, reference `FMS<yyyymm>V<version>`. A re-post first sends the mirror entry of the previous document.
+- Garage POs: type NB, one service line (quantity 1, net price = accepted quote), account assignment K (cost centre). The PO number is stored on the work order.
+- Billing: the customer reference (`PurchaseOrderByCustomer`) or the item's reference document should carry the DMS order number or the FMS trip number.
+- The field mapping is kept in one file (`apps/api/src/modules/sap/sap-client.ts`) and will be confirmed against the sandbox.
+

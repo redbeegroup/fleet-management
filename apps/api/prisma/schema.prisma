@@ -95,11 +95,13 @@ model Branch {
 }
 
 model Department {
-  id        String   @id @default(uuid()) @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  code      String
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  code          String
+  name          String
+  /// SAP cost centre (S19).
+  sapCostCenter String?  @map("sap_cost_center")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   company  Company   @relation(fields: [companyId], references: [id])
   vehicles Vehicle[]
@@ -211,6 +213,8 @@ model Vehicle {
   /// KM | HOURS | NONE: what the meter counts (equipment usually HOURS).
   meterType             String        @default("KM") @map("meter_type")
   hourMeter             Decimal?      @map("hour_meter") @db.Decimal(10, 1)
+  /// SAP fixed asset number (S19); SAP then runs depreciation.
+  sapAssetNo            String?       @map("sap_asset_no")
   /// Replacement planning (S17): month the vehicle should be replaced, and why.
   replacementPlannedFor DateTime?     @map("replacement_planned_for") @db.Date
   replacementNote       String?       @map("replacement_note")
@@ -788,6 +792,10 @@ model WorkOrder {
   invoiceDate   DateTime?       @map("invoice_date") @db.Date
   invoiceAmount Decimal?        @map("invoice_amount") @db.Decimal(14, 2)
   invoiceFileId String?         @map("invoice_file_id") @db.Uuid
+  /// SAP purchase order (S19).
+  poNumber      String?         @map("po_number")
+  /// NONE | REQUESTED | CREATED | FAILED | INVOICE_MISMATCH | MATCHED
+  poStatus      String?         @map("po_status")
   createdBy     String?         @map("created_by") @db.Uuid
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
@@ -1165,22 +1173,24 @@ model ApiKey {
 }
 
 model Customer {
-  id        String   @id @default(uuid()) @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
   /// Customer / outlet code from the DMS.
-  code      String
-  name      String
-  phone     String?
-  email     String?
-  address   String?
-  township  String?
-  city      String?
-  latitude  Float?
-  longitude Float?
-  notes     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  code        String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  township    String?
+  city        String?
+  latitude    Float?
+  longitude   Float?
+  notes       String?
+  /// SAP sold-to party (S19).
+  sapCustomer String?  @map("sap_customer")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   orders DeliveryOrder[]
   stops  TripStop[]
@@ -1826,6 +1836,10 @@ model StockMovement {
   lineId      String?  @map("line_id") @db.Uuid
   supplierId  String?  @map("supplier_id") @db.Uuid
   reference   String?
+  /// SAP purchase order the receipt is booked against (S19).
+  poNumber    String?  @map("po_number")
+  /// Differences against the PO line (qty / price), null when matched or not checked.
+  poCheck     Json?    @map("po_check")
   reason      String?
   fileId      String?  @map("file_id") @db.Uuid
   createdBy   String?  @map("created_by") @db.Uuid
@@ -2079,4 +2093,183 @@ model CorrectiveAction {
 
   @@index([companyId, status, dueDate])
   @@map("corrective_actions")
+}
+
+// ---------------------------------------------------------------------------
+// S19: rate cards, trip revenue, SAP S/4HANA link
+// ---------------------------------------------------------------------------
+
+/// Freight tariff. The most specific valid card wins (customer + class > customer > class > default).
+model RateCard {
+  id               String    @id @default(uuid()) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  name             String
+  customerId       String?   @map("customer_id") @db.Uuid
+  vehicleClass     String?   @map("vehicle_class")
+  branchId         String?   @map("branch_id") @db.Uuid
+  validFrom        DateTime  @map("valid_from") @db.Date
+  validTo          DateTime? @map("valid_to") @db.Date
+  active           Boolean   @default(true)
+  priority         Int       @default(0)
+  perTrip          Decimal   @default(0) @map("per_trip") @db.Decimal(14, 2)
+  perKm            Decimal   @default(0) @map("per_km") @db.Decimal(14, 4)
+  perKg            Decimal   @default(0) @map("per_kg") @db.Decimal(14, 4)
+  perDrop          Decimal   @default(0) @map("per_drop") @db.Decimal(14, 2)
+  perPallet        Decimal   @default(0) @map("per_pallet") @db.Decimal(14, 2)
+  minCharge        Decimal   @default(0) @map("min_charge") @db.Decimal(14, 2)
+  fuelSurchargePct Decimal   @default(0) @map("fuel_surcharge_pct") @db.Decimal(6, 2)
+  waitingPerHour   Decimal   @default(0) @map("waiting_per_hour") @db.Decimal(14, 2)
+  freeWaitMinutes  Int       @default(0) @map("free_wait_minutes")
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId, active])
+  @@map("rate_cards")
+}
+
+/// Revenue of a completed trip from the rate card, one row per customer on delivery trips.
+model TripRevenue {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  tripId     String   @map("trip_id") @db.Uuid
+  customerId String?  @map("customer_id") @db.Uuid
+  rateCardId String?  @map("rate_card_id") @db.Uuid
+  amount     Decimal  @db.Decimal(14, 2)
+  /// Charges: trip, km, kg, drops, pallets, waiting, surcharge, minimum top-up.
+  breakdown  Json
+  /// Quantities rated: km, kg, drops, pallets, waitMinutes, share.
+  basis      Json
+  /// RATE_CARD | NO_CARD
+  source     String   @default("RATE_CARD")
+  computedAt DateTime @default(now()) @map("computed_at")
+
+  @@index([companyId, tripId])
+  @@index([companyId, customerId])
+  @@map("trip_revenues")
+}
+
+/// Encrypted connection details of an external system (SAP).
+model IntegrationCredential {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  system    String
+  baseUrl   String   @map("base_url")
+  /// BASIC | OAUTH
+  authType  String   @default("BASIC") @map("auth_type")
+  username  String
+  secretEnc String   @map("secret_enc")
+  tokenUrl  String?  @map("token_url")
+  sapClient String?  @map("sap_client")
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, system])
+  @@map("integration_credentials")
+}
+
+/// One master data or billing pull from SAP.
+model SapSyncRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  /// MASTER | BILLING
+  kind       String
+  status     String    @default("RUNNING")
+  stats      Json      @default("{}")
+  errors     Json      @default("[]")
+  /// Billing: changed-since watermark used by the next pull.
+  watermark  DateTime?
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  createdBy  String?   @map("created_by") @db.Uuid
+
+  @@index([companyId, kind, startedAt])
+  @@map("sap_sync_runs")
+}
+
+/// Monthly cost posting to SAP FI/CO (snapshot of the ledger by cost centre and GL account).
+model CostPosting {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  /// YYYY-MM
+  period     String
+  version    Int       @default(1)
+  /// PENDING | POSTED | FAILED | REVERSED
+  status     String    @default("PENDING")
+  total      Decimal   @db.Decimal(16, 2)
+  currency   String
+  sapDocNo   String?   @map("sap_doc_no")
+  documentId String?   @map("document_id") @db.Uuid
+  postedAt   DateTime? @map("posted_at")
+  reversedAt DateTime? @map("reversed_at")
+  createdBy  String?   @map("created_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  lines CostPostingLine[]
+
+  @@unique([companyId, period, version])
+  @@map("cost_postings")
+}
+
+model CostPostingLine {
+  id            String  @id @default(uuid()) @db.Uuid
+  companyId     String  @map("company_id") @db.Uuid
+  costPostingId String  @map("cost_posting_id") @db.Uuid
+  costCenter    String  @map("cost_center")
+  glAccount     String  @map("gl_account")
+  category      String
+  vehicles      Int     @default(0)
+  amount        Decimal @db.Decimal(16, 2)
+
+  posting CostPosting @relation(fields: [costPostingId], references: [id], onDelete: Cascade)
+
+  @@index([costPostingId])
+  @@map("cost_posting_lines")
+}
+
+/// Outbox of documents sent to SAP (journal entries, reversals, purchase orders), retried with backoff.
+model SapDocument {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  /// JOURNAL | REVERSAL | PO
+  kind          String
+  /// What it belongs to: posting:<id> | wo:<id>
+  ref           String
+  /// PENDING | SENT | FAILED
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  lastAttemptAt DateTime? @map("last_attempt_at")
+  lockedUntil   DateTime? @map("locked_until")
+  payload       Json
+  sapDocNo      String?   @map("sap_doc_no")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([companyId, ref])
+  @@map("sap_documents")
+}
+
+/// SD billing document items imported from SAP (actual billed revenue).
+model SapBillingItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  billingDoc      String   @map("billing_doc")
+  item            String
+  billingDate     DateTime @map("billing_date") @db.Date
+  soldTo          String   @map("sold_to")
+  customerId      String?  @map("customer_id") @db.Uuid
+  /// Reference from SAP (delivery order number or trip number).
+  reference       String?
+  deliveryOrderId String?  @map("delivery_order_id") @db.Uuid
+  tripId          String?  @map("trip_id") @db.Uuid
+  netAmount       Decimal  @map("net_amount") @db.Decimal(14, 2)
+  currency        String
+  cancelled       Boolean  @default(false)
+  importedAt      DateTime @default(now()) @map("imported_at")
+
+  @@unique([companyId, billingDoc, item])
+  @@index([companyId, billingDate])
+  @@map("sap_billing_items")
 }

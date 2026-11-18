@@ -224,6 +224,7 @@ export function TripDetailPage() {
           </>
         )}
       </section>
+      {t.status === 'COMPLETED' && session.can(Permission.COST_READ) && <TripRevenue tripId={t.id} />}
     </>
   );
 }
@@ -263,5 +264,69 @@ function TripTrailer({ trip, canWrite, onError }: { trip: Trip; canWrite: boolea
         );
       })}
     </select>
+  );
+}
+
+interface RevenueRow {
+  id: string;
+  customerName: string | null;
+  rateCardName: string | null;
+  amount: string;
+  source: string;
+  basis: { km: number; kg: number; drops: number; waitMinutes: number; share: number };
+  breakdown: Record<string, number>;
+}
+
+/** Rate-card revenue of a completed trip, per customer (S19). */
+export function TripRevenue({ tripId }: { tripId: string }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['trip-revenue', tripId], queryFn: () => api<{ total: number; billed: number | null; rows: RevenueRow[] }>(`/trips/${tripId}/revenue`) });
+  const recompute = useMutation({ mutationFn: () => api(`/trips/${tripId}/revenue/recompute`, { method: 'POST' }), onSuccess: () => void qc.invalidateQueries({ queryKey: ['trip-revenue', tripId] }) });
+  const d = q.data;
+  if (!d) return null;
+  const fmt = (n: number | string) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Revenue</h2>
+        <span>
+          <strong>{fmt(d.total)}</strong>
+          {d.billed != null && <span className="muted small"> · billed in SAP {fmt(d.billed)}</span>}
+        </span>
+      </div>
+      {d.rows.length === 0 ? (
+        <p className="muted">Not rated yet.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Rate card</th>
+              <th>Basis</th>
+              <th className="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.rows.map((r) => (
+              <tr key={r.id}>
+                <td>{r.customerName ?? '—'}</td>
+                <td>{r.rateCardName ?? <span className="badge badge-warn">no rate card applies</span>}</td>
+                <td className="small muted">
+                  {[`${r.basis.km} km`, r.basis.kg ? `${r.basis.kg.toLocaleString()} kg` : null, r.basis.drops ? `${r.basis.drops} drop(s)` : null, r.basis.waitMinutes ? `${r.basis.waitMinutes} min waiting` : null, r.basis.share < 1 ? `${Math.round(r.basis.share * 100)} % of the trip` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </td>
+                <td className="num">{fmt(r.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {session.can(Permission.RATE_CARD_WRITE) && (
+        <button className="btn btn-ghost" disabled={recompute.isPending} onClick={() => recompute.mutate()}>
+          Re-rate with current cards
+        </button>
+      )}
+    </section>
   );
 }

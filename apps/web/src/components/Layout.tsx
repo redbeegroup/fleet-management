@@ -16,6 +16,7 @@ const sections: {
       { to: '/reports', label: 'Reports', perm: Permission.COST_READ },
       { to: '/costs', label: 'Costs & TCO', perm: Permission.COST_READ },
       { to: '/budgets', label: 'Budgets', perm: Permission.BUDGET_READ },
+      { to: '/profitability', label: 'Profitability', perm: Permission.COST_READ },
       { to: '/benchmark', label: 'Benchmark', perm: Permission.COST_READ },
       { to: '/report-subscriptions', label: 'Scheduled reports', perm: Permission.SAFETY_READ },
     ],
@@ -30,6 +31,7 @@ const sections: {
       { to: '/orders', label: 'Delivery orders', perm: Permission.ORDER_READ },
       { to: '/customers', label: 'Customers', perm: Permission.LOGISTICS_READ },
       { to: '/delivery-kpis', label: 'Delivery KPIs', perm: Permission.LOGISTICS_READ },
+      { to: '/rate-cards', label: 'Rate cards', perm: Permission.COST_READ },
       { to: '/site-visits', label: 'Loading & unloading', perm: Permission.TRACKING_READ },
       {
         to: '/vehicle-requests',
@@ -66,7 +68,8 @@ const sections: {
       { to: '/settings', label: 'Settings', perm: Permission.BRANCH_READ },
       { to: '/users', label: 'Users', perm: Permission.USER_READ },
       { to: '/admin/companies', label: 'Group companies', perm: Permission.COMPANY_MANAGE },
-      { to: '/integrations', label: 'Integrations', perm: Permission.INTEGRATION_MANAGE },
+      { to: '/integrations', label: 'Integrations', perm: Permission.INTEGRATION_MANAGE, end: true },
+      { to: '/integrations/sap', label: 'SAP S/4HANA', perm: Permission.INTEGRATION_MANAGE },
     ],
   },
 ];

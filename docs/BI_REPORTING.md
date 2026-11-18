@@ -123,6 +123,10 @@ Use TLS (`sslmode=require`) outside the cluster network.
 | `reporting.trailer_couplings` | Trailer ↔ tractor couplings, with the trip (S18). | company_id, company_code, coupling_id, trailer_id, tractor_id, trip_id, coupled_at, uncoupled_at |
 | `reporting.safety_audits` | Safety audits of sites and vehicles with score and result (S18). | company_id, company_code, audit_id, audit_no, template_id, template_name, target, branch_id, vehicle_id, performed_at, local_date, score, result |
 | `reporting.corrective_actions` | Corrective actions from audits, with an overdue flag (S18). | company_id, company_code, action_id, audit_id, description, owner_user_id, due_date, status, closed_at, verified_at, overdue |
+| `reporting.rate_cards` | Freight rate cards (S19). | company_id, company_code, rate_card_id, name, customer_id, vehicle_class, branch_id, valid_from, valid_to, active, per_trip, per_km, per_kg, per_drop, per_pallet, min_charge, fuel_surcharge_pct, waiting_per_hour, free_wait_minutes |
+| `reporting.trip_revenues` | Rate-card revenue per completed trip, one row per customer on delivery trips (S19). | company_id, company_code, revenue_id, trip_id, trip_no, vehicle_id, branch_id, local_date, customer_id, rate_card_id, source, amount, km, kg, drops, computed_at |
+| `reporting.cost_postings` | Monthly cost postings to SAP FI/CO by cost centre and GL account (S19). | company_id, company_code, posting_id, period, version, status, sap_doc_no, posted_at, currency, cost_center, gl_account, category, vehicles, amount |
+| `reporting.sap_billing_items` | Billed revenue from SAP SD billing documents (S19). | company_id, company_code, billing_doc, item, billing_date, sold_to, customer_id, reference, delivery_order_id, trip_id, net_amount, currency, cancelled |
 
 S16 also appended `supplier_id, quote_amount, invoice_no, invoice_amount` to `reporting.work_orders`.
 

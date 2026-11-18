@@ -19,6 +19,7 @@ import { parseCompanySettings } from '../../common/settings';
 import { NotificationsService } from '../notifications/notifications.service';
 import { trackDistanceKm } from '../telematics/rules/geo';
 import { blocks, BLOCKING_VEHICLE_STATUSES, checkLicence } from './eligibility';
+import { rateTrip } from '../profitability/revenue';
 import { complianceBlocks } from '../compliance/check';
 
 export interface TripListQuery {
@@ -260,6 +261,8 @@ export class TripsService {
         },
         include: tripInclude,
       });
+      // Freight revenue from the rate cards (S19).
+      await rateTrip(tx, user.companyId, id);
       return this.hook(tx, user.companyId, WebhookEvent.TRIP_COMPLETED, done);
     });
   }

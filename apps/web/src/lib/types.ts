@@ -321,6 +321,8 @@ export interface WorkOrder {
   invoiceNo: string | null;
   invoiceDate: string | null;
   invoiceAmount: string | null;
+  poNumber?: string | null;
+  poStatus?: string | null;
   invoiceFileId: string | null;
   lines?: {
     id: string;

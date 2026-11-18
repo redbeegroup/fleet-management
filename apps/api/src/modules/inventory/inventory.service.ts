@@ -116,7 +116,7 @@ export class InventoryService {
     user: AuthUser,
     stockId: string,
     state: StockState,
-    m: { partId: string; branchId: string; kind: string; qty: number; unitCost: number; value: number; workOrderId?: string | null; lineId?: string | null; supplierId?: string | null; reference?: string | null; reason?: string | null; fileId?: string | null; occurredAt?: Date },
+    m: { partId: string; branchId: string; kind: string; qty: number; unitCost: number; value: number; workOrderId?: string | null; lineId?: string | null; supplierId?: string | null; reference?: string | null; poNumber?: string | null; reason?: string | null; fileId?: string | null; occurredAt?: Date },
   ) {
     await tx.partStock.update({ where: { id: stockId }, data: { qtyOnHand: state.qty, avgCost: state.avgCost } });
     return tx.stockMovement.create({ data: { ...m, companyId: user.companyId, qtyAfter: state.qty, createdBy: user.userId } });
@@ -165,7 +165,7 @@ export class InventoryService {
         await this.part(tx, l.partId);
         const s = await this.lockStock(tx, user.companyId, l.partId, body.branchId);
         const state = this.guard(() => receive(s.state, l.qty, l.unitCost));
-        out.push(await this.book(tx, user, s.id, state, { partId: l.partId, branchId: body.branchId, kind: 'RECEIPT', qty: l.qty, unitCost: l.unitCost, value: money(l.qty * l.unitCost), supplierId: body.supplierId, reference: body.reference, fileId: body.fileId, occurredAt: body.occurredAt }));
+        out.push(await this.book(tx, user, s.id, state, { partId: l.partId, branchId: body.branchId, kind: 'RECEIPT', qty: l.qty, unitCost: l.unitCost, value: money(l.qty * l.unitCost), supplierId: body.supplierId, reference: body.reference, poNumber: body.poNumber ?? null, fileId: body.fileId, occurredAt: body.occurredAt }));
       }
       return { movements: out.length, value: money(out.reduce((a, m) => a + n(m.value), 0)) };
     });

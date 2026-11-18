@@ -1,3 +1,4 @@
+import { checkGarageInvoice, queueGaragePo } from '../sap/hooks';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma, WorkOrderStatus } from '@prisma/client';
 import {
@@ -307,7 +308,10 @@ export class MaintenanceService implements OnModuleInit {
         if (onTrip) throw new ConflictException(`Vehicle is on trip ${onTrip.tripNo}; complete it first`);
         await changeVehicleStatus(tx, user, wo.vehicleId, 'UNDER_REPAIR', `${wo.woNo}: ${wo.title}`);
       }
-      return tx.workOrder.update({ where: { id }, data: { status: 'IN_PROGRESS', startedAt: new Date() }, include: woInclude });
+      await tx.workOrder.update({ where: { id }, data: { status: 'IN_PROGRESS', startedAt: new Date() } });
+      // Outside garage with an accepted quote → SAP purchase order (S19, when the link is on).
+      await queueGaragePo(tx, user.companyId, id);
+      return tx.workOrder.findUniqueOrThrow({ where: { id }, include: woInclude });
     });
   }
 
@@ -348,6 +352,7 @@ export class MaintenanceService implements OnModuleInit {
       if (wo.supplierId && (!invoiceNo || invoiceAmount == null)) throw new BadRequestException('Enter the garage invoice number and amount');
       if (invoiceNo || invoiceAmount != null) {
         await tx.workOrder.update({ where: { id }, data: { invoiceNo, invoiceAmount, invoiceDate: input.invoiceDate ?? wo.invoiceDate ?? new Date(), ...(input.invoiceFileId && { invoiceFileId: input.invoiceFileId }) } });
+        await checkGarageInvoice(tx, id);
         const lines = await tx.workOrderLine.count({ where: { workOrderId: id } });
         if (!lines && invoiceAmount) {
           const garage = wo.supplierId ? (await tx.supplier.findUnique({ where: { id: wo.supplierId }, select: { name: true } }))?.name : null;

@@ -1,6 +1,6 @@
 # Fleet Management System — Development Plan
 
-> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) S16 (parts, tires, outside garages, warranty) S17 (lifecycle, replacement advice, benchmarking) and S18 (trailers & equipment, Myanmar compliance pack, safety audits) delivered — Phase 3 scope complete, UAT pack [UAT_PHASE3.md](UAT_PHASE3.md).** Timelines are indicative, not a validated estimate.
+> Status: **Phase 1 (MVP, Sprints 1–6) delivered** — ready for UAT ([UAT_PHASE1.md](UAT_PHASE1.md)). **Phase 2 delivered: S7 (driver safety), S8 (inspections, training, incentives) S9 (integration platform & approvals), S10 (delivery planning & multi-stop trips) and S11 (OSRM/VROOM routing, ePOD, returns, delivery KPIs) and S12 (costs & control, offline driver app, manager mobile approvals, route deviation) delivered; S13 (fuel control, cards, sensors, diagnostics) and S14 (site visits, group administration, UAT pack) delivered — Phase 2 complete, in UAT ([UAT_PHASE2.md](UAT_PHASE2.md))**. **Phase 3: S15 (single sign-on, BI access, scheduled management reports) S16 (parts, tires, outside garages, warranty) S17 (lifecycle, replacement advice, benchmarking), S18 (trailers & equipment, Myanmar compliance pack, safety audits) and S19 (rate cards & profitability, SAP S/4HANA link) delivered — Phase 3 scope complete, UAT pack [UAT_PHASE3.md](UAT_PHASE3.md).** The SAP link runs in demo mode until a sandbox and communication user exist. Timelines are indicative, not a validated estimate.
 
 ## 1. Product goals
 
@@ -195,7 +195,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Cost per trip | P2 | 2 / S12 | ✅ trip km × full cost per km + trip expenses + driver cost per day |
 | Cost per delivery | P2 | 2 / S11–S12 | ✅ cost per drop / order / kg on the full cost per km |
 | Internal cost allocation | P2 | 2 / S12 | ✅ shared costs allocated to vehicles by km driven in the month |
-| Fleet profitability | P2 | 3 | ⏳ needs revenue from ERP/TMS |
+| Fleet profitability | P2 | 3 | ✅ S19: freight rate cards (trip / km / kg / drop / pallet / waiting / surcharge / minimum), revenue per trip and customer, margin by trip, customer, vehicle and branch; SAP billed vs rated |
 | Vehicle replacement ROI | P3 | 4 | ⏳ |
 
 ### Module 9 — Fleet Performance & KPI (`analytics`)
@@ -268,7 +268,7 @@ Legend — Priority: P1 essential, P2 operational, P3 advanced/AI. Phase/Sprint:
 | Audit logs | P1 | 1 / S1 | ✅ every mutating request, sensitive fields redacted |
 | GPS device integration | P1 | 1 / S1–S3 | 🟡 `TelematicsProvider` + Watch Tower adapter |
 | Notification engine | P1 | 1 / S2–S6 | ✅ in-app, SMTP e-mail, Expo push; role-based recipients; dedupe |
-| ERP integration (SAP S/4HANA) | P2 | 3 | ⏳ |
+| ERP integration (SAP S/4HANA) | P2 | 3 | ✅ S19: master data import, monthly cost posting to FI/CO, garage POs and invoice check, parts receipts against POs, SD billing import; demo mode until the sandbox exists |
 | DMS / TMS integration | P2 | 2 / S9 → 3 | 🟡 DMS order intake API + status webhooks (S9); delivery planning/ePOD S10–S11 (`pod` in delivery webhooks, `return.collected`, `load.checked_in`) |
 | BI integration (Tableau, Metabase) | P2 | 3 | ✅ S15: read-only `reporting` views, per-company and group logins ([BI_REPORTING.md](BI_REPORTING.md)) |
 | REST APIs & webhooks | P2 | 2 / S9 | ✅ scoped API keys, integration API v1 (separate OpenAPI), signed webhooks with retries ([INTEGRATION_API.md](INTEGRATION_API.md)) |
@@ -552,3 +552,23 @@ Object storage decision: **S3 API**, so any S3-compatible service works. Recomme
   - Average score per branch and month, open / overdue actions.
   - BI views `reporting.trailer_couplings`, `reporting.safety_audits`, `reporting.corrective_actions`.
 - **Tests:** unit (requirement evaluation, payload limits, audit scoring, hour-based due); e2e (`sprint18`): hour meter and plan, trailer booking and combined / legal limits, compliance blocking and couplings, audits / actions / trend, isolation.
+
+### Phase 3 — Sprint 19 (rate cards & profitability, SAP S/4HANA link) delivered
+
+- **Rate cards** (`rate_cards`): per trip, km, kg, drop, pallet, waiting time above a free allowance, fuel surcharge %, minimum charge; optionally per customer, vehicle class or branch, with validity dates.
+  - The most specific valid card prices a trip: customer + class > customer > class > default; ties go to priority.
+  - Every completed trip is rated on completion (`trip_revenues`). Delivery trips are rated per customer: km, the per-trip charge and the minimum follow the customer's weight share (drop share when nothing was weighed); failed drops are not charged.
+  - Re-rate a trip or a whole period after a card changes; preview a card on a sample trip.
+- **Profitability** (*Profitability* page, `GET /analytics/profitability`, CSV): revenue, trip cost (the S12 trip cost) and margin by trip, customer (cost split like revenue), vehicle and branch.
+  - Vehicles and branches also show the full ledger cost of the period (fixed costs, idle days).
+  - Loss-making rows first; unrated trips flagged; SAP billed revenue alongside.
+- **SAP S/4HANA link** (*Integrations → SAP S/4HANA*), standard APIs via OData / SOAP, `SAP_MODE=none | mock | odata`; the per-company connection is stored encrypted.
+  - **Master data** (nightly + on demand): cost centres → departments, vendors → suppliers, materials → parts, sold-to customers → customers, fixed assets → suggested vehicle links (confirmed in the UI; SAP then depreciates the vehicle).
+  - **Monthly cost posting** to FI/CO: the ledger by cost centre (vehicle department → default) × GL account (per category), one balanced journal entry; preview, post, automatic on the posting day; re-posting a month reverses the previous document first.
+  - **Purchase orders**: an outside-garage job with a quote creates a PO when it starts; the garage invoice is checked against it (tolerance %). Parts receipts can carry a PO number and are checked against the PO lines (material, quantity, price).
+  - **SD billing documents** are imported hourly and matched by the customer reference (delivery order or trip number) to compare billed with rated revenue.
+  - Outbox `sap_documents` with retries (as webhooks), failure alerts; jobs `sap-dispatch`, `sap-sync`, `sap-billing`, `sap-autopost`.
+  - BI views `reporting.rate_cards`, `reporting.trip_revenues`, `reporting.cost_postings`, `reporting.sap_billing_items`.
+- **Tests:**
+  - Unit: card selection, charges and minimum, customer split, posting aggregation and balance, PO and invoice matching.
+  - e2e (`sprint19`) against a fake SAP server: rating on completion and re-rating, profitability, connection / master data / asset link, posting with a retry and a reversal, garage PO and invoice mismatch, receipt over the PO quantity, billing import, isolation.

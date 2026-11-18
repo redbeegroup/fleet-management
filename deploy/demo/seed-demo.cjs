@@ -310,6 +310,44 @@ async function step(name, fn) {
     return done.length ? done.join(', ') : 'already loaded';
   });
 
+  await step('S19 rate cards, profitability and SAP (mock)', async () => {
+    const done = [];
+    const cards = (await j('/rate-cards')).b || [];
+    if (Array.isArray(cards) && !cards.length) {
+      const from = `${year - 1}-01-01`;
+      await send('/rate-cards', { name: 'Standard tariff', validFrom: from, perKm: 4500, perDrop: 15000, minCharge: 150000, fuelSurchargePct: 5, notes: TAG });
+      await send('/rate-cards', { name: 'Trucks (full load)', vehicleClass: 'TRUCK', validFrom: from, perTrip: 250000, perKm: 6000, perKg: 8, fuelSurchargePct: 5, waitingPerHour: 25000, freeWaitMinutes: 60, notes: TAG });
+      const customers = ((await j('/customers?pageSize=5')).b || { items: [] }).items;
+      if (customers[0]) await send('/rate-cards', { name: `Contract ${customers[0].name}`, customerId: customers[0].id, validFrom: from, perDrop: 30000, perKg: 25, minCharge: 120000, notes: TAG });
+      done.push('rate cards');
+    }
+    const rr = await send('/rate-cards/rerate', { from: day(-90), to: day(0) });
+    if (ok(rr)) done.push(`${rr.b.trips} trips rated`);
+    const sap = await j('/sap');
+    if (ok(sap) && sap.b.mode !== 'none') {
+      if (!sap.b.settings.enabled) {
+        await send('/company/settings', { sap: { enabled: true, companyCode: '1000', controllingArea: 'A000', plant: 'YG01', purchasingOrg: '1000', purchasingGroup: '001', currency: 'MMK',
+          glAccounts: { FUEL: '610100', MAINTENANCE: '610200', TIRES: '610250', DEPRECIATION: '640000', DOCUMENTS: '650000', SHARED: '690000', default: '699000' },
+          offsetAccount: '219900', defaultCostCenter: 'FL9000', serviceGlAccount: '610300', materialGroup: 'SERV01' } }, 'PATCH');
+        done.push('SAP settings');
+      }
+      if (!sap.b.runs.some((r) => r.kind === 'MASTER')) {
+        const m = await send('/sap/sync', {});
+        done.push(ok(m) ? `SAP master data (${m.b.status})` : `SAP sync HTTP ${m.s}`);
+      }
+      const d = new Date(`${month}-01T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      const period = d.toISOString().slice(0, 7);
+      if (!sap.b.postings.some((p) => p.period === period)) {
+        const p = await send('/sap/postings', { period });
+        done.push(ok(p) ? `cost posting ${period} queued` : `posting ${period}: ${JSON.stringify(p.b.errors || p.b.message)}`);
+      }
+      const b = await send('/sap/billing/import', {});
+      if (ok(b)) done.push(`billing ${b.b.stats.received} items`);
+    } else done.push('SAP link not installed (SAP_MODE=none)');
+    return done.length ? done.join(', ') : 'already loaded';
+  });
+
   console.log(`\nDone: ${out.filter((x) => x.includes('FAILED') || /HTTP \d/.test(x)).length} step(s) need attention.`);
 })().catch((e) => {
   console.error(`Demo seed failed: ${e.message}`);

@@ -221,6 +221,12 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 - `compliance/rules.ts` (pure) evaluates the company's required documents against `vehicle_documents`; `compliance/check.ts` is called from assignment and start when `compliance.enforceDispatch` is on.
 - `audits/scoring.ts` (pure) scores answers; `AuditsService` numbers audits from `company_counters`, creates corrective actions, notifies owners and raises a repair request for a failed vehicle audit.
 
+## Profitability and SAP link (S19)
+
+- `profitability/rating.ts` (pure) picks the card and computes charges and the customer split; `profitability/revenue.rateTrip` runs inside `TripsService.complete` and re-rating. `ProfitabilityService` combines `trip_revenues` with `CostsService.tripCosts` / `tco`.
+- `sap/sap-client.ts` holds all SAP mapping (`ODataSapClient`, `MockSapClient`). `sap/posting.ts` (pure) aggregates the ledger into journal lines and matches POs. `sap/hooks.ts` queues garage POs and checks invoices inside the maintenance transactions; nothing calls SAP inside a business transaction — `SapService.dispatchDue` sends the outbox (lease + retry, journals of a company kept in order).
+- SAP credentials: `integration_credentials`, AES-256-GCM with the SSO key (`SSO_ENCRYPTION_KEY`).
+
 ## Background jobs
 
 | Job | Schedule | Purpose |
@@ -230,6 +236,10 @@ KPIs never scan raw positions at request time. `fms_rollup_daily_stats(from, to)
 | `gps-offline` | every 5 min | open GPS_OFFLINE events for silent vehicles |
 | `compliance-pack` | daily 08:00 Asia/Yangon | vehicles missing required documents (deduplicated per week) |
 | `audit-actions` | daily 08:05 Asia/Yangon | overdue corrective actions to owners and safety managers |
+| `sap-dispatch` | every minute | send SAP outbox documents (journals, reversals, POs); check parts receipts against their PO |
+| `sap-sync` | daily 02:30 Asia/Yangon | SAP master data import |
+| `sap-billing` | hourly | SAP SD billing document import |
+| `sap-autopost` | daily 06:10 Asia/Yangon | post last month on the configured posting day (`sap.autoPost`) |
 | `maintenance-due` | daily 02:00 Asia/Yangon | due-soon / overdue preventive maintenance alerts |
 | `incentives-monthly` | 1st of the month 08:00 Asia/Yangon | propose last month's safety bonuses (when enabled) |
 | `safety-alerts` | daily 07:30 Asia/Yangon | drivers below `safety.alertBelow` over the last 30 days (once per week per driver) |

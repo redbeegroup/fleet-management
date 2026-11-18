@@ -33,6 +33,14 @@ const envSchema = z.object({
   FUEL_CARD_API_URL: z.string().optional(),
   FUEL_CARD_API_KEY: z.string().optional(),
 
+  // SAP S/4HANA link (S19): none = off, mock = demo stand-in, odata = real system (per-company connection)
+  SAP_MODE: z.enum(['none', 'mock', 'odata']).default('none'),
+  /** Allow http:// SAP URLs (tests / internal networks only). */
+  SAP_ALLOW_INSECURE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
   // File storage
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./.data/files'),

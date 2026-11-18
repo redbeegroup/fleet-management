@@ -66,4 +66,16 @@ Demo data: `deploy/demo/seed-demo.cjs` adds suppliers, parts in two depots, tire
 41. [ ] *Safety audits → Perform audit*: a depot audit with failed items gets a score and corrective actions with owner and due date; a failed critical vehicle item fails the audit and creates a repair request.
 42. [ ] The action owner sees it under *My actions*, marks it done with a note; another manager verifies it. Overdue actions are alerted; the branch trend shows score and open / overdue actions.
 
+## G. Rate cards, profitability, SAP (S19)
+
+43. [ ] *Rate cards*: create a default card, a vehicle-class card and a customer card; the preview prices a sample trip as expected (minimum, surcharge).
+44. [ ] Complete a trip: its page shows the revenue with the card used; a delivery trip shows one row per customer and failed drops are not charged.
+45. [ ] Change a card and *Re-rate period* on *Profitability*: past trips are re-priced.
+46. [ ] *Profitability*: totals, by trip / customer / vehicle / branch; loss-making rows first; vehicles show the full cost; CSV export matches.
+47. [ ] *SAP*: (with the sandbox) save the connection and *Test*; enter company code, accounts and cost centres.
+48. [ ] *Master data → Import now*: departments get cost centres, garages / suppliers get vendor numbers, parts get material numbers; link a vehicle to its fixed asset.
+49. [ ] *Cost posting*: the preview balances and matches *Costs & TCO* for the month; post it; the SAP document number appears and the entry is visible in SAP; posting again reverses it first.
+50. [ ] A garage job with a quote creates a PO when it starts; an invoice above the tolerance is flagged. A parts receipt with a PO number is checked against the PO lines.
+51. [ ] *Billing*: SD invoices are imported and compared with the rate-card revenue per trip.
+
 Sign-off: ______________________ (IT) ______________________ (finance) ______________________ (operations) Date: __________

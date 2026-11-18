@@ -40,6 +40,8 @@ import { LoginPage } from './pages/LoginPage';
 import { BenchmarkPage } from './pages/BenchmarkPage';
 import { LifecyclePage } from './pages/LifecyclePage';
 import { CompliancePage } from './pages/CompliancePage';
+import { ProfitabilityPage, RateCardsPage } from './pages/ProfitabilityPage';
+import { SapPage } from './pages/SapPage';
 import { AuditDetailPage, PerformAuditPage, SafetyAuditsPage } from './pages/SafetyAuditsPage';
 import { PartsPage } from './pages/PartsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
@@ -102,6 +104,9 @@ export function App() {
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="vehicle-requests" element={<VehicleRequestsPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
+        <Route path="integrations/sap" element={<SapPage />} />
+        <Route path="profitability" element={<ProfitabilityPage />} />
+        <Route path="rate-cards" element={<RateCardsPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="planning" element={<PlanningPage />} />
         <Route path="loads/:id" element={<LoadPage />} />

@@ -76,6 +76,7 @@ export class OrganizationController {
         tires: { ...current.tires, ...body.tires },
         lifecycle: { ...current.lifecycle, ...body.lifecycle, limits: { ...current.lifecycle.limits, ...body.lifecycle?.limits } },
         compliance: { ...current.compliance, ...body.compliance, maxPayloadKg: { ...current.compliance.maxPayloadKg, ...body.compliance?.maxPayloadKg } },
+        sap: { ...current.sap, ...body.sap, glAccounts: { ...current.sap.glAccounts, ...body.sap?.glAccounts } },
       });
       await tx.company.update({ where: { id: user.companyId }, data: { settings: next } });
       return next;

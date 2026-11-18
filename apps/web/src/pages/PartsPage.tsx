@@ -193,6 +193,7 @@ function StockAction({ action, branches, rows, onDone, onClose, setMsg }: { acti
         branchId: store,
         supplierId: f.get('supplierId') || null,
         reference: f.get('reference') || null,
+        poNumber: f.get('poNumber') || null,
         ...(file?.size ? { fileId: (await uploadFile(file)).id } : {}),
         lines: ls.map((l) => ({ partId: l.partId, qty: Number(l.qty), unitCost: Number(l.unitCost) })),
       });
@@ -253,6 +254,12 @@ function StockAction({ action, branches, rows, onDone, onClose, setMsg }: { acti
         <label>
           {action === 'receive' ? 'Invoice / delivery note no.' : 'Reference'}
           <input name="reference" />
+        </label>
+      )}
+      {action === 'receive' && (
+        <label title="Checked against the PO lines in SAP when the SAP link is on">
+          SAP purchase order
+          <input name="poNumber" maxLength={20} placeholder="optional" />
         </label>
       )}
       {action === 'receive' && (
