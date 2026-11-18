@@ -16,7 +16,7 @@ The demo seed is idempotent. It sets the approval limits, control rules and POD 
 - an expense waiting for approval;
 - a fuel card statement.
 
-Logins: `admin@fms.local` (company admin), `manager@fms.local` (fleet manager), `driver@fms.local` (driver, mobile app). On CorexLab the GPS feed is simulated (mock telematics) until the Watch Tower API is connected; fuel-card API sync uses a mock provider.
+Logins: `admin@fms.local` (company admin), `manager@fms.local` (fleet manager), `driver@fms.local` (driver, mobile app), password `ChangeMe123!` on CorexLab and local stacks (demo only — change it before real users are invited). On CorexLab the GPS feed is simulated (mock telematics) until the Watch Tower API is connected; fuel-card API sync uses a mock provider.
 
 Tick each line and record defects with the step number.
 

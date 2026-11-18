@@ -1,6 +1,6 @@
 # Phase 3 (Advanced) — User acceptance test checklist
 
-Run against the CorexLab test environment (`https://fms.corexlab.net`) or a Docker test stack. Logins as in [UAT_PHASE2.md](UAT_PHASE2.md). Tick each line and record defects with the step number.
+Run against the CorexLab test environment (`https://fms.corexlab.net`) or a Docker test stack. Logins: `admin@fms.local`, `manager@fms.local`, `driver@fms.local`, password `ChangeMe123!` (demo only — change it before real users are invited). Tick each line and record defects with the step number.
 
 ## A. Single sign-on (S15)
 

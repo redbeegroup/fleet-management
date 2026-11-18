@@ -31,7 +31,7 @@ docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env
 | `api`, `worker`, `ingest` | the API image with `MODE=api / worker / ingest` |
 | `web` | console on `http://localhost:${WEB_PORT}` (default 8080), API docs at `/api/docs` |
 
-Default login (seed): `admin@fms.local` / `ChangeMe123!` (change via `SEED_ADMIN_*`).
+Default login (seed): `admin@fms.local` / `ChangeMe123!`; `manager@fms.local` and `driver@fms.local` get the same password. `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` change it, but only when the users are first created: the seed never changes an existing user's password.
 With `TELEMATICS_PROVIDER=mock`, every vehicle that has a GPS device ID moves around Yangon, so the live map works without Watch Tower access.
 
 Useful commands:
